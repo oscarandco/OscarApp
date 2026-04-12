@@ -33,16 +33,23 @@ Database RPCs used by the app (including admin access management) must exist in 
 
 There is no separate app server: the browser uploads the CSV to Storage, then calls RPC `trigger_sales_daily_sheets_import(p_storage_path text)` (elevated users only). That RPC validates the object and runs one of:
 
-1. **Edge Function (default path)** — `supabase/functions/sales-daily-sheets-import` downloads the file with the service role, parses CSV into `public.sales_daily_sheets_staged_rows`, returns JSON to Postgres. The RPC invokes it **synchronously** using the Postgres **`http`** extension (`extensions.http_post`).
-2. **Optional SQL hook** — if `app.sales_daily_import_edge_url` / `app.internal_import_secret` are not set, the RPC calls `public.sales_daily_sheets_import_pipeline_sql(p_batch_id uuid, p_storage_path text)` when that function exists.
+1. **Edge Function (default path)** — `supabase/functions/sales-daily-sheets-import` downloads the file with the service role, parses CSV into `public.sales_daily_sheets_staged_rows`, returns JSON to Postgres. The RPC invokes it **synchronously** using the Postgres **`http`** extension (`extensions.http_post`). **Config** (Edge URL + internal secret) is read from **`private.sales_daily_sheets_import_config`** (singleton row `id = 1`), not `ALTER DATABASE … SET` (often blocked on hosted Supabase).
+2. **Optional SQL hook** — if the config row is empty or incomplete, the RPC can call `public.sales_daily_sheets_import_pipeline_sql(p_batch_id uuid, p_storage_path text)` when that function exists.
 3. **Optional payroll merge** — after staging, `private.run_sales_daily_sheets_merge_if_installed` runs `public.apply_sales_daily_sheets_to_payroll(uuid)` when you define it (loads staging into your reporting tables so commission/payroll RPCs see new data).
 
-**One-time database configuration** (SQL editor, replace placeholders):
+**Database configuration** (SQL editor — update URL/secret as needed):
 
 ```sql
-ALTER DATABASE postgres SET app.sales_daily_import_edge_url =
-  'https://<project-ref>.supabase.co/functions/v1/sales-daily-sheets-import';
-ALTER DATABASE postgres SET app.internal_import_secret = '<long random secret>';
+INSERT INTO private.sales_daily_sheets_import_config (id, sales_daily_import_edge_url, internal_import_secret)
+VALUES (
+  1,
+  'https://<project-ref>.supabase.co/functions/v1/sales-daily-sheets-import',
+  '<same secret as Edge>'
+)
+ON CONFLICT (id) DO UPDATE SET
+  sales_daily_import_edge_url = EXCLUDED.sales_daily_import_edge_url,
+  internal_import_secret = EXCLUDED.internal_import_secret,
+  updated_at = now();
 ```
 
 Set the same secret for the Edge Function: `supabase secrets set INTERNAL_IMPORT_SECRET=<same value>` (or Dashboard → Edge Functions → secrets). Deploy the function: `supabase functions deploy sales-daily-sheets-import`.
