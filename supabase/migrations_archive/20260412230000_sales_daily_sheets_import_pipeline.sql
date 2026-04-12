@@ -60,9 +60,10 @@ COMMENT ON TABLE public.sales_daily_sheets_staged_rows IS
 -- No policies: only superuser/service_role and SECURITY DEFINER paths write; authenticated has no direct access.
 
 -- ---------------------------------------------------------------------------
--- Optional merge hook (implement in a separate migration on the real DB if needed)
+-- Optional merge hook (implement apply_sales_daily_sheets_to_payroll in a separate migration)
+-- Kept in private.* so it is not exposed as a PostgREST RPC; invoker needs EXECUTE for nested call.
 -- ---------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION public.run_sales_daily_sheets_merge_if_installed(p_batch_id uuid)
+CREATE OR REPLACE FUNCTION private.run_sales_daily_sheets_merge_if_installed(p_batch_id uuid)
 RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -75,8 +76,8 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.run_sales_daily_sheets_merge_if_installed(uuid) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.run_sales_daily_sheets_merge_if_installed(uuid) TO service_role;
+REVOKE ALL ON FUNCTION private.run_sales_daily_sheets_merge_if_installed(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION private.run_sales_daily_sheets_merge_if_installed(uuid) TO authenticated;
 
 -- ---------------------------------------------------------------------------
 -- Replace main RPC: validate → batch processing → HTTP Edge or SQL hook → merge → JSON
@@ -85,7 +86,7 @@ CREATE OR REPLACE FUNCTION public.trigger_sales_daily_sheets_import(p_storage_pa
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, storage, auth, extensions, pg_temp
+SET search_path = public, storage, auth, extensions, private, pg_temp
 AS $$
 DECLARE
   v_path text := trim(p_storage_path);
@@ -235,7 +236,7 @@ BEGIN
         (SELECT count(*)::int FROM public.sales_daily_sheets_staged_rows r WHERE r.batch_id = v_batch_id)
       );
 
-      PERFORM public.run_sales_daily_sheets_merge_if_installed(v_batch_id);
+      PERFORM private.run_sales_daily_sheets_merge_if_installed(v_batch_id);
 
       SELECT b.rows_loaded
       INTO v_batch_rows_loaded

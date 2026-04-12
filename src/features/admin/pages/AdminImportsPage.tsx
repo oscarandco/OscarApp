@@ -2,7 +2,6 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 
 import { PageHeader } from '@/components/layout/PageHeader'
-import { getSalesDailySheetsBucket } from '@/lib/env'
 import {
   isLikelyCsvFile,
   uploadAndTriggerSalesDailySheetsImport,
@@ -90,24 +89,8 @@ export function AdminImportsPage() {
     <div data-testid="admin-imports-page">
       <PageHeader
         title="Sales Daily Sheets import"
-        description="Upload the latest Sales Daily Sheets CSV to storage and run the server import pipeline. Manager, admin, and superadmin only; processing is enforced on the server."
+        description="Upload a Sales Daily Sheets CSV: the file is stored in Supabase Storage, then the import pipeline runs on the server (Edge Function or SQL hook). Manager, admin, and superadmin only."
       />
-
-      <div className="mb-6 rounded-lg border border-slate-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-950">
-        <p className="font-medium">Setup</p>
-        <p className="mt-1 text-amber-900">
-          Ensure Storage bucket <code className="rounded bg-amber-100 px-1 font-mono text-xs">{getSalesDailySheetsBucket()}</code> and RPC{' '}
-          <code className="rounded bg-amber-100 px-1 font-mono text-xs">
-            trigger_sales_daily_sheets_import(p_storage_path text)
-          </code>{' '}
-          are deployed. Configure the Edge Function <code className="font-mono text-xs">sales-daily-sheets-import</code> plus DB
-          settings <code className="font-mono text-xs">app.sales_daily_import_edge_url</code> and{' '}
-          <code className="font-mono text-xs">app.internal_import_secret</code>, or define SQL hook{' '}
-          <code className="font-mono text-xs">sales_daily_sheets_import_pipeline_sql(uuid,text)</code>. Optional env:{' '}
-          <code className="font-mono text-xs">VITE_SALES_DAILY_SHEETS_BUCKET</code>,{' '}
-          <code className="font-mono text-xs">VITE_SALES_DAILY_SHEETS_PATH_PREFIX</code>.
-        </p>
-      </div>
 
       <form
         onSubmit={(e) => void onSubmit(e)}

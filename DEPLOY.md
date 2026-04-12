@@ -29,6 +29,28 @@ If either variable is missing or empty, the app shows a configuration screen ins
 
 Database RPCs used by the app (including admin access management) must exist in your Supabase project. Apply the SQL files under `supabase/migrations/` using the Supabase SQL editor or the Supabase CLI (`supabase db push` / linked project), then verify in **Database → Functions** (or run a quick RPC from the API docs page).
 
+### Sales Daily Sheets import (`/app/admin/imports`)
+
+There is no separate app server: the browser uploads the CSV to Storage, then calls RPC `trigger_sales_daily_sheets_import(p_storage_path text)` (elevated users only). That RPC validates the object and runs one of:
+
+1. **Edge Function (default path)** — `supabase/functions/sales-daily-sheets-import` downloads the file with the service role, parses CSV into `public.sales_daily_sheets_staged_rows`, returns JSON to Postgres. The RPC invokes it **synchronously** using the Postgres **`http`** extension (`extensions.http_post`).
+2. **Optional SQL hook** — if `app.sales_daily_import_edge_url` / `app.internal_import_secret` are not set, the RPC calls `public.sales_daily_sheets_import_pipeline_sql(p_batch_id uuid, p_storage_path text)` when that function exists.
+3. **Optional payroll merge** — after staging, `private.run_sales_daily_sheets_merge_if_installed` runs `public.apply_sales_daily_sheets_to_payroll(uuid)` when you define it (loads staging into your reporting tables so commission/payroll RPCs see new data).
+
+**One-time database configuration** (SQL editor, replace placeholders):
+
+```sql
+ALTER DATABASE postgres SET app.sales_daily_import_edge_url =
+  'https://<project-ref>.supabase.co/functions/v1/sales-daily-sheets-import';
+ALTER DATABASE postgres SET app.internal_import_secret = '<long random secret>';
+```
+
+Set the same secret for the Edge Function: `supabase secrets set INTERNAL_IMPORT_SECRET=<same value>` (or Dashboard → Edge Functions → secrets). Deploy the function: `supabase functions deploy sales-daily-sheets-import`.
+
+Enable the **`http`** extension under **Database → Extensions** if `CREATE EXTENSION` in migrations did not run.
+
+Optional frontend env (defaults are fine): `VITE_SALES_DAILY_SHEETS_BUCKET`, `VITE_SALES_DAILY_SHEETS_PATH_PREFIX` (see `.env.example`).
+
 ## Build and preview
 
 ```bash
