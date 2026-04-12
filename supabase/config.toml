@@ -1,0 +1,6 @@
+# Minimal Supabase CLI config — extend when you run `supabase init` / link a project.
+# Edge Function: deploy with `supabase functions deploy sales-daily-sheets-import`
+# and set secret: `supabase secrets set INTERNAL_IMPORT_SECRET=...`
+
+[functions.sales-daily-sheets-import]
+verify_jwt = false

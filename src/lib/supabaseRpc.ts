@@ -1,0 +1,153 @@
+/**
+ * Sole client-side module for calling Supabase. Use only these RPC wrappers — no direct table/view queries.
+ */
+import type { PostgrestError } from '@supabase/supabase-js'
+
+import type { AccessProfile } from '@/features/access/types'
+import type {
+  AdminAccessMappingRow,
+  AuthUserSearchRow,
+  StaffMemberSearchRow,
+} from '@/features/admin/types/accessManagement'
+import type { AdminPayrollLineRow, AdminPayrollSummaryRow } from '@/features/admin/types'
+import type { WeeklyCommissionLineRow, WeeklyCommissionSummaryRow } from '@/features/payroll/types'
+import { requireSupabaseClient } from '@/lib/supabase'
+
+function toError(op: string, err: PostgrestError): Error {
+  const msg = err.message || 'Unknown Supabase error'
+  const e = new Error(`${op}: ${msg}`)
+  e.cause = err
+  return e
+}
+
+function firstRow<T>(data: T | T[] | null): T | null {
+  if (data == null) return null
+  return Array.isArray(data) ? (data[0] ?? null) : data
+}
+
+function asRows<T>(data: T | T[] | null): T[] {
+  if (data == null) return []
+  return Array.isArray(data) ? data : [data]
+}
+
+export async function rpcGetMyAccessProfile(): Promise<AccessProfile | null> {
+  const { data, error } = await requireSupabaseClient().rpc('get_my_access_profile')
+  if (error) throw toError('get_my_access_profile', error)
+  return firstRow(data as AccessProfile | AccessProfile[] | null)
+}
+
+export async function rpcGetMyCommissionSummaryWeekly(): Promise<
+  WeeklyCommissionSummaryRow[]
+> {
+  const { data, error } = await requireSupabaseClient().rpc(
+    'get_my_commission_summary_weekly',
+  )
+  if (error) throw toError('get_my_commission_summary_weekly', error)
+  return asRows(data as WeeklyCommissionSummaryRow[])
+}
+
+export async function rpcGetMyCommissionLinesWeekly(
+  payWeekStart: string,
+): Promise<WeeklyCommissionLineRow[]> {
+  const { data, error } = await requireSupabaseClient().rpc('get_my_commission_lines_weekly', {
+    p_pay_week_start: payWeekStart,
+  })
+  if (error) throw toError('get_my_commission_lines_weekly', error)
+  return asRows(data as WeeklyCommissionLineRow[])
+}
+
+export async function rpcGetAdminPayrollSummaryWeekly(): Promise<
+  AdminPayrollSummaryRow[]
+> {
+  const { data, error } = await requireSupabaseClient().rpc(
+    'get_admin_payroll_summary_weekly',
+  )
+  if (error) throw toError('get_admin_payroll_summary_weekly', error)
+  return asRows(data as AdminPayrollSummaryRow[])
+}
+
+export async function rpcGetAdminPayrollLinesWeekly(
+  payWeekStart: string,
+): Promise<AdminPayrollLineRow[]> {
+  const { data, error } = await requireSupabaseClient().rpc('get_admin_payroll_lines_weekly', {
+    p_pay_week_start: payWeekStart,
+  })
+  if (error) throw toError('get_admin_payroll_lines_weekly', error)
+  return asRows(data as AdminPayrollLineRow[])
+}
+
+export async function rpcGetAdminAccessMappings(): Promise<AdminAccessMappingRow[]> {
+  const { data, error } = await requireSupabaseClient().rpc('get_admin_access_mappings')
+  if (error) throw toError('get_admin_access_mappings', error)
+  return asRows(data as AdminAccessMappingRow[])
+}
+
+export async function rpcSearchStaffMembers(
+  search: string | null,
+): Promise<StaffMemberSearchRow[]> {
+  const { data, error } = await requireSupabaseClient().rpc('search_staff_members', {
+    p_search: search && search.trim() !== '' ? search.trim() : null,
+  })
+  if (error) throw toError('search_staff_members', error)
+  return asRows(data as StaffMemberSearchRow[])
+}
+
+export async function rpcSearchAuthUsers(
+  search: string | null,
+): Promise<AuthUserSearchRow[]> {
+  const { data, error } = await requireSupabaseClient().rpc('search_auth_users', {
+    p_search: search && search.trim() !== '' ? search.trim() : null,
+  })
+  if (error) throw toError('search_auth_users', error)
+  return asRows(data as AuthUserSearchRow[])
+}
+
+export async function rpcCreateAccessMapping(args: {
+  userId: string
+  staffMemberId: string
+  accessRole: string
+  isActive?: boolean
+}): Promise<string> {
+  const { data, error } = await requireSupabaseClient().rpc('create_access_mapping', {
+    p_user_id: args.userId,
+    p_staff_member_id: args.staffMemberId,
+    p_access_role: args.accessRole,
+    p_is_active: args.isActive ?? true,
+  })
+  if (error) throw toError('create_access_mapping', error)
+  if (data == null) {
+    throw new Error('create_access_mapping: expected mapping id')
+  }
+  return typeof data === 'string' ? data : String(data)
+}
+
+export async function rpcUpdateAccessMapping(args: {
+  mappingId: string
+  staffMemberId: string
+  accessRole: string
+  isActive: boolean
+}): Promise<void> {
+  const { error } = await requireSupabaseClient().rpc('update_access_mapping', {
+    p_mapping_id: args.mappingId,
+    p_staff_member_id: args.staffMemberId,
+    p_access_role: args.accessRole,
+    p_is_active: args.isActive,
+  })
+  if (error) throw toError('update_access_mapping', error)
+}
+
+/**
+ * After uploading a CSV to Storage, call your server-side import pipeline.
+ * Implement `trigger_sales_daily_sheets_import` in Postgres (SECURITY DEFINER + role checks)
+ * or have it delegate to an Edge Function / queue.
+ */
+export async function rpcTriggerSalesDailySheetsImport(
+  pStoragePath: string,
+): Promise<unknown> {
+  const { data, error } = await requireSupabaseClient().rpc(
+    'trigger_sales_daily_sheets_import',
+    { p_storage_path: pStoragePath },
+  )
+  if (error) throw toError('trigger_sales_daily_sheets_import', error)
+  return data
+}
