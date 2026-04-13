@@ -151,10 +151,12 @@ export function AdminSummaryTable({ rows }: AdminSummaryTableProps) {
             return (
               <tr
                 key={rowKey}
-                className="border-b border-slate-100 odd:bg-white even:bg-slate-50/90 hover:bg-violet-50/60"
+                className="group border-b border-slate-100 odd:bg-white even:bg-slate-50/90 hover:bg-violet-50/60"
               >
                 <td
-                  className={`${tdBase} sticky left-0 z-10 min-w-[8.5rem] border-slate-100 bg-inherit font-medium odd:bg-white even:bg-slate-50/90`}
+                  className={`${tdBase} sticky left-0 z-10 min-w-[8.5rem] border-slate-100 font-medium ${
+                    idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/90'
+                  } group-hover:bg-violet-50/60`}
                 >
                   {weekStart ? (
                     <Cell rowKey="pay_week_start" value={row.pay_week_start} />

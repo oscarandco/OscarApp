@@ -11,6 +11,7 @@ import { useMyWeeklyCommissionSummary } from '@/features/payroll/hooks/useMyWeek
 import {
   filterStylistSummaryRows,
   uniqueLocationOptions,
+  uniquePayWeekStartOptions,
 } from '@/lib/payrollSummaryFilters'
 import { queryErrorDetail } from '@/lib/queryError'
 import { sortSummaryRowsNewestFirst } from '@/lib/payrollSorting'
@@ -20,6 +21,7 @@ export function PayrollSummaryPage() {
     useMyWeeklyCommissionSummary()
 
   const [locationId, setLocationId] = useState('')
+  const [payWeekStart, setPayWeekStart] = useState('')
   const [search, setSearch] = useState('')
 
   const sourceRows = useMemo(() => {
@@ -32,16 +34,27 @@ export function PayrollSummaryPage() {
     [sourceRows],
   )
 
-  const filteredRows = useMemo(
-    () => filterStylistSummaryRows(sourceRows, { locationId, search }),
-    [sourceRows, locationId, search],
+  const weekBeginningOptions = useMemo(
+    () => uniquePayWeekStartOptions(sourceRows),
+    [sourceRows],
   )
 
-  const hasFilters = Boolean(locationId || search.trim())
+  const filteredRows = useMemo(
+    () =>
+      filterStylistSummaryRows(sourceRows, {
+        locationId,
+        search,
+        payWeekStart,
+      }),
+    [sourceRows, locationId, search, payWeekStart],
+  )
+
+  const hasFilters = Boolean(locationId || payWeekStart || search.trim())
   const showReset = hasFilters
 
   function resetFilters() {
     setLocationId('')
+    setPayWeekStart('')
     setSearch('')
   }
 
@@ -90,6 +103,9 @@ export function PayrollSummaryPage() {
             locationId={locationId}
             onLocationId={setLocationId}
             locationOptions={locationOptions}
+            weekBeginningFilter={payWeekStart}
+            onWeekBeginningFilter={setPayWeekStart}
+            weekBeginningOptions={weekBeginningOptions}
             search={search}
             onSearch={setSearch}
             searchPlaceholder="Search by display name…"

@@ -10,9 +10,23 @@ export interface WeeklyCommissionSummaryRow {
   location_id?: string | null
   /** From `public.locations` join in RPC; prefer for display over `location_id`. */
   location_name?: string | null
+  derived_staff_paid_id?: string | null
   derived_staff_paid_display_name?: string | null
+  derived_staff_paid_full_name?: string | null
+  derived_staff_paid_remuneration_plan?: string | null
+  /** From `v_stylist_commission_summary_weekly_final` / `v_admin_payroll_summary_weekly`. */
+  line_count?: number | string | null
+  /** Legacy alias if ever returned; prefer `line_count`. */
   row_count?: number | string | null
+  payable_line_count?: number | string | null
+  expected_no_commission_line_count?: number | string | null
+  zero_value_line_count?: number | string | null
+  review_line_count?: number | string | null
   total_sales_ex_gst?: number | string | null
+  total_actual_commission_ex_gst?: number | string | null
+  total_theoretical_commission_ex_gst?: number | string | null
+  total_assistant_commission_ex_gst?: number | string | null
+  /** Legacy short names if present on older responses. */
   total_actual_commission?: number | string | null
   total_assistant_commission?: number | string | null
   unconfigured_paid_staff_line_count?: number | string | null

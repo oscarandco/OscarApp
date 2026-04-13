@@ -10,7 +10,7 @@ function sumActualCommission(rows: WeeklyCommissionSummaryRow[]): number | null 
   let total = 0
   let found = false
   for (const r of rows) {
-    const v = r.total_actual_commission
+    const v = r.total_actual_commission_ex_gst ?? r.total_actual_commission
     if (v != null && v !== '') {
       const n = typeof v === 'number' ? v : Number(v)
       if (!Number.isNaN(n)) {

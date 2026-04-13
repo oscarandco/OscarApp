@@ -7,25 +7,46 @@ export type MiddleColumnId =
   | 'pay_week_end'
   | 'pay_date'
   | 'location'
+  | 'derived_staff_paid_id'
   | 'derived_staff_paid_display_name'
+  | 'derived_staff_paid_full_name'
+  | 'derived_staff_paid_remuneration_plan'
   | 'total_sales_ex_gst'
+  /** Maps to API `line_count` (see resolveRowKeyForMiddleColumn). */
   | 'row_count'
   | 'payable_line_count'
   | 'expected_no_commission_line_count'
+  | 'zero_value_line_count'
+  | 'review_line_count'
+  | 'total_actual_commission_ex_gst'
+  | 'total_theoretical_commission_ex_gst'
+  | 'total_assistant_commission_ex_gst'
   | 'unconfigured_paid_staff_line_count'
   | 'has_unconfigured_paid_staff_rows'
+  | 'user_id'
+  | 'access_role'
 
 const ALL_MIDDLE_IDS: readonly MiddleColumnId[] = [
   'pay_week_end',
   'pay_date',
   'location',
+  'derived_staff_paid_id',
   'derived_staff_paid_display_name',
-  'total_sales_ex_gst',
+  'derived_staff_paid_full_name',
+  'derived_staff_paid_remuneration_plan',
   'row_count',
   'payable_line_count',
   'expected_no_commission_line_count',
+  'zero_value_line_count',
+  'review_line_count',
+  'total_sales_ex_gst',
+  'total_actual_commission_ex_gst',
+  'total_theoretical_commission_ex_gst',
+  'total_assistant_commission_ex_gst',
   'unconfigured_paid_staff_line_count',
   'has_unconfigured_paid_staff_rows',
+  'user_id',
+  'access_role',
 ]
 
 /** Ids that cannot be hidden (still participate in ordering). */
@@ -37,17 +58,49 @@ export const COLUMN_LABEL: Record<MiddleColumnId, string> = {
   pay_week_end: 'Pay week end',
   pay_date: 'Pay date',
   location: 'Location',
+  derived_staff_paid_id: 'Derived staff paid ID',
   derived_staff_paid_display_name: 'Derived staff paid display name',
+  derived_staff_paid_full_name: 'Derived staff paid full name',
+  derived_staff_paid_remuneration_plan: 'Remuneration plan',
   total_sales_ex_gst: 'Total sales ex GST',
   row_count: 'Line count',
   payable_line_count: 'Payable line count',
   expected_no_commission_line_count: 'Expected no commission line count',
+  zero_value_line_count: 'Zero value line count',
+  review_line_count: 'Review line count',
+  total_actual_commission_ex_gst: 'Total actual commission (ex GST)',
+  total_theoretical_commission_ex_gst: 'Total theoretical commission (ex GST)',
+  total_assistant_commission_ex_gst: 'Total assistant commission (ex GST)',
   unconfigured_paid_staff_line_count: 'Unconfigured paid staff line count',
   has_unconfigured_paid_staff_rows: 'Has unconfigured paid staff rows',
+  user_id: 'User ID',
+  access_role: 'Access role',
 }
 
-/** Default order and visibility (all middle columns on except those absent from row later). */
-export const DEFAULT_MIDDLE_ORDER: MiddleColumnId[] = [...ALL_MIDDLE_IDS]
+/**
+ * Default visible middle columns (after fixed Week + Pay week start; Detail stays fixed).
+ * Picker lists these first in this order; all other middle columns are off by default.
+ */
+const DEFAULT_VISIBLE_MIDDLE: readonly MiddleColumnId[] = [
+  'pay_date',
+  'pay_week_end',
+  'location',
+  'derived_staff_paid_full_name',
+  'derived_staff_paid_remuneration_plan',
+  'total_sales_ex_gst',
+  'total_theoretical_commission_ex_gst',
+  'total_actual_commission_ex_gst',
+]
+
+const DEFAULT_HIDDEN_MIDDLE: MiddleColumnId[] = ALL_MIDDLE_IDS.filter(
+  (id) => !(DEFAULT_VISIBLE_MIDDLE as readonly string[]).includes(id),
+)
+
+/** Full picker order: default-visible columns first, then the rest (hidden by default). */
+export const DEFAULT_MIDDLE_ORDER: MiddleColumnId[] = [
+  ...DEFAULT_VISIBLE_MIDDLE,
+  ...ALL_MIDDLE_IDS.filter((id) => !DEFAULT_VISIBLE_MIDDLE.includes(id)),
+]
 
 export type ColumnPreferences = {
   /** Order of middle columns (subset of MiddleColumnId). */
@@ -59,11 +112,11 @@ export type ColumnPreferences = {
 export function defaultColumnPreferences(): ColumnPreferences {
   return {
     order: [...DEFAULT_MIDDLE_ORDER],
-    hidden: [],
+    hidden: [...DEFAULT_HIDDEN_MIDDLE],
   }
 }
 
-function isMiddleColumnId(s: string): s is MiddleColumnId {
+export function isMiddleColumnId(s: string): s is MiddleColumnId {
   return (ALL_MIDDLE_IDS as readonly string[]).includes(s)
 }
 
@@ -144,8 +197,32 @@ export function resolveRowKeyForMiddleColumn(
     }
     return null
   }
+  if (id === 'row_count') {
+    if (Object.prototype.hasOwnProperty.call(row, 'line_count')) return 'line_count'
+    if (Object.prototype.hasOwnProperty.call(row, 'row_count')) return 'row_count'
+    return null
+  }
   if (Object.prototype.hasOwnProperty.call(row, id)) return id
   return null
+}
+
+/** Visible middle columns in table order (for headers, cells, drag targets). */
+export type VisibleMiddleColumn = { id: MiddleColumnId; rowKey: string }
+
+export function visibleMiddleColumns(
+  sample: WeeklyCommissionSummaryRow,
+  prefs: ColumnPreferences,
+): VisibleMiddleColumn[] {
+  const hidden = new Set(
+    prefs.hidden.filter((id) => !MIDDLE_LOCKED_VISIBLE.has(id)),
+  )
+  const out: VisibleMiddleColumn[] = []
+  for (const id of prefs.order) {
+    if (hidden.has(id)) continue
+    const rk = resolveRowKeyForMiddleColumn(id, sample)
+    if (rk != null) out.push({ id, rowKey: rk })
+  }
+  return out
 }
 
 /**
@@ -156,14 +233,21 @@ export function middleRowKeysForPreferences(
   sample: WeeklyCommissionSummaryRow,
   prefs: ColumnPreferences,
 ): string[] {
-  const hidden = new Set(
-    prefs.hidden.filter((id) => !MIDDLE_LOCKED_VISIBLE.has(id)),
-  )
-  const out: string[] = []
-  for (const id of prefs.order) {
-    if (hidden.has(id)) continue
-    const rk = resolveRowKeyForMiddleColumn(id, sample)
-    if (rk != null) out.push(rk)
-  }
-  return out
+  return visibleMiddleColumns(sample, prefs).map((c) => c.rowKey)
+}
+
+/** Move `fromId` to the index of `toId` in the full preference order (HTML5 DnD + picker). */
+export function reorderMiddleColumnOrder(
+  order: MiddleColumnId[],
+  fromId: MiddleColumnId,
+  toId: MiddleColumnId,
+): MiddleColumnId[] {
+  if (fromId === toId) return [...order]
+  if (!order.includes(fromId) || !order.includes(toId)) return [...order]
+  const without = order.filter((id) => id !== fromId)
+  const insertAt = without.indexOf(toId)
+  if (insertAt < 0) return [...order]
+  const next = [...without]
+  next.splice(insertAt, 0, fromId)
+  return next
 }

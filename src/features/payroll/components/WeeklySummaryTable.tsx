@@ -1,10 +1,14 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { WeeklySummaryColumnPicker } from '@/features/payroll/components/WeeklySummaryColumnPicker'
 import { usePayrollSummaryColumnPreferences } from '@/features/payroll/hooks/usePayrollSummaryColumnPreferences'
 import {
+  isMiddleColumnId,
   middleRowKeysForPreferences,
+  reorderMiddleColumnOrder,
+  visibleMiddleColumns,
+  type MiddleColumnId,
 } from '@/features/payroll/weeklySummaryTableColumns'
 import { TableScrollArea } from '@/components/ui/TableScrollArea'
 import type { WeeklyCommissionSummaryRow } from '@/features/payroll/types'
@@ -45,9 +49,12 @@ function Cell({
   }
   if (
     rowKey === 'row_count' ||
+    rowKey === 'line_count' ||
     rowKey === 'unconfigured_paid_staff_line_count' ||
     rowKey === 'payable_line_count' ||
-    rowKey === 'expected_no_commission_line_count'
+    rowKey === 'expected_no_commission_line_count' ||
+    rowKey === 'zero_value_line_count' ||
+    rowKey === 'review_line_count'
   ) {
     const n = typeof value === 'number' ? value : Number(value)
     return <span className="tabular-nums">{Number.isNaN(n) ? '—' : String(n)}</span>
@@ -93,16 +100,60 @@ function stableSummaryRowKey(
   return `${week}-${loc}-${index}`
 }
 
+const DND_TYPE = 'application/x-payroll-middle-column'
+
 export function WeeklySummaryTable({ rows }: WeeklySummaryTableProps) {
   const { prefs, setPrefs, reset } = usePayrollSummaryColumnPreferences()
+  const [draggingId, setDraggingId] = useState<MiddleColumnId | null>(null)
+  const [dropTargetId, setDropTargetId] = useState<MiddleColumnId | null>(null)
+
+  const sample = rows[0]
 
   const keys = useMemo(
-    () => (rows[0] ? middleRowKeysForPreferences(rows[0], prefs) : []),
-    [rows, prefs],
+    () => (sample ? middleRowKeysForPreferences(sample, prefs) : []),
+    [sample, prefs],
+  )
+
+  const visibleMiddle = useMemo(
+    () => (sample ? visibleMiddleColumns(sample, prefs) : []),
+    [sample, prefs],
   )
 
   if (!rows.length) {
     return null
+  }
+
+  function onDragStart(e: React.DragEvent, id: MiddleColumnId) {
+    e.dataTransfer.setData(DND_TYPE, id)
+    e.dataTransfer.setData('text/plain', id)
+    e.dataTransfer.effectAllowed = 'move'
+    setDraggingId(id)
+    setDropTargetId(null)
+  }
+
+  function onDragOverCol(e: React.DragEvent, id: MiddleColumnId) {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    if (draggingId && draggingId !== id) setDropTargetId(id)
+  }
+
+  function onDropOnCol(e: React.DragEvent, targetId: MiddleColumnId) {
+    e.preventDefault()
+    const raw =
+      e.dataTransfer.getData(DND_TYPE) || e.dataTransfer.getData('text/plain')
+    const fromId = isMiddleColumnId(raw) ? raw : null
+    setDraggingId(null)
+    setDropTargetId(null)
+    if (fromId == null || fromId === targetId) return
+    setPrefs((prev) => ({
+      ...prev,
+      order: reorderMiddleColumnOrder(prev.order, fromId, targetId),
+    }))
+  }
+
+  function onDragEnd() {
+    setDraggingId(null)
+    setDropTargetId(null)
   }
 
   return (
@@ -127,11 +178,33 @@ export function WeeklySummaryTable({ rows }: WeeklySummaryTableProps) {
               <th scope="col" className={thBase}>
                 Pay week start
               </th>
-              {keys.map((k) => (
-                <th key={k} scope="col" className={thBase}>
-                  {tableColumnTitle(k)}
-                </th>
-              ))}
+              {visibleMiddle.map(({ id, rowKey: k }) => {
+                const isDragging = draggingId === id
+                const isDropTarget =
+                  dropTargetId === id && draggingId != null && draggingId !== id
+                return (
+                  <th
+                    key={k}
+                    scope="col"
+                    draggable
+                    onDragStart={(e) => onDragStart(e, id)}
+                    onDragOver={(e) => onDragOverCol(e, id)}
+                    onDrop={(e) => onDropOnCol(e, id)}
+                    onDragEnd={onDragEnd}
+                    title="Drag to reorder column"
+                    className={`${thBase} cursor-grab select-none active:cursor-grabbing ${
+                      isDragging ? 'opacity-50' : ''
+                    } ${
+                      isDropTarget
+                        ? 'bg-violet-100/90 ring-1 ring-inset ring-violet-300'
+                        : ''
+                    }`}
+                    aria-grabbed={isDragging}
+                  >
+                    {tableColumnTitle(k)}
+                  </th>
+                )
+              })}
               <th scope="col" className={`${thBase} min-w-[5.5rem]`}>
                 Detail
               </th>
@@ -148,10 +221,12 @@ export function WeeklySummaryTable({ rows }: WeeklySummaryTableProps) {
               return (
                 <tr
                   key={rowKey}
-                  className="border-b border-slate-100 odd:bg-white even:bg-slate-50/90 hover:bg-violet-50/60"
+                  className="group border-b border-slate-100 odd:bg-white even:bg-slate-50/90 hover:bg-violet-50/60"
                 >
                   <td
-                    className={`${tdBase} sticky left-0 z-10 min-w-[8.5rem] border-slate-100 bg-inherit font-medium odd:bg-white even:bg-slate-50/90`}
+                    className={`${tdBase} sticky left-0 z-10 min-w-[8.5rem] border-slate-100 font-medium ${
+                      idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/90'
+                    } group-hover:bg-violet-50/60`}
                   >
                     {weekStart ? (
                       <Cell rowKey="pay_week_start" value={row.pay_week_start} />
@@ -168,7 +243,10 @@ export function WeeklySummaryTable({ rows }: WeeklySummaryTableProps) {
                   </td>
                   {keys.map((k) => (
                     <td key={k} className={tdBase}>
-                      <Cell rowKey={k} value={row[k as keyof WeeklyCommissionSummaryRow]} />
+                      <Cell
+                        rowKey={k}
+                        value={row[k as keyof WeeklyCommissionSummaryRow]}
+                      />
                     </td>
                   ))}
                   <td className={`${tdBase} min-w-[5.5rem]`}>

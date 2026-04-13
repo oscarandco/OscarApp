@@ -11,6 +11,10 @@ type SummaryFiltersBarProps = {
   showReset: boolean
   /** Selects `data-testid`: `payroll-summary-filters` or `admin-summary-filters`. */
   variant: 'stylist' | 'admin'
+  /** Weekly payroll: week filter between Location and Search. Omit on admin summary. */
+  weekBeginningFilter?: string
+  onWeekBeginningFilter?: (value: string) => void
+  weekBeginningOptions?: { value: string; label: string }[]
 }
 
 /**
@@ -26,9 +30,16 @@ export function SummaryFiltersBar({
   onReset,
   showReset,
   variant,
+  weekBeginningFilter = '',
+  onWeekBeginningFilter,
+  weekBeginningOptions,
 }: SummaryFiltersBarProps) {
   const testId =
     variant === 'admin' ? 'admin-summary-filters' : 'payroll-summary-filters'
+  const showWeekBeginning =
+    weekBeginningOptions != null &&
+    onWeekBeginningFilter != null &&
+    variant === 'stylist'
 
   return (
     <div
@@ -56,6 +67,30 @@ export function SummaryFiltersBar({
           ))}
         </select>
       </div>
+      {showWeekBeginning ? (
+        <div className="min-w-0 flex-1 sm:max-w-xs">
+          <label
+            htmlFor={`${testId}-week-beginning`}
+            className="block text-xs font-medium text-slate-600"
+          >
+            Week beginning
+          </label>
+          <select
+            id={`${testId}-week-beginning`}
+            value={weekBeginningFilter}
+            onChange={(e) => onWeekBeginningFilter(e.target.value)}
+            className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-2 text-sm text-slate-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+            data-testid={`${testId}-week-beginning`}
+          >
+            <option value="">All weeks</option>
+            {weekBeginningOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
       <div className="min-w-0 flex-[2] sm:min-w-[12rem] sm:max-w-md">
         <label
           htmlFor={`${testId}-search`}

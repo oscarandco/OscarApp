@@ -53,10 +53,24 @@ export function humanizeKey(key: string): string {
 /** Table header for payroll grid keys (shared location id/name column). */
 export function tableColumnTitle(key: string): string {
   if (key === 'location_name' || key === 'location_id') return 'Location'
-  if (key === 'row_count') return 'Line count'
+  if (key === 'row_count' || key === 'line_count') return 'Line count'
   if (key === 'payable_line_count') return 'Payable line count'
   if (key === 'expected_no_commission_line_count') {
     return 'Expected no commission line count'
   }
+  if (key === 'zero_value_line_count') return 'Zero value line count'
+  if (key === 'review_line_count') return 'Review line count'
+  if (key === 'derived_staff_paid_id') return 'Derived staff paid ID'
+  if (key === 'derived_staff_paid_full_name') return 'Derived staff paid full name'
+  if (key === 'derived_staff_paid_remuneration_plan') return 'Remuneration plan'
+  if (key === 'total_actual_commission_ex_gst') return 'Total actual commission (ex GST)'
+  if (key === 'total_theoretical_commission_ex_gst') {
+    return 'Total theoretical commission (ex GST)'
+  }
+  if (key === 'total_assistant_commission_ex_gst') {
+    return 'Total assistant commission (ex GST)'
+  }
+  if (key === 'user_id') return 'User ID'
+  if (key === 'access_role') return 'Access role'
   return humanizeKey(key)
 }
