@@ -158,13 +158,12 @@ export async function rpcTriggerSalesDailySheetsImport(args: {
   pStoragePath: string
   pLocationId: string
 }): Promise<unknown> {
-  const { data, error } = await requireSupabaseClient().rpc(
-    'trigger_sales_daily_sheets_import',
-    {
+  const { data, error } = await requireSupabaseClient()
+    .rpc('trigger_sales_daily_sheets_import', {
       p_storage_path: args.pStoragePath,
       p_location_id: args.pLocationId,
-    },
-  )
+    })
+    .abortSignal(AbortSignal.timeout(60_000))
   if (error) throw toError('trigger_sales_daily_sheets_import', error)
   return data
 }
