@@ -163,9 +163,31 @@ export async function rpcTriggerSalesDailySheetsImport(args: {
       p_storage_path: args.pStoragePath,
       p_location_id: args.pLocationId,
     })
-    .abortSignal(AbortSignal.timeout(60_000))
+    .abortSignal(AbortSignal.timeout(30_000))
   if (error) throw toError('trigger_sales_daily_sheets_import', error)
   return data
+}
+
+export type SalesDailySheetsImportBatchRow = {
+  id: string
+  storage_path: string
+  status: string | null
+  message: string | null
+  rows_staged: number | null
+  rows_loaded: number | null
+  error_message: string | null
+}
+
+export async function fetchSalesDailySheetsImportBatch(
+  batchId: string,
+): Promise<SalesDailySheetsImportBatchRow> {
+  const { data, error } = await requireSupabaseClient()
+    .from('sales_daily_sheets_import_batches')
+    .select('id, storage_path, status, message, rows_staged, rows_loaded, error_message')
+    .eq('id', batchId)
+    .single()
+  if (error) throw toError('sales_daily_sheets_import_batches', error)
+  return data as SalesDailySheetsImportBatchRow
 }
 
 /** Destructive: removes all Sales Daily Sheets import data (elevated users only). */
