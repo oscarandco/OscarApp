@@ -136,18 +136,44 @@ export async function rpcUpdateAccessMapping(args: {
   if (error) throw toError('update_access_mapping', error)
 }
 
+export type ImportLocationRow = {
+  id: string
+  code: string
+  name: string
+}
+
+export async function rpcListActiveLocationsForImport(): Promise<ImportLocationRow[]> {
+  const { data, error } = await requireSupabaseClient().rpc(
+    'list_active_locations_for_import',
+  )
+  if (error) throw toError('list_active_locations_for_import', error)
+  return asRows(data as ImportLocationRow[])
+}
+
 /**
  * After uploading a CSV to Storage, call your server-side import pipeline.
- * Implement `trigger_sales_daily_sheets_import` in Postgres (SECURITY DEFINER + role checks)
- * or have it delegate to an Edge Function / queue.
+ * `p_location_id` is required (Admin Imports location selector).
  */
-export async function rpcTriggerSalesDailySheetsImport(
-  pStoragePath: string,
-): Promise<unknown> {
+export async function rpcTriggerSalesDailySheetsImport(args: {
+  pStoragePath: string
+  pLocationId: string
+}): Promise<unknown> {
   const { data, error } = await requireSupabaseClient().rpc(
     'trigger_sales_daily_sheets_import',
-    { p_storage_path: pStoragePath },
+    {
+      p_storage_path: args.pStoragePath,
+      p_location_id: args.pLocationId,
+    },
   )
   if (error) throw toError('trigger_sales_daily_sheets_import', error)
+  return data
+}
+
+/** Destructive: removes all Sales Daily Sheets import data (elevated users only). */
+export async function rpcDeleteAllSalesDailySheetsImportData(): Promise<unknown> {
+  const { data, error } = await requireSupabaseClient().rpc(
+    'delete_all_sales_daily_sheets_import_data',
+  )
+  if (error) throw toError('delete_all_sales_daily_sheets_import_data', error)
   return data
 }

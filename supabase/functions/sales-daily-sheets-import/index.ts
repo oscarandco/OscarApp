@@ -16,6 +16,8 @@ type ImportBody = {
   batch_id: string
   storage_path: string
   internal_secret: string
+  /** When set, applied to every staged row (from Admin Imports). */
+  location_id?: string
 }
 
 function normHeader(s: string): string {
@@ -155,6 +157,8 @@ Deno.serve(async (req) => {
     const payrollStatus = pick(row, "payroll status", "payroll_status")
     const stylistNote = pick(row, "stylist visible note", "stylist_visible_note", "note")
     const locationId = pick(row, "location_id", "location id")
+    const forcedLocation =
+      body.location_id && UUID_RE.test(body.location_id) ? body.location_id : null
 
     return {
       batch_id: body.batch_id,
@@ -173,7 +177,9 @@ Deno.serve(async (req) => {
       assistant_commission_amount: parseNum(asstComm),
       payroll_status: payrollStatus ?? null,
       stylist_visible_note: stylistNote ?? null,
-      location_id: locationId && UUID_RE.test(locationId) ? locationId : null,
+      location_id:
+        forcedLocation ??
+        (locationId && UUID_RE.test(locationId) ? locationId : null),
       extras: row as unknown as Record<string, unknown>,
     }
   })
