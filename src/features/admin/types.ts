@@ -16,4 +16,8 @@ export interface AdminPayrollSummaryRow extends WeeklyCommissionSummaryRow {
  */
 export interface AdminPayrollLineRow extends WeeklyCommissionLineRow {
   internal_note?: string | null
+  /** From `v_admin_payroll_lines_weekly` / commission QA pipeline. */
+  commission_category_final?: string | null
+  /** From `v_admin_payroll_lines_weekly` (e.g. Comm - Products / Comm - Services). */
+  commission_product_service?: string | null
 }

@@ -31,6 +31,9 @@ export function SideNav() {
             <NavLink to="/app/admin/payroll" className={linkClass}>
               Admin weekly payroll
             </NavLink>
+            <NavLink to="/app/admin/weekly-commission" className={linkClass}>
+              Weekly commission dashboard
+            </NavLink>
             <NavLink to="/app/admin/remuneration" className={linkClass}>
               Remuneration configuration
             </NavLink>

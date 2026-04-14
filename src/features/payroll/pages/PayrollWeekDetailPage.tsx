@@ -112,7 +112,7 @@ export function PayrollWeekDetailPage() {
   const weekLabel = formatShortDate(payWeekStart)
 
   return (
-    <div data-testid="payroll-detail-page" className="max-w-[100vw]">
+    <div data-testid="payroll-detail-page">
       <PayrollWeekHeader
         payWeekStart={payWeekStart}
         payWeekEnd={context.payWeekEnd}

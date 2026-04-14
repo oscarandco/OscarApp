@@ -85,7 +85,7 @@ export function AdminPayrollSummaryPage() {
   }
 
   return (
-    <div data-testid="admin-summary-page" className="max-w-[100vw]">
+    <div data-testid="admin-summary-page">
       <PageHeader
         title="Admin — weekly payroll"
         description="All-scope weekly summary (server permission checks apply). Newest pay weeks first; each row is one split from the reporting function. Filter by location or staff name below."

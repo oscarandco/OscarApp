@@ -85,7 +85,7 @@ export function PayrollSummaryPage() {
   }
 
   return (
-    <div data-testid="payroll-summary-page" className="max-w-[100vw]">
+    <div data-testid="payroll-summary-page">
       <PageHeader
         title="Weekly payroll"
         description="Pay weeks run Monday–Sunday. Commission is finalized after Sunday; pay is the following Thursday. Each row is one location split for that week — use filters to narrow the list."

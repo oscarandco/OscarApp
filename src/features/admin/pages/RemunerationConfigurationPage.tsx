@@ -234,8 +234,7 @@ export function RemunerationConfigurationPage() {
   }
 
   return (
-    <div data-testid="remuneration-config-page" className="w-full">
-      <div className="w-full max-w-7xl px-4 pb-8 sm:px-6 lg:px-8">
+    <div data-testid="remuneration-config-page" className="w-full pb-8">
       <PageHeader
         title="Remuneration Configuration"
         description="Set up the remuneration plans used by the app to calculate commission and pay outcomes from imported sales data."
@@ -561,7 +560,6 @@ export function RemunerationConfigurationPage() {
             </div>
           )}
         </div>
-      </div>
       </div>
     </div>
   )

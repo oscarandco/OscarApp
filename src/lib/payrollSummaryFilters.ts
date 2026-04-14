@@ -119,6 +119,45 @@ export function filterCommissionLinesForSummaryRow(
   })
 }
 
+/**
+ * Admin weekly dashboard: lines for one pay week and one paid staff member (all locations).
+ * Prefer `derived_staff_paid_id`; otherwise match dashboard `staffLabel` to line full/display name.
+ * Unassigned dashboard row (`staffLabel` "—") matches lines with no paid staff id.
+ */
+export function filterAdminPayrollLinesForStaffWeek(
+  lines: WeeklyCommissionLineRow[],
+  opts: {
+    payWeekStart: string
+    derivedStaffPaidId: string | null
+    staffLabel: string
+  },
+): WeeklyCommissionLineRow[] {
+  const pw = String(opts.payWeekStart).trim()
+  const idWanted =
+    opts.derivedStaffPaidId != null && String(opts.derivedStaffPaidId).trim() !== ''
+      ? String(opts.derivedStaffPaidId).trim()
+      : ''
+  const label = String(opts.staffLabel).trim()
+  const labelLower = label.toLowerCase()
+
+  return lines.filter((l) => {
+    if (String(l.pay_week_start ?? '').trim() !== pw) return false
+
+    if (idWanted !== '') {
+      return String(l.derived_staff_paid_id ?? '').trim() === idWanted
+    }
+
+    if (label === '—') {
+      return String(l.derived_staff_paid_id ?? '').trim() === ''
+    }
+
+    const ld = String(l.derived_staff_paid_display_name ?? '').trim().toLowerCase()
+    const lf = String(l.derived_staff_paid_full_name ?? '').trim().toLowerCase()
+    if (labelLower === '') return false
+    return ld === labelLower || lf === labelLower
+  })
+}
+
 export function filterStylistSummaryRows(
   rows: WeeklyCommissionSummaryRow[],
   opts: { locationId: string; search: string; payWeekStart?: string },

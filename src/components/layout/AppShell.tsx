@@ -10,7 +10,9 @@ export function AppShell() {
       <div className="flex flex-1">
         <SideNav />
         <main className="min-w-0 flex-1 px-4 py-6 lg:px-8">
-          <Outlet />
+          <div className="w-full max-w-[85rem]">
+            <Outlet />
+          </div>
         </main>
       </div>
     </div>

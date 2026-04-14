@@ -86,7 +86,7 @@ export function AdminAccessManagementPage() {
   const rows = data ?? []
 
   return (
-    <div data-testid="admin-access-page" className="max-w-[100vw]">
+    <div data-testid="admin-access-page">
       <PageHeader
         title="Access management"
         description="Link Supabase accounts to staff members. Only admins can create or change mappings; managers can view this list."

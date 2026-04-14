@@ -67,6 +67,19 @@ export function AdminHomePage() {
         </li>
         <li>
           <Link
+            to="/app/admin/weekly-commission"
+            className="block rounded-lg border border-slate-200 bg-white px-4 py-4 text-left shadow-sm transition hover:border-violet-200 hover:bg-violet-50/50"
+          >
+            <span className="font-semibold text-slate-900">
+              Weekly commission dashboard
+            </span>
+            <p className="mt-1 text-sm text-slate-600">
+              Pay-week totals, sales by location, and staff breakdowns by category.
+            </p>
+          </Link>
+        </li>
+        <li>
+          <Link
             to="/app/admin/remuneration"
             className="block rounded-lg border border-slate-200 bg-white px-4 py-4 text-left shadow-sm transition hover:border-violet-200 hover:bg-violet-50/50"
           >
