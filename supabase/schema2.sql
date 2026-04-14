@@ -23,6 +23,13 @@ COMMENT ON SCHEMA "public" IS 'standard public schema';
 
 
 
+CREATE EXTENSION IF NOT EXISTS "http" WITH SCHEMA "extensions";
+
+
+
+
+
+
 CREATE EXTENSION IF NOT EXISTS "pg_graphql" WITH SCHEMA "graphql";
 
 
@@ -56,6 +63,21 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA "extensions";
 
 
 
+
+
+CREATE OR REPLACE FUNCTION "private"."run_sales_daily_sheets_merge_if_installed"("p_batch_id" "uuid") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public', 'pg_temp'
+    AS $$
+BEGIN
+  IF to_regprocedure('public.apply_sales_daily_sheets_to_payroll(uuid)') IS NOT NULL THEN
+    PERFORM public.apply_sales_daily_sheets_to_payroll(p_batch_id);
+  END IF;
+END;
+$$;
+
+
+ALTER FUNCTION "private"."run_sales_daily_sheets_merge_if_installed"("p_batch_id" "uuid") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "private"."user_can_manage_access_mappings"() RETURNS boolean
@@ -92,15 +114,471 @@ $$;
 ALTER FUNCTION "private"."user_has_elevated_access"() OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "public"."caller_can_manage_access_mappings"() RETURNS boolean
-    LANGUAGE "sql" STABLE SECURITY DEFINER
-    SET "search_path" TO 'public', 'auth', 'pg_temp'
+CREATE OR REPLACE FUNCTION "public"."admin_delete_remuneration_plan_if_unused"("p_plan_id" "uuid") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public', 'pg_temp'
     AS $$
-  SELECT private.user_can_manage_access_mappings();
+DECLARE
+  v_plan_name text;
+  v_count bigint;
+BEGIN
+  IF NOT (SELECT private.user_has_elevated_access()) THEN
+    RAISE EXCEPTION 'not authorized';
+  END IF;
+
+  SELECT rp.plan_name INTO v_plan_name
+  FROM public.remuneration_plans rp
+  WHERE rp.id = p_plan_id;
+
+  IF v_plan_name IS NULL THEN
+    RAISE EXCEPTION 'remuneration plan not found';
+  END IF;
+
+  SELECT count(*)::bigint INTO v_count
+  FROM public.staff_members sm
+  WHERE sm.remuneration_plan IS NOT NULL
+    AND btrim(sm.remuneration_plan) <> ''
+    AND lower(trim(sm.remuneration_plan)) = lower(trim(v_plan_name));
+
+  IF v_count > 0 THEN
+    RAISE EXCEPTION
+      'Cannot delete this plan: % staff still assigned. Reassign them in Staff Configuration first.',
+      v_count;
+  END IF;
+
+  DELETE FROM public.remuneration_plans WHERE id = p_plan_id;
+END;
 $$;
 
 
-ALTER FUNCTION "public"."caller_can_manage_access_mappings"() OWNER TO "postgres";
+ALTER FUNCTION "public"."admin_delete_remuneration_plan_if_unused"("p_plan_id" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."admin_remuneration_staff_counts"() RETURNS TABLE("plan_key" "text", "staff_count" bigint)
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public', 'pg_temp'
+    AS $$
+  SELECT lower(trim(sm.remuneration_plan)) AS plan_key,
+         count(*)::bigint AS staff_count
+  FROM public.staff_members sm
+  WHERE sm.remuneration_plan IS NOT NULL
+    AND btrim(sm.remuneration_plan) <> ''
+    AND (SELECT private.user_has_elevated_access())
+  GROUP BY lower(trim(sm.remuneration_plan));
+$$;
+
+
+ALTER FUNCTION "public"."admin_remuneration_staff_counts"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."admin_staff_for_remuneration_plan"("p_plan_name" "text") RETURNS TABLE("staff_member_id" "uuid", "display_name" "text", "full_name" "text", "is_active" boolean)
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public', 'pg_temp'
+    AS $$
+  SELECT s.id,
+         s.display_name,
+         s.full_name,
+         s.is_active
+  FROM public.staff_members s
+  WHERE (SELECT private.user_has_elevated_access())
+    AND p_plan_name IS NOT NULL
+    AND btrim(p_plan_name) <> ''
+    AND s.remuneration_plan IS NOT NULL
+    AND lower(trim(s.remuneration_plan)) = lower(trim(p_plan_name))
+  ORDER BY COALESCE(s.display_name, s.full_name, '');
+$$;
+
+
+ALTER FUNCTION "public"."admin_staff_for_remuneration_plan"("p_plan_name" "text") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."apply_sales_daily_sheets_to_payroll"("p_batch_id" "uuid") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public', 'private', 'pg_temp'
+    AS $_$
+DECLARE
+  v_sheet public.sales_daily_sheets_import_batches%ROWTYPE;
+  v_payroll_id uuid;
+  v_staged integer;
+  v_loaded integer;
+  v_source_file text;
+  v_location_id uuid;
+  t_mark timestamptz;
+  t_apply_start timestamptz;
+BEGIN
+  PERFORM set_config('statement_timeout', '0', true);
+  RAISE LOG 'sds_timing apply_sales_daily_sheets_to_payroll batch_id=% step=statement_timeout_disabled_tx_local',
+    p_batch_id;
+
+  SELECT *
+  INTO v_sheet
+  FROM public.sales_daily_sheets_import_batches b
+  WHERE b.id = p_batch_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'sales daily sheets batch not found: %', p_batch_id;
+  END IF;
+
+  IF auth.uid() IS NOT NULL THEN
+    IF NOT (
+      (SELECT private.user_has_elevated_access())
+      OR v_sheet.created_by = auth.uid()
+    ) THEN
+      RAISE EXCEPTION 'not authorized';
+    END IF;
+  END IF;
+
+  SELECT count(*)::integer
+  INTO v_staged
+  FROM public.sales_daily_sheets_staged_rows r
+  WHERE r.batch_id = p_batch_id;
+
+  IF v_staged = 0 THEN
+    RAISE EXCEPTION 'no staged rows for batch %', p_batch_id;
+  END IF;
+
+  t_apply_start := clock_timestamp();
+
+  v_payroll_id := v_sheet.payroll_import_batch_id;
+
+  IF v_payroll_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM public.sales_import_batches b WHERE b.id = v_payroll_id
+  ) THEN
+    v_payroll_id := NULL;
+    UPDATE public.sales_daily_sheets_import_batches b
+    SET payroll_import_batch_id = NULL
+    WHERE b.id = p_batch_id;
+  END IF;
+
+  v_source_file := trim(regexp_replace(trim(coalesce(v_sheet.storage_path, '')), '^.*/', ''));
+  v_source_file := nullif(v_source_file, '');
+  IF v_source_file IS NULL THEN
+    v_source_file := trim(coalesce(v_sheet.storage_path, ''));
+  END IF;
+
+  v_location_id := v_sheet.selected_location_id;
+
+  IF v_location_id IS NULL THEN
+    v_location_id := (
+      SELECT r.location_id
+      FROM public.sales_daily_sheets_staged_rows r
+      WHERE r.batch_id = p_batch_id
+        AND r.location_id IS NOT NULL
+      LIMIT 1
+    );
+  END IF;
+
+  IF v_location_id IS NULL THEN
+    v_location_id := public.get_location_id_from_filename(v_source_file);
+  END IF;
+
+
+  IF v_location_id IS NULL AND v_payroll_id IS NOT NULL THEN
+    SELECT b.location_id INTO v_location_id
+    FROM public.sales_import_batches b
+    WHERE b.id = v_payroll_id;
+  END IF;
+
+  t_mark := clock_timestamp();
+  IF v_location_id IS NOT NULL THEN
+    DELETE FROM public.sales_transactions st
+    USING public.sales_import_batches b
+    WHERE st.import_batch_id = b.id
+      AND b.source_name = 'SalesDailySheets'
+      AND b.location_id = v_location_id
+      AND (v_payroll_id IS NULL OR b.id <> v_payroll_id);
+
+    DELETE FROM public.raw_sales_import_rows rr
+    USING public.sales_import_batches b
+    WHERE rr.import_batch_id = b.id
+      AND b.source_name = 'SalesDailySheets'
+      AND b.location_id = v_location_id
+      AND (v_payroll_id IS NULL OR b.id <> v_payroll_id);
+
+    DELETE FROM public.sales_import_batches b
+    WHERE b.source_name = 'SalesDailySheets'
+      AND b.location_id = v_location_id
+      AND (v_payroll_id IS NULL OR b.id <> v_payroll_id);
+  END IF;
+
+  RAISE LOG 'sds_timing apply_sales_daily_sheets_to_payroll batch_id=% step=location_scoped_deletes ms=%',
+    p_batch_id,
+    (round(extract(epoch from (clock_timestamp() - t_mark)) * 1000)::bigint);
+
+  IF v_payroll_id IS NULL THEN
+    IF v_location_id IS NULL THEN
+      RAISE EXCEPTION
+        'cannot resolve location_id for sales daily sheets batch % (set selected_location_id, staged location_id, or use a storage filename that maps via get_location_id_from_filename)',
+        p_batch_id;
+    END IF;
+
+    INSERT INTO public.sales_import_batches (
+      source_name,
+      source_file_name,
+      location_id,
+      imported_by_user_id,
+      status,
+      notes
+    )
+    VALUES (
+      'SalesDailySheets',
+      v_source_file,
+      v_location_id,
+      v_sheet.created_by,
+      'pending',
+      format('Sales Daily Sheets staged import; sheet batch %s', p_batch_id)
+    )
+    RETURNING id INTO v_payroll_id;
+
+    UPDATE public.sales_daily_sheets_import_batches b
+    SET payroll_import_batch_id = v_payroll_id
+    WHERE b.id = p_batch_id;
+  END IF;
+
+  t_mark := clock_timestamp();
+  DELETE FROM public.sales_transactions st
+  WHERE st.import_batch_id = v_payroll_id;
+
+  DELETE FROM public.raw_sales_import_rows rr
+  WHERE rr.import_batch_id = v_payroll_id;
+
+  RAISE LOG 'sds_timing apply_sales_daily_sheets_to_payroll batch_id=% step=payroll_batch_preclear ms=%',
+    p_batch_id,
+    (round(extract(epoch from (clock_timestamp() - t_mark)) * 1000)::bigint);
+
+  t_mark := clock_timestamp();
+  INSERT INTO public.raw_sales_import_rows (
+    import_batch_id,
+    category,
+    first_name,
+    qty,
+    prod_total,
+    prod_id,
+    sale_datetime,
+    source_document_number,
+    description,
+    whole_name,
+    product_type,
+    parent_prod_type,
+    prod_cat,
+    staff_work_name,
+    raw_location,
+    row_num,
+    raw_payload
+  )
+  SELECT
+    v_payroll_id,
+
+    CASE
+      WHEN nullif(btrim(coalesce(r.extras->>'category', r.extras->>'CATEGORY')), '') IS NULL THEN NULL
+      WHEN regexp_replace(btrim(coalesce(r.extras->>'category', r.extras->>'CATEGORY')), '\.0+$', '') ~ '^-?[0-9]+$'
+        THEN regexp_replace(btrim(coalesce(r.extras->>'category', r.extras->>'CATEGORY')), '\.0+$', '')::integer
+      ELSE NULL
+    END,
+
+    CASE
+      WHEN nullif(btrim(r.derived_staff_paid_display_name), '') IS NOT NULL THEN
+        split_part(btrim(r.derived_staff_paid_display_name), ' ', 1)
+      WHEN nullif(btrim(r.extras->>'FIRST_NAME'), '') IS NOT NULL THEN
+        btrim(r.extras->>'FIRST_NAME')
+      WHEN nullif(btrim(r.extras->>'NAME'), '') IS NOT NULL THEN
+        split_part(btrim(r.extras->>'NAME'), ' ', 1)
+      ELSE NULL
+    END,
+
+    CASE
+      WHEN r.quantity IS NOT NULL
+        AND r.quantity::text ~ '^-?[0-9]+(\.[0-9]+)?$' THEN
+        round(r.quantity)::integer
+      WHEN nullif(
+        replace(btrim(coalesce(r.extras->>'QTY', r.extras->>'qty')), ',', ''),
+        ''
+      ) IS NOT NULL
+        AND regexp_replace(
+          btrim(coalesce(r.extras->>'QTY', r.extras->>'qty')),
+          '\.0+$',
+          ''
+        ) ~ '^-?[0-9]+$' THEN
+        regexp_replace(
+          btrim(coalesce(r.extras->>'QTY', r.extras->>'qty')),
+          '\.0+$',
+          ''
+        )::integer
+      ELSE NULL
+    END,
+
+    CASE
+      WHEN r.price_ex_gst IS NOT NULL THEN
+        round(r.price_ex_gst::numeric, 2)
+      WHEN nullif(
+        replace(
+          btrim(coalesce(r.extras->>'PROD_TOTAL', r.extras->>'prod_total')),
+          ',',
+          ''
+        ),
+        ''
+      ) IS NOT NULL
+        AND replace(
+          btrim(coalesce(r.extras->>'PROD_TOTAL', r.extras->>'prod_total')),
+          ',',
+          ''
+        ) ~ '^-?\d+(\.\d+)?$' THEN
+        replace(
+          btrim(coalesce(r.extras->>'PROD_TOTAL', r.extras->>'prod_total')),
+          ',',
+          ''
+        )::numeric(12, 2)
+      ELSE NULL
+    END,
+
+    nullif(
+      btrim(coalesce(r.extras->>'prod_id', r.extras->>'PROD_ID')),
+      ''
+    ),
+
+    COALESCE(
+      CASE
+        WHEN nullif(btrim(coalesce(r.sale_date, r.extras->>'DATE')), '') IS NULL THEN NULL
+        WHEN btrim(coalesce(r.sale_date, r.extras->>'DATE')) ~ '^\d{4}-\d{2}-\d{2}' THEN
+          (
+            left(btrim(coalesce(r.sale_date, r.extras->>'DATE')), 10)::date + time '12:00'
+          ) AT TIME ZONE 'Pacific/Auckland'
+        ELSE
+          btrim(coalesce(r.sale_date, r.extras->>'DATE'))::timestamptz
+      END,
+      (
+        coalesce(r.pay_week_start, r.pay_date, CURRENT_DATE)::timestamp + interval '12 hours'
+      ) AT TIME ZONE 'Pacific/Auckland'
+    ),
+
+    nullif(
+      btrim(
+        coalesce(
+          r.invoice,
+          r.extras->>'SOURCE_DOCUMENT_NUMBER',
+          r.extras->>'source_document_number'
+        )
+      ),
+      ''
+    ),
+
+    coalesce(
+      nullif(btrim(r.product_service_name), ''),
+      nullif(btrim(r.extras->>'DESCRIPTION'), ''),
+      '(daily sheet row)'
+    ),
+
+    nullif(
+      btrim(
+        coalesce(
+          r.customer_name,
+          r.extras->>'WHOLE_NAME',
+          r.extras->>'whole_name'
+        )
+      ),
+      ''
+    ),
+
+    coalesce(
+      nullif(btrim(r.extras->>'product_type'), ''),
+      nullif(btrim(r.extras->>'PRODUCT_TYPE'), ''),
+      'Service'
+    ),
+
+    nullif(
+      btrim(
+        coalesce(
+          r.extras->>'parent_prod_type',
+          r.extras->>'PARENT_PROD_TYPE'
+        )
+      ),
+      ''
+    ),
+
+    nullif(
+      btrim(coalesce(r.extras->>'prod_cat', r.extras->>'PROD_CAT')),
+      ''
+    ),
+
+    nullif(
+      btrim(
+        coalesce(
+          r.derived_staff_paid_display_name,
+          r.extras->>'NAME'
+        )
+      ),
+      ''
+    ),
+
+    v_payroll_id::text,
+    r.line_number,
+
+    r.extras
+      || jsonb_build_object(
+        'sales_daily_sheets_staged_row_id', r.id,
+        'sheet_batch_id', p_batch_id,
+        'storage_path', v_sheet.storage_path,
+        'sale_date_raw', r.sale_date,
+        'pay_week_start', r.pay_week_start,
+        'pay_week_end', r.pay_week_end,
+        'pay_date', r.pay_date,
+        'payroll_status', r.payroll_status,
+        'stylist_visible_note', r.stylist_visible_note,
+        'actual_commission_amount', r.actual_commission_amount,
+        'assistant_commission_amount', r.assistant_commission_amount,
+        'derived_staff_paid_display_name', r.derived_staff_paid_display_name,
+        'staged_invoice', r.invoice,
+        'staged_product_service_name', r.product_service_name,
+        'staged_customer_name', r.customer_name,
+        'staged_quantity', r.quantity,
+        'staged_price_ex_gst', r.price_ex_gst,
+        'selected_location_id', v_sheet.selected_location_id
+      )
+  FROM public.sales_daily_sheets_staged_rows r
+  WHERE r.batch_id = p_batch_id
+  ORDER BY r.line_number;
+
+  RAISE LOG 'sds_timing apply_sales_daily_sheets_to_payroll batch_id=% step=raw_sales_import_rows_insert ms=%',
+    p_batch_id,
+    (round(extract(epoch from (clock_timestamp() - t_mark)) * 1000)::bigint);
+
+  t_mark := clock_timestamp();
+  v_loaded := public.load_raw_sales_rows_to_transactions(v_payroll_id);
+
+  RAISE LOG 'sds_timing apply_sales_daily_sheets_to_payroll batch_id=% step=load_raw_sales_rows_to_transactions ms=%',
+    p_batch_id,
+    (round(extract(epoch from (clock_timestamp() - t_mark)) * 1000)::bigint);
+
+  t_mark := clock_timestamp();
+  UPDATE public.sales_import_batches b
+  SET
+    status = 'processed',
+    row_count = v_loaded,
+    imported_by_user_id = coalesce(b.imported_by_user_id, auth.uid()),
+    updated_at = now()
+  WHERE b.id = v_payroll_id;
+
+  UPDATE public.sales_daily_sheets_import_batches b
+  SET rows_loaded = v_loaded
+  WHERE b.id = p_batch_id;
+
+  RAISE LOG 'sds_timing apply_sales_daily_sheets_to_payroll batch_id=% step=final_batch_updates ms=%',
+    p_batch_id,
+    (round(extract(epoch from (clock_timestamp() - t_mark)) * 1000)::bigint);
+
+  RAISE LOG 'sds_timing apply_sales_daily_sheets_to_payroll batch_id=% step=apply_sales_daily_sheets_to_payroll_total ms=%',
+    p_batch_id,
+    (round(extract(epoch from (clock_timestamp() - t_apply_start)) * 1000)::bigint);
+END;
+
+$_$;
+
+
+ALTER FUNCTION "public"."apply_sales_daily_sheets_to_payroll"("p_batch_id" "uuid") OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."apply_sales_daily_sheets_to_payroll"("p_batch_id" "uuid") IS 'Maps staged rows to raw_sales_import_rows and load_raw_sales_rows_to_transactions. Before apply, deletes prior SalesDailySheets payroll rows for the same location only (other locations untouched).';
+
 
 
 CREATE OR REPLACE FUNCTION "public"."bulk_stage_sales_rows"("p_rows" "jsonb") RETURNS integer
@@ -147,6 +625,17 @@ $$;
 
 
 ALTER FUNCTION "public"."bulk_stage_sales_rows"("p_rows" "jsonb") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."caller_can_manage_access_mappings"() RETURNS boolean
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public', 'auth', 'pg_temp'
+    AS $$
+  SELECT private.user_can_manage_access_mappings();
+$$;
+
+
+ALTER FUNCTION "public"."caller_can_manage_access_mappings"() OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."clear_stg_salesdailysheets"() RETURNS "void"
@@ -253,6 +742,83 @@ $$;
 ALTER FUNCTION "public"."create_sales_import_batch"("p_source_file_name" "text", "p_source_name" "text", "p_notes" "text") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."delete_all_sales_daily_sheets_import_data"() RETURNS "jsonb"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public', 'private', 'pg_temp'
+    AS $$
+DECLARE
+  n_tx bigint;
+  n_raw bigint;
+  n_batch bigint;
+  n_staged bigint;
+  n_sheet bigint;
+BEGIN
+  IF auth.uid() IS NULL OR NOT (SELECT private.user_has_elevated_access()) THEN
+    RAISE EXCEPTION 'not authorized';
+  END IF;
+
+  PERFORM set_config('statement_timeout', '0', true);
+
+  DELETE FROM public.sales_transactions st
+  USING public.sales_import_batches b
+  WHERE st.import_batch_id = b.id
+    AND b.source_name = 'SalesDailySheets';
+  GET DIAGNOSTICS n_tx = ROW_COUNT;
+
+  DELETE FROM public.raw_sales_import_rows rr
+  USING public.sales_import_batches b
+  WHERE rr.import_batch_id = b.id
+    AND b.source_name = 'SalesDailySheets';
+  GET DIAGNOSTICS n_raw = ROW_COUNT;
+
+  DELETE FROM public.sales_import_batches b
+  WHERE b.source_name = 'SalesDailySheets';
+  GET DIAGNOSTICS n_batch = ROW_COUNT;
+
+  SELECT count(*)::bigint INTO n_staged FROM public.sales_daily_sheets_staged_rows;
+  TRUNCATE TABLE public.sales_daily_sheets_staged_rows;
+
+  SELECT count(*)::bigint INTO n_sheet FROM public.sales_daily_sheets_import_batches;
+  TRUNCATE TABLE public.sales_daily_sheets_import_batches;
+
+  RETURN jsonb_build_object(
+    'sales_transactions_deleted', n_tx,
+    'raw_sales_import_rows_deleted', n_raw,
+    'sales_import_batches_deleted', n_batch,
+    'sales_daily_sheets_staged_rows_deleted', n_staged,
+    'sales_daily_sheets_import_batches_deleted', n_sheet
+  );
+END;
+$$;
+
+
+ALTER FUNCTION "public"."delete_all_sales_daily_sheets_import_data"() OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."delete_all_sales_daily_sheets_import_data"() IS 'Destructive reset: removes all Sales Daily Sheets import data (elevated users only). Idempotent. Uses statement_timeout=0 and TRUNCATE for SDS-only tables.';
+
+
+
+CREATE OR REPLACE FUNCTION "public"."delete_sales_daily_sheets_staged_rows_for_batch"("p_batch_id" "uuid") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+BEGIN
+  PERFORM set_config('statement_timeout', '0', true);
+
+  DELETE FROM public.sales_daily_sheets_staged_rows
+  WHERE batch_id = p_batch_id;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."delete_sales_daily_sheets_staged_rows_for_batch"("p_batch_id" "uuid") OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."delete_sales_daily_sheets_staged_rows_for_batch"("p_batch_id" "uuid") IS 'Used by Edge sales-daily-sheets-import: clears staged rows for one batch with statement_timeout disabled.';
+
+
+
 CREATE OR REPLACE FUNCTION "public"."fn_is_admin_or_manager"() RETURNS boolean
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -302,20 +868,30 @@ $$;
 ALTER FUNCTION "public"."fn_my_staff_member_id"() OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "public"."get_admin_access_mappings"() RETURNS TABLE("user_id" "uuid", "email" "text", "access_role" "text", "is_active" boolean, "created_at" timestamp with time zone)
+CREATE OR REPLACE FUNCTION "public"."get_admin_access_mappings"() RETURNS TABLE("mapping_id" "uuid", "user_id" "uuid", "email" "text", "staff_member_id" "uuid", "staff_display_name" "text", "staff_full_name" "text", "staff_name" "text", "access_role" "text", "is_active" boolean, "created_at" timestamp with time zone, "updated_at" timestamp with time zone)
     LANGUAGE "sql" SECURITY DEFINER
     SET "search_path" TO 'public', 'auth', 'pg_temp'
     AS $$
-    SELECT 
-        sma.user_id,
-        COALESCE(au.email::text, '') AS email,
-        sma.access_role,
-        sma.is_active,
-        sma.created_at
-    FROM public.staff_member_user_access sma
-    LEFT JOIN auth.users au ON au.id = sma.user_id
-    WHERE private.user_has_elevated_access()     -- ← This is the important security check
-    ORDER BY sma.created_at DESC;
+  SELECT
+    sma.id AS mapping_id,
+    sma.user_id,
+    COALESCE(au.email::text, '') AS email,
+    sma.staff_member_id,
+    NULLIF(trim(COALESCE(sm.display_name::text, '')), '') AS staff_display_name,
+    NULLIF(trim(COALESCE(sm.full_name::text, '')), '') AS staff_full_name,
+    COALESCE(
+      NULLIF(trim(COALESCE(sm.display_name::text, '')), ''),
+      NULLIF(trim(COALESCE(sm.full_name::text, '')), '')
+    ) AS staff_name,
+    sma.access_role,
+    sma.is_active,
+    sma.created_at,
+    sma.updated_at
+  FROM public.staff_member_user_access sma
+  LEFT JOIN auth.users au ON au.id = sma.user_id
+  LEFT JOIN public.staff_members sm ON sm.id = sma.staff_member_id
+  WHERE private.user_has_elevated_access()
+  ORDER BY sma.created_at DESC;
 $$;
 
 
@@ -431,28 +1007,68 @@ CREATE TABLE IF NOT EXISTS "public"."staff_members" (
     "full_name" "text" NOT NULL,
     "display_name" "text",
     "primary_role" "text",
-    "secondary_roles" "text",
     "remuneration_plan" "text",
     "employment_type" "text",
-    "fte" numeric(5, 4),
-    "employment_start_date" "date",
-    "employment_end_date" "date",
     "is_active" boolean DEFAULT true NOT NULL,
     "first_seen_sale_date" "date",
     "last_seen_sale_date" "date",
     "notes" "text",
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "secondary_roles" "text",
+    "fte" numeric(5,4),
+    "employment_start_date" "date",
+    "employment_end_date" "date",
     "contractor_company_name" "text",
     "contractor_gst_registered" boolean,
     "contractor_ird_number" "text",
     "contractor_street_address" "text",
     "contractor_suburb" "text",
-    "contractor_city_postcode" "text",
-    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL
+    "contractor_city_postcode" "text"
 );
 
 
 ALTER TABLE "public"."staff_members" OWNER TO "postgres";
+
+
+COMMENT ON COLUMN "public"."staff_members"."secondary_roles" IS 'Optional; comma-separated or free text matching org conventions.';
+
+
+
+COMMENT ON COLUMN "public"."staff_members"."fte" IS 'Full-time equivalent (0–1 typical).';
+
+
+
+COMMENT ON COLUMN "public"."staff_members"."employment_start_date" IS 'Employment start (optional).';
+
+
+
+COMMENT ON COLUMN "public"."staff_members"."employment_end_date" IS 'Employment end (optional).';
+
+
+
+COMMENT ON COLUMN "public"."staff_members"."contractor_company_name" IS 'Contractor company (when employment_type is Contractor).';
+
+
+
+COMMENT ON COLUMN "public"."staff_members"."contractor_gst_registered" IS 'GST registration flag for contractor.';
+
+
+
+COMMENT ON COLUMN "public"."staff_members"."contractor_ird_number" IS 'IRD number for contractor.';
+
+
+
+COMMENT ON COLUMN "public"."staff_members"."contractor_street_address" IS 'Contractor street address.';
+
+
+
+COMMENT ON COLUMN "public"."staff_members"."contractor_suburb" IS 'Contractor suburb.';
+
+
+
+COMMENT ON COLUMN "public"."staff_members"."contractor_city_postcode" IS 'Contractor city and postcode (single field).';
+
 
 
 CREATE OR REPLACE VIEW "public"."v_sales_transactions_powerbi_parity" AS
@@ -507,32 +1123,10 @@ CREATE OR REPLACE VIEW "public"."v_sales_transactions_powerbi_parity" AS
             "sw"."employment_type" AS "work_employment_type",
             "rp"."plan_name" AS "commission_plan_name",
             "rp"."can_use_assistants" AS "commission_can_use_assistants"
-           FROM ("public"."sales_transactions" "st"
+           FROM (((("public"."sales_transactions" "st"
              LEFT JOIN "public"."product_master" "pm" ON (("lower"(TRIM(BOTH FROM "st"."product_service_name")) = "lower"(TRIM(BOTH FROM "pm"."product_description")))))
-             LEFT JOIN LATERAL (
-                 SELECT "sm".*
-                 FROM "public"."staff_members" "sm"
-                 WHERE (("st"."staff_commission_id" IS NOT NULL) AND ("sm"."id" = "st"."staff_commission_id"))
-                    OR (("st"."staff_commission_id" IS NULL) AND (NULLIF(TRIM(BOTH FROM COALESCE("st"."staff_commission_name", ''::"text")), ''::"text") IS NOT NULL) AND ("lower"(TRIM(BOTH FROM "st"."staff_commission_name")) = "lower"(TRIM(BOTH FROM "sm"."display_name"))) AND ("sm"."is_active" = true))
-                 ORDER BY
-                     CASE
-                         WHEN (("st"."staff_commission_id" IS NOT NULL) AND ("sm"."id" = "st"."staff_commission_id")) THEN 0
-                         ELSE 1
-                     END
-                 LIMIT 1
-             ) "sc" ON (true)
-             LEFT JOIN LATERAL (
-                 SELECT "sm".*
-                 FROM "public"."staff_members" "sm"
-                 WHERE (("st"."staff_work_id" IS NOT NULL) AND ("sm"."id" = "st"."staff_work_id"))
-                    OR (("st"."staff_work_id" IS NULL) AND (NULLIF(TRIM(BOTH FROM COALESCE("st"."staff_work_name", ''::"text")), ''::"text") IS NOT NULL) AND ("lower"(TRIM(BOTH FROM "st"."staff_work_name")) = "lower"(TRIM(BOTH FROM "sm"."display_name"))) AND ("sm"."is_active" = true))
-                 ORDER BY
-                     CASE
-                         WHEN (("st"."staff_work_id" IS NOT NULL) AND ("sm"."id" = "st"."staff_work_id")) THEN 0
-                         ELSE 1
-                     END
-                 LIMIT 1
-             ) "sw" ON (true)
+             LEFT JOIN "public"."staff_members" "sc" ON (("st"."staff_commission_id" = "sc"."id")))
+             LEFT JOIN "public"."staff_members" "sw" ON (("st"."staff_work_id" = "sw"."id")))
              LEFT JOIN "public"."remuneration_plans" "rp" ON (("lower"(TRIM(BOTH FROM "sc"."remuneration_plan")) = "lower"(TRIM(BOTH FROM "rp"."plan_name")))))
         ), "derived" AS (
          SELECT "b"."id",
@@ -685,22 +1279,8 @@ CREATE OR REPLACE VIEW "public"."v_sales_transactions_powerbi_parity" AS
                     ELSE '-'::"text"
                 END AS "commission_product_service_derived",
                 CASE
-                    WHEN ("upper"(TRIM(BOTH FROM COALESCE("b"."work_primary_role", ''::"text"))) = 'INTERNAL'::"text") THEN NULL::"text"
-                    WHEN (("upper"(TRIM(BOTH FROM COALESCE("b"."work_primary_role", ''::"text"))) = 'ASSISTANT'::"text") AND (COALESCE("b"."commission_can_use_assistants", false) = false)) THEN NULL::"text"
-                    WHEN (("upper"(TRIM(BOTH FROM COALESCE("b"."work_primary_role", ''::"text"))) = 'ASSISTANT'::"text") AND (COALESCE("b"."commission_can_use_assistants", false) = true)) THEN "b"."staff_commission_name"
-                    WHEN (("lower"(TRIM(BOTH FROM COALESCE("b"."work_remuneration_plan", ''::"text"))) = 'wage'::"text") AND (COALESCE("b"."raw_product_type", ''::"text") <> ALL (ARRAY['Voucher'::"text", 'Unclassified'::"text"])) AND (NOT ("lower"(TRIM(BOTH FROM COALESCE("b"."product_service_name", ''::"text"))) = ANY (ARRAY['green fee'::"text", 'redo'::"text", 'training product'::"text", 'miscellaneous'::"text"]))) AND (NOT ("upper"(COALESCE("b"."product_header", ''::"text")) ~~ '%TONER WITH OTHER SERVICE%'::"text")) AND (NOT ("upper"(COALESCE("b"."product_header", ''::"text")) ~~ '%BONDED EXTENSIONS%'::"text")) AND (NOT ("upper"(COALESCE("b"."product_header", ''::"text")) ~~ '%EXTENSIONS BONDS%'::"text")) AND (NOT ("upper"(COALESCE("b"."product_header", ''::"text")) ~~ '%EXTENSIONS (TAPES%'::"text")) AND (
-                    CASE
-                        WHEN ("right"(COALESCE("b"."product_service_name", ''::"text"), 1) = '*'::"text") THEN 'Professional Product'::"text"
-                        WHEN (COALESCE("b"."raw_product_type", ''::"text") = ANY (ARRAY['Unclassified'::"text", 'Voucher'::"text"])) THEN '-'::"text"
-                        WHEN (("b"."master_product_type" IS NULL) OR (TRIM(BOTH FROM COALESCE("b"."master_product_type", ''::"text")) = ''::"text")) THEN
-                        CASE
-                            WHEN (COALESCE("b"."raw_product_type", ''::"text") = 'Service'::"text") THEN 'Service'::"text"
-                            WHEN (COALESCE("b"."raw_product_type", ''::"text") = 'Retail'::"text") THEN 'Retail Product'::"text"
-                            ELSE "b"."raw_product_type"
-                        END
-                        ELSE "b"."master_product_type"
-                    END = 'Retail Product'::"text")) THEN "b"."staff_work_name"
-                    WHEN ("lower"(TRIM(BOTH FROM COALESCE("b"."work_remuneration_plan", ''::"text"))) = 'wage'::"text") THEN NULL::"text"
+                    WHEN (("upper"(TRIM(BOTH FROM COALESCE("b"."work_primary_role", ''::"text"))) = 'ASSISTANT'::"text") AND ("b"."commission_can_use_assistants" = false)) THEN NULL::"text"
+                    WHEN (("upper"(TRIM(BOTH FROM COALESCE("b"."work_primary_role", ''::"text"))) = 'ASSISTANT'::"text") AND ("b"."commission_can_use_assistants" = true)) THEN "b"."staff_commission_name"
                     ELSE "b"."staff_work_name"
                 END AS "staff_paid_name_derived",
                 CASE
@@ -1608,6 +2188,83 @@ $$;
 ALTER FUNCTION "public"."get_my_commission_summary_weekly"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."insert_sales_daily_sheets_staged_rows_chunk"("p_rows" "jsonb") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $_$
+BEGIN
+  PERFORM set_config('statement_timeout', '0', true);
+
+  IF p_rows IS NULL OR jsonb_typeof(p_rows) <> 'array' THEN
+    RAISE EXCEPTION 'insert_sales_daily_sheets_staged_rows_chunk: p_rows must be a JSON array';
+  END IF;
+
+  INSERT INTO public.sales_daily_sheets_staged_rows (
+    batch_id,
+    line_number,
+    invoice,
+    sale_date,
+    pay_week_start,
+    pay_week_end,
+    pay_date,
+    customer_name,
+    product_service_name,
+    quantity,
+    price_ex_gst,
+    derived_staff_paid_display_name,
+    actual_commission_amount,
+    assistant_commission_amount,
+    payroll_status,
+    stylist_visible_note,
+    location_id,
+    extras
+  )
+  SELECT
+    (elem->>'batch_id')::uuid,
+    (elem->>'line_number')::integer,
+    nullif(elem->>'invoice', ''),
+    nullif(elem->>'sale_date', ''),
+    CASE
+      WHEN coalesce(nullif(trim(elem->>'pay_week_start'), ''), '') = '' THEN NULL
+      ELSE (elem->>'pay_week_start')::date
+    END,
+    CASE
+      WHEN coalesce(nullif(trim(elem->>'pay_week_end'), ''), '') = '' THEN NULL
+      ELSE (elem->>'pay_week_end')::date
+    END,
+    CASE
+      WHEN coalesce(nullif(trim(elem->>'pay_date'), ''), '') = '' THEN NULL
+      ELSE (elem->>'pay_date')::date
+    END,
+    nullif(elem->>'customer_name', ''),
+    nullif(elem->>'product_service_name', ''),
+    nullif(elem->>'quantity', '')::numeric,
+    nullif(elem->>'price_ex_gst', '')::numeric,
+    nullif(elem->>'derived_staff_paid_display_name', ''),
+    nullif(elem->>'actual_commission_amount', '')::numeric,
+    nullif(elem->>'assistant_commission_amount', '')::numeric,
+    nullif(elem->>'payroll_status', ''),
+    nullif(elem->>'stylist_visible_note', ''),
+    CASE
+      WHEN elem ? 'location_id'
+        AND coalesce(elem->>'location_id', '') <> ''
+        AND (elem->>'location_id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+      THEN (elem->>'location_id')::uuid
+      ELSE NULL
+    END,
+    coalesce(elem->'extras', '{}'::jsonb)
+  FROM jsonb_array_elements(p_rows) AS _(elem);
+END;
+$_$;
+
+
+ALTER FUNCTION "public"."insert_sales_daily_sheets_staged_rows_chunk"("p_rows" "jsonb") OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."insert_sales_daily_sheets_staged_rows_chunk"("p_rows" "jsonb") IS 'Used by Edge sales-daily-sheets-import: bulk insert staged rows with statement_timeout disabled.';
+
+
+
 CREATE OR REPLACE FUNCTION "public"."insert_staged_sales_row"("p_category" "text", "p_first_name" "text", "p_qty" "text", "p_prod_total" "text", "p_prod_id" "text", "p_date" "text", "p_source_document_number" "text", "p_description" "text", "p_whole_name" "text", "p_product_type" "text", "p_parent_prod_type" "text", "p_prod_cat" "text", "p_name" "text") RETURNS "void"
     LANGUAGE "sql"
     AS $$
@@ -1647,6 +2304,31 @@ $$;
 ALTER FUNCTION "public"."insert_staged_sales_row"("p_category" "text", "p_first_name" "text", "p_qty" "text", "p_prod_total" "text", "p_prod_id" "text", "p_date" "text", "p_source_document_number" "text", "p_description" "text", "p_whole_name" "text", "p_product_type" "text", "p_parent_prod_type" "text", "p_prod_cat" "text", "p_name" "text") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."list_active_locations_for_import"() RETURNS TABLE("id" "uuid", "code" "text", "name" "text")
+    LANGUAGE "plpgsql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+BEGIN
+  IF auth.uid() IS NULL OR NOT (SELECT private.user_has_elevated_access()) THEN
+    RAISE EXCEPTION 'not authorized';
+  END IF;
+
+  RETURN QUERY
+  SELECT l.id, l.code, l.name
+  FROM public.locations l
+  WHERE l.is_active = true
+  ORDER BY l.name;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."list_active_locations_for_import"() OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."list_active_locations_for_import"() IS 'Active locations for Admin Imports dropdown (elevated users only).';
+
+
+
 CREATE OR REPLACE FUNCTION "public"."load_raw_sales_rows_to_transactions"("p_import_batch_id" "uuid") RETURNS integer
     LANGUAGE "plpgsql"
     AS $$
@@ -1676,8 +2358,6 @@ begin
     staff_commission_name,
     staff_work_name,
     staff_paid_name,
-    staff_commission_id,
-    staff_work_id,
     staff_work_is_staff_paid,
     invoice_header,
     product_header
@@ -1718,29 +2398,11 @@ begin
       when r.prod_total is null then null
       else round(((r.prod_total * 1.15) - r.prod_total)::numeric, 2)
     end as price_gst_component,
-    nullif(trim(r.first_name), '') as staff_commission_name,
-    nullif(trim(r.staff_work_name), '') as staff_work_name,
-    null::text as staff_paid_name,
-    (
-      select sm.id
-      from public.staff_members sm
-      where nullif(trim(r.first_name), '') is not null
-        and lower(trim(sm.display_name)) = lower(trim(r.first_name))
-        and sm.is_active = true
-      limit 1
-    ) as staff_commission_id,
-    (
-      select sm.id
-      from public.staff_members sm
-      where nullif(trim(r.staff_work_name), '') is not null
-        and lower(trim(sm.display_name)) = lower(trim(r.staff_work_name))
-        and sm.is_active = true
-      limit 1
-    ) as staff_work_id,
+    r.staff_work_name as staff_commission_name,
+    r.staff_work_name,
+    r.first_name as staff_paid_name,
     case
-      when nullif(trim(r.staff_work_name), '') is not null
-        and nullif(trim(r.first_name), '') is not null
-        and lower(trim(r.staff_work_name)) = lower(trim(r.first_name)) then 'Yes'
+      when coalesce(r.staff_work_name, '') = coalesce(r.first_name, '') then 'Yes'
       else 'No'
     end as staff_work_is_staff_paid,
     coalesce(r.source_document_number, '') || ' | ' || coalesce(r.whole_name, '') as invoice_header,
@@ -1927,9 +2589,9 @@ $$;
 ALTER FUNCTION "public"."set_updated_at"() OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "public"."trigger_sales_daily_sheets_import"("p_storage_path" "text") RETURNS "jsonb"
+CREATE OR REPLACE FUNCTION "public"."trigger_sales_daily_sheets_import"("p_storage_path" "text", "p_location_id" "uuid") RETURNS "jsonb"
     LANGUAGE "plpgsql" SECURITY DEFINER
-    SET "search_path" TO 'public', 'storage', 'auth', 'pg_temp'
+    SET "search_path" TO 'public', 'storage', 'auth', 'extensions', 'private', 'pg_temp'
     AS $$
 DECLARE
   v_path text := trim(p_storage_path);
@@ -1937,6 +2599,10 @@ DECLARE
   v_batch_id uuid := gen_random_uuid();
   v_bucket_id text;
   v_found boolean;
+  v_edge_url text;
+  v_secret text;
+  v_sql jsonb;
+  v_out jsonb;
 BEGIN
   IF v_uid IS NULL THEN
     RAISE EXCEPTION 'not authenticated';
@@ -1948,6 +2614,19 @@ BEGIN
 
   IF v_path IS NULL OR v_path = '' THEN
     RAISE EXCEPTION 'p_storage_path is required';
+  END IF;
+
+  IF p_location_id IS NULL THEN
+    RAISE EXCEPTION 'p_location_id is required';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM public.locations l
+    WHERE l.id = p_location_id
+      AND l.is_active
+  ) THEN
+    RAISE EXCEPTION 'invalid or inactive p_location_id';
   END IF;
 
   IF v_path ~ '\.\.' OR substring(v_path from 1 for 1) = '/' THEN
@@ -1978,41 +2657,144 @@ BEGIN
     RAISE EXCEPTION 'object not found: % (upload to bucket sales-daily-sheets first)', v_path;
   END IF;
 
-  INSERT INTO public.sales_daily_sheets_import_batches (
-    id,
-    storage_path,
-    status,
-    message,
-    rows_staged,
-    rows_loaded,
-    created_by
-  )
-  VALUES (
-    v_batch_id,
-    v_path,
-    'registered',
-    'Object verified in Storage. Hook your existing import job here to populate rows_staged / rows_loaded.',
-    NULL,
-    NULL,
-    v_uid
-  );
+  SELECT
+    nullif(trim(c.sales_daily_import_edge_url), ''),
+    nullif(trim(c.internal_import_secret), '')
+  INTO v_edge_url, v_secret
+  FROM private.sales_daily_sheets_import_config c
+  WHERE c.id = 1;
 
-  -- Optional: call your existing import routine, e.g.:
-  -- PERFORM private.your_sales_daily_import_worker(v_batch_id, v_path);
+  IF v_edge_url IS NOT NULL AND v_secret IS NOT NULL THEN
+    INSERT INTO public.sales_daily_sheets_import_batches (
+      id,
+      storage_path,
+      status,
+      message,
+      rows_staged,
+      rows_loaded,
+      error_message,
+      created_by,
+      selected_location_id
+    )
+    VALUES (
+      v_batch_id,
+      v_path,
+      'queued',
+      'Queued — processing runs in Edge (client)',
+      NULL,
+      NULL,
+      NULL,
+      v_uid,
+      p_location_id
+    );
 
-  RETURN jsonb_build_object(
-    'success', true,
-    'message', 'Import batch registered. Connect your ETL or Edge Function to process the CSV.',
-    'storage_path', v_path,
-    'batch_id', v_batch_id,
-    'rows_staged', NULL,
-    'rows_loaded', NULL
-  );
+    RETURN jsonb_build_object(
+      'success', true,
+      'status', 'queued',
+      'batch_id', v_batch_id,
+      'storage_path', v_path,
+      'message', 'Batch queued. Call the sales-daily-sheets-import Edge Function to process.',
+      'rows_staged', NULL,
+      'rows_loaded', NULL,
+      'error_message', NULL
+    );
+
+  ELSIF to_regprocedure('public.sales_daily_sheets_import_pipeline_sql(uuid,text)') IS NOT NULL THEN
+    INSERT INTO public.sales_daily_sheets_import_batches (
+      id,
+      storage_path,
+      status,
+      message,
+      rows_staged,
+      rows_loaded,
+      error_message,
+      created_by,
+      selected_location_id
+    )
+    VALUES (
+      v_batch_id,
+      v_path,
+      'processing',
+      NULL,
+      NULL,
+      NULL,
+      NULL,
+      v_uid,
+      p_location_id
+    );
+
+    BEGIN
+      v_sql := public.sales_daily_sheets_import_pipeline_sql(v_batch_id, v_path);
+      UPDATE public.sales_daily_sheets_staged_rows r
+      SET location_id = p_location_id
+      WHERE r.batch_id = v_batch_id;
+      v_out := coalesce(v_sql, '{}'::jsonb);
+      IF NOT (v_out ? 'error_message') THEN
+        v_out := v_out || jsonb_build_object('error_message', NULL);
+      END IF;
+      RETURN v_out;
+    EXCEPTION
+      WHEN OTHERS THEN
+        UPDATE public.sales_daily_sheets_import_batches b
+        SET
+          status = 'failed',
+          error_message = left(SQLERRM, 4000),
+          message = 'Import failed (sales_daily_sheets_import_pipeline_sql)'
+        WHERE b.id = v_batch_id;
+
+        RETURN jsonb_build_object(
+          'success', false,
+          'message', SQLERRM,
+          'batch_id', v_batch_id,
+          'storage_path', v_path,
+          'rows_staged', NULL,
+          'rows_loaded', NULL,
+          'status', 'failed',
+          'error_message', SQLERRM
+        );
+    END;
+
+  ELSE
+    INSERT INTO public.sales_daily_sheets_import_batches (
+      id,
+      storage_path,
+      status,
+      message,
+      rows_staged,
+      rows_loaded,
+      error_message,
+      created_by,
+      selected_location_id
+    )
+    VALUES (
+      v_batch_id,
+      v_path,
+      'failed',
+      'Import not configured',
+      NULL,
+      NULL,
+      'Populate private.sales_daily_sheets_import_config (id=1) with Edge URL and secret, or define public.sales_daily_sheets_import_pipeline_sql(uuid,text).',
+      v_uid,
+      p_location_id
+    );
+
+    RETURN jsonb_build_object(
+      'success', false,
+      'message', 'Import pipeline not configured on the database',
+      'batch_id', v_batch_id,
+      'storage_path', v_path,
+      'rows_staged', NULL,
+      'rows_loaded', NULL,
+      'status', 'failed',
+      'error_message',
+      'Configure private.sales_daily_sheets_import_config, or provide sales_daily_sheets_import_pipeline_sql.'
+    );
+  END IF;
 END;
 $$;
 
 
-ALTER FUNCTION "public"."trigger_sales_daily_sheets_import"("p_storage_path" "text") OWNER TO "postgres";
+ALTER FUNCTION "public"."trigger_sales_daily_sheets_import"("p_storage_path" "text", "p_location_id" "uuid") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."update_access_mapping"("p_mapping_id" "uuid", "p_staff_member_id" "uuid", "p_access_role" "text", "p_is_active" boolean) RETURNS "public"."staff_member_user_access"
@@ -2046,6 +2828,22 @@ $$;
 
 
 ALTER FUNCTION "public"."update_access_mapping"("p_mapping_id" "uuid", "p_staff_member_id" "uuid", "p_access_role" "text", "p_is_active" boolean) OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "private"."sales_daily_sheets_import_config" (
+    "id" integer NOT NULL,
+    "sales_daily_import_edge_url" "text",
+    "internal_import_secret" "text",
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "sales_daily_sheets_import_config_id_check" CHECK (("id" = 1))
+);
+
+
+ALTER TABLE "private"."sales_daily_sheets_import_config" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "private"."sales_daily_sheets_import_config" IS 'Singleton (id=1) runtime config for trigger_sales_daily_sheets_import. Secrets are stored for server-side use only; restrict access.';
+
 
 
 CREATE TABLE IF NOT EXISTS "public"."raw_sales_import_rows" (
@@ -2083,7 +2881,10 @@ CREATE TABLE IF NOT EXISTS "public"."sales_daily_sheets_import_batches" (
     "rows_staged" integer,
     "rows_loaded" integer,
     "created_by" "uuid",
-    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "error_message" "text",
+    "payroll_import_batch_id" "uuid",
+    "selected_location_id" "uuid"
 );
 
 
@@ -2091,6 +2892,53 @@ ALTER TABLE "public"."sales_daily_sheets_import_batches" OWNER TO "postgres";
 
 
 COMMENT ON TABLE "public"."sales_daily_sheets_import_batches" IS 'Audit log for Sales Daily Sheets uploads; RPC trigger_sales_daily_sheets_import inserts rows.';
+
+
+
+COMMENT ON COLUMN "public"."sales_daily_sheets_import_batches"."error_message" IS 'Failure detail; also returned as error_message in trigger_sales_daily_sheets_import JSON.';
+
+
+
+COMMENT ON COLUMN "public"."sales_daily_sheets_import_batches"."payroll_import_batch_id" IS 'sales_import_batches row created for this sheet batch; used for idempotent reload and traceability.';
+
+
+
+COMMENT ON COLUMN "public"."sales_daily_sheets_import_batches"."selected_location_id" IS 'Location chosen in Admin Imports; applied to staged rows and payroll merge.';
+
+
+
+CREATE TABLE IF NOT EXISTS "public"."sales_daily_sheets_staged_rows" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "batch_id" "uuid" NOT NULL,
+    "line_number" integer NOT NULL,
+    "invoice" "text",
+    "sale_date" "text",
+    "pay_week_start" "date",
+    "pay_week_end" "date",
+    "pay_date" "date",
+    "customer_name" "text",
+    "product_service_name" "text",
+    "quantity" numeric,
+    "price_ex_gst" numeric,
+    "derived_staff_paid_display_name" "text",
+    "actual_commission_amount" numeric,
+    "assistant_commission_amount" numeric,
+    "payroll_status" "text",
+    "stylist_visible_note" "text",
+    "location_id" "uuid",
+    "extras" "jsonb" DEFAULT '{}'::"jsonb" NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL
+);
+
+
+ALTER TABLE "public"."sales_daily_sheets_staged_rows" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "public"."sales_daily_sheets_staged_rows" IS 'Parsed CSV lines per import batch; populated by Edge Function or sales_daily_sheets_import_pipeline_sql.';
+
+
+
+COMMENT ON COLUMN "public"."sales_daily_sheets_staged_rows"."batch_id" IS 'Logical link to sales_daily_sheets_import_batches.id. No FK: Edge runs outside the RPC transaction that inserts the batch.';
 
 
 
@@ -2347,44 +3195,10 @@ CREATE OR REPLACE VIEW "public"."v_sales_transactions_enriched" AS
             "sc"."is_active" AS "staff_commission_is_active",
             "st"."created_at",
             "st"."updated_at"
-           FROM ("public"."sales_transactions" "st"
-             LEFT JOIN LATERAL (
-                 SELECT "sm".*
-                 FROM "public"."staff_members" "sm"
-                 WHERE (("st"."staff_work_id" IS NOT NULL) AND ("sm"."id" = "st"."staff_work_id"))
-                    OR (("st"."staff_work_id" IS NULL) AND (NULLIF(TRIM(BOTH FROM COALESCE("st"."staff_work_name", ''::"text")), ''::"text") IS NOT NULL) AND ("lower"(TRIM(BOTH FROM "st"."staff_work_name")) = "lower"(TRIM(BOTH FROM "sm"."display_name"))) AND ("sm"."is_active" = true))
-                 ORDER BY
-                     CASE
-                         WHEN (("st"."staff_work_id" IS NOT NULL) AND ("sm"."id" = "st"."staff_work_id")) THEN 0
-                         ELSE 1
-                     END
-                 LIMIT 1
-             ) "sw" ON (true)
-             LEFT JOIN LATERAL (
-                 SELECT "sm".*
-                 FROM "public"."staff_members" "sm"
-                 WHERE (("st"."staff_paid_id" IS NOT NULL) AND ("sm"."id" = "st"."staff_paid_id"))
-                    OR (("st"."staff_paid_id" IS NULL) AND (NULLIF(TRIM(BOTH FROM COALESCE("st"."staff_paid_name", ''::"text")), ''::"text") IS NOT NULL) AND ("lower"(TRIM(BOTH FROM "st"."staff_paid_name")) = "lower"(TRIM(BOTH FROM "sm"."display_name"))) AND ("sm"."is_active" = true))
-                 ORDER BY
-                     CASE
-                         WHEN (("st"."staff_paid_id" IS NOT NULL) AND ("sm"."id" = "st"."staff_paid_id")) THEN 0
-                         ELSE 1
-                     END
-                 LIMIT 1
-             ) "sp" ON (true)
-             LEFT JOIN LATERAL (
-                 SELECT "sm".*
-                 FROM "public"."staff_members" "sm"
-                 WHERE (("st"."staff_commission_id" IS NOT NULL) AND ("sm"."id" = "st"."staff_commission_id"))
-                    OR (("st"."staff_commission_id" IS NULL) AND (NULLIF(TRIM(BOTH FROM COALESCE("st"."staff_commission_name", ''::"text")), ''::"text") IS NOT NULL) AND ("lower"(TRIM(BOTH FROM "st"."staff_commission_name")) = "lower"(TRIM(BOTH FROM "sm"."display_name"))) AND ("sm"."is_active" = true))
-                 ORDER BY
-                     CASE
-                         WHEN (("st"."staff_commission_id" IS NOT NULL) AND ("sm"."id" = "st"."staff_commission_id")) THEN 0
-                         ELSE 1
-                     END
-                 LIMIT 1
-             ) "sc" ON (true)
-           )
+           FROM ((("public"."sales_transactions" "st"
+             LEFT JOIN "public"."staff_members" "sw" ON (("st"."staff_work_id" = "sw"."id")))
+             LEFT JOIN "public"."staff_members" "sp" ON (("st"."staff_paid_id" = "sp"."id")))
+             LEFT JOIN "public"."staff_members" "sc" ON (("st"."staff_commission_id" = "sc"."id")))
         ), "classified" AS (
          SELECT "b"."id",
             "b"."import_batch_id",
@@ -2775,6 +3589,11 @@ CREATE OR REPLACE VIEW "public"."v_stylist_commission_summary_final" AS
 ALTER VIEW "public"."v_stylist_commission_summary_final" OWNER TO "postgres";
 
 
+ALTER TABLE ONLY "private"."sales_daily_sheets_import_config"
+    ADD CONSTRAINT "sales_daily_sheets_import_config_pkey" PRIMARY KEY ("id");
+
+
+
 ALTER TABLE ONLY "public"."locations"
     ADD CONSTRAINT "locations_code_key" UNIQUE ("code");
 
@@ -2830,6 +3649,16 @@ ALTER TABLE ONLY "public"."sales_daily_sheets_import_batches"
 
 
 
+ALTER TABLE ONLY "public"."sales_daily_sheets_staged_rows"
+    ADD CONSTRAINT "sales_daily_sheets_staged_rows_batch_line" UNIQUE ("batch_id", "line_number");
+
+
+
+ALTER TABLE ONLY "public"."sales_daily_sheets_staged_rows"
+    ADD CONSTRAINT "sales_daily_sheets_staged_rows_pkey" PRIMARY KEY ("id");
+
+
+
 ALTER TABLE ONLY "public"."sales_import_batches"
     ADD CONSTRAINT "sales_import_batches_pkey" PRIMARY KEY ("id");
 
@@ -2868,6 +3697,10 @@ CREATE INDEX "sales_daily_sheets_import_batches_created_at_idx" ON "public"."sal
 
 
 
+CREATE INDEX "sales_daily_sheets_staged_rows_batch_id_idx" ON "public"."sales_daily_sheets_staged_rows" USING "btree" ("batch_id");
+
+
+
 CREATE UNIQUE INDEX "ux_staff_member_user_access_user_staff_role" ON "public"."staff_member_user_access" USING "btree" ("user_id", COALESCE("staff_member_id", '00000000-0000-0000-0000-000000000000'::"uuid"), "access_role");
 
 
@@ -2900,6 +3733,10 @@ CREATE OR REPLACE TRIGGER "trg_staff_member_user_access_updated_at" BEFORE UPDAT
 
 
 
+CREATE OR REPLACE TRIGGER "trg_staff_members_updated_at" BEFORE UPDATE ON "public"."staff_members" FOR EACH ROW EXECUTE FUNCTION "public"."set_updated_at"();
+
+
+
 ALTER TABLE ONLY "public"."raw_sales_import_rows"
     ADD CONSTRAINT "raw_sales_import_rows_import_batch_id_fkey" FOREIGN KEY ("import_batch_id") REFERENCES "public"."sales_import_batches"("id") ON DELETE CASCADE;
 
@@ -2912,6 +3749,16 @@ ALTER TABLE ONLY "public"."remuneration_plan_rates"
 
 ALTER TABLE ONLY "public"."sales_daily_sheets_import_batches"
     ADD CONSTRAINT "sales_daily_sheets_import_batches_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "auth"."users"("id") ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."sales_daily_sheets_import_batches"
+    ADD CONSTRAINT "sales_daily_sheets_import_batches_payroll_import_batch_id_fkey" FOREIGN KEY ("payroll_import_batch_id") REFERENCES "public"."sales_import_batches"("id") ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."sales_daily_sheets_import_batches"
+    ADD CONSTRAINT "sales_daily_sheets_import_batches_selected_location_id_fkey" FOREIGN KEY ("selected_location_id") REFERENCES "public"."locations"("id") ON DELETE SET NULL;
 
 
 
@@ -2946,22 +3793,21 @@ ALTER TABLE "public"."locations" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "public"."product_master" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "product_master_elevated_select" ON "public"."product_master" FOR SELECT TO "authenticated" USING (( SELECT "private"."user_has_elevated_access"() AS "user_has_elevated_access"));
-
-
-CREATE POLICY "product_master_elevated_insert" ON "public"."product_master" FOR INSERT TO "authenticated" WITH CHECK (( SELECT "private"."user_has_elevated_access"() AS "user_has_elevated_access"));
-
-
-CREATE POLICY "product_master_elevated_update" ON "public"."product_master" FOR UPDATE TO "authenticated" USING (( SELECT "private"."user_has_elevated_access"() AS "user_has_elevated_access")) WITH CHECK (( SELECT "private"."user_has_elevated_access"() AS "user_has_elevated_access"));
-
-
 ALTER TABLE "public"."raw_sales_import_rows" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."remuneration_plan_rates" ENABLE ROW LEVEL SECURITY;
 
 
+CREATE POLICY "remuneration_plan_rates_elevated_all" ON "public"."remuneration_plan_rates" TO "authenticated" USING (( SELECT "private"."user_has_elevated_access"() AS "user_has_elevated_access")) WITH CHECK (( SELECT "private"."user_has_elevated_access"() AS "user_has_elevated_access"));
+
+
+
 ALTER TABLE "public"."remuneration_plans" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "remuneration_plans_elevated_all" ON "public"."remuneration_plans" TO "authenticated" USING (( SELECT "private"."user_has_elevated_access"() AS "user_has_elevated_access")) WITH CHECK (( SELECT "private"."user_has_elevated_access"() AS "user_has_elevated_access"));
+
 
 
 CREATE POLICY "sales_daily_sheets_batches_select_own" ON "public"."sales_daily_sheets_import_batches" FOR SELECT TO "authenticated" USING (("created_by" = "auth"."uid"()));
@@ -2969,6 +3815,9 @@ CREATE POLICY "sales_daily_sheets_batches_select_own" ON "public"."sales_daily_s
 
 
 ALTER TABLE "public"."sales_daily_sheets_import_batches" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."sales_daily_sheets_staged_rows" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."sales_import_batches" ENABLE ROW LEVEL SECURITY;
@@ -2983,16 +3832,16 @@ ALTER TABLE "public"."staff_member_user_access" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "public"."staff_members" ENABLE ROW LEVEL SECURITY;
 
 
+CREATE POLICY "staff_members_elevated_insert" ON "public"."staff_members" FOR INSERT TO "authenticated" WITH CHECK (( SELECT "private"."user_has_elevated_access"() AS "user_has_elevated_access"));
+
+
+
 CREATE POLICY "staff_members_elevated_select" ON "public"."staff_members" FOR SELECT TO "authenticated" USING (( SELECT "private"."user_has_elevated_access"() AS "user_has_elevated_access"));
 
-
-CREATE POLICY "staff_members_elevated_insert" ON "public"."staff_members" FOR INSERT TO "authenticated" WITH CHECK (( SELECT "private"."user_has_elevated_access"() AS "user_has_elevated_access"));
 
 
 CREATE POLICY "staff_members_elevated_update" ON "public"."staff_members" FOR UPDATE TO "authenticated" USING (( SELECT "private"."user_has_elevated_access"() AS "user_has_elevated_access")) WITH CHECK (( SELECT "private"."user_has_elevated_access"() AS "user_has_elevated_access"));
 
-
-CREATE TRIGGER "trg_staff_members_updated_at" BEFORE UPDATE ON "public"."staff_members" FOR EACH ROW EXECUTE FUNCTION "public"."set_updated_at"();
 
 
 CREATE POLICY "user_can_read_own_access" ON "public"."staff_member_user_access" FOR SELECT TO "authenticated" USING (("user_id" = "auth"."uid"()));
@@ -3165,6 +4014,68 @@ GRANT USAGE ON SCHEMA "public" TO "service_role";
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+REVOKE ALL ON FUNCTION "private"."run_sales_daily_sheets_merge_if_installed"("p_batch_id" "uuid") FROM PUBLIC;
+GRANT ALL ON FUNCTION "private"."run_sales_daily_sheets_merge_if_installed"("p_batch_id" "uuid") TO "authenticated";
+
+
+
 REVOKE ALL ON FUNCTION "private"."user_can_manage_access_mappings"() FROM PUBLIC;
 
 
@@ -3174,9 +4085,43 @@ GRANT ALL ON FUNCTION "private"."user_has_elevated_access"() TO "authenticated";
 
 
 
+REVOKE ALL ON FUNCTION "public"."admin_delete_remuneration_plan_if_unused"("p_plan_id" "uuid") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."admin_delete_remuneration_plan_if_unused"("p_plan_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."admin_delete_remuneration_plan_if_unused"("p_plan_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."admin_delete_remuneration_plan_if_unused"("p_plan_id" "uuid") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."admin_remuneration_staff_counts"() FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."admin_remuneration_staff_counts"() TO "anon";
+GRANT ALL ON FUNCTION "public"."admin_remuneration_staff_counts"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."admin_remuneration_staff_counts"() TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."admin_staff_for_remuneration_plan"("p_plan_name" "text") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."admin_staff_for_remuneration_plan"("p_plan_name" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."admin_staff_for_remuneration_plan"("p_plan_name" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."admin_staff_for_remuneration_plan"("p_plan_name" "text") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."apply_sales_daily_sheets_to_payroll"("p_batch_id" "uuid") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."apply_sales_daily_sheets_to_payroll"("p_batch_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."apply_sales_daily_sheets_to_payroll"("p_batch_id" "uuid") TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."bulk_stage_sales_rows"("p_rows" "jsonb") TO "anon";
 GRANT ALL ON FUNCTION "public"."bulk_stage_sales_rows"("p_rows" "jsonb") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."bulk_stage_sales_rows"("p_rows" "jsonb") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."caller_can_manage_access_mappings"() FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."caller_can_manage_access_mappings"() TO "anon";
+GRANT ALL ON FUNCTION "public"."caller_can_manage_access_mappings"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."caller_can_manage_access_mappings"() TO "service_role";
 
 
 
@@ -3198,6 +4143,19 @@ GRANT ALL ON FUNCTION "public"."create_access_mapping"("p_user_id" "uuid", "p_st
 GRANT ALL ON FUNCTION "public"."create_sales_import_batch"("p_source_file_name" "text", "p_source_name" "text", "p_notes" "text") TO "anon";
 GRANT ALL ON FUNCTION "public"."create_sales_import_batch"("p_source_file_name" "text", "p_source_name" "text", "p_notes" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."create_sales_import_batch"("p_source_file_name" "text", "p_source_name" "text", "p_notes" "text") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."delete_all_sales_daily_sheets_import_data"() FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."delete_all_sales_daily_sheets_import_data"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."delete_all_sales_daily_sheets_import_data"() TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."delete_sales_daily_sheets_staged_rows_for_batch"("p_batch_id" "uuid") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."delete_sales_daily_sheets_staged_rows_for_batch"("p_batch_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."delete_sales_daily_sheets_staged_rows_for_batch"("p_batch_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."delete_sales_daily_sheets_staged_rows_for_batch"("p_batch_id" "uuid") TO "service_role";
 
 
 
@@ -3230,15 +4188,14 @@ GRANT ALL ON TABLE "public"."locations" TO "service_role";
 GRANT ALL ON TABLE "public"."product_master" TO "service_role";
 
 
-GRANT SELECT, INSERT, UPDATE ON TABLE "public"."product_master" TO "authenticated";
-
-
 
 GRANT ALL ON TABLE "public"."remuneration_plan_rates" TO "service_role";
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE "public"."remuneration_plan_rates" TO "authenticated";
 
 
 
 GRANT ALL ON TABLE "public"."remuneration_plans" TO "service_role";
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE "public"."remuneration_plans" TO "authenticated";
 
 
 
@@ -3246,10 +4203,8 @@ GRANT ALL ON TABLE "public"."sales_transactions" TO "service_role";
 
 
 
-GRANT SELECT, INSERT, UPDATE ON TABLE "public"."staff_members" TO "authenticated";
-
-
 GRANT ALL ON TABLE "public"."staff_members" TO "service_role";
+GRANT SELECT,INSERT,UPDATE ON TABLE "public"."staff_members" TO "authenticated";
 
 
 
@@ -3306,12 +4261,6 @@ GRANT ALL ON FUNCTION "public"."get_my_access_profile"() TO "service_role";
 
 
 
-REVOKE ALL ON FUNCTION "public"."caller_can_manage_access_mappings"() FROM PUBLIC;
-GRANT ALL ON FUNCTION "public"."caller_can_manage_access_mappings"() TO "authenticated";
-GRANT ALL ON FUNCTION "public"."caller_can_manage_access_mappings"() TO "service_role";
-
-
-
 GRANT ALL ON TABLE "public"."v_stylist_commission_lines_weekly_final" TO "service_role";
 
 
@@ -3330,9 +4279,22 @@ GRANT ALL ON FUNCTION "public"."get_my_commission_summary_weekly"() TO "service_
 
 
 
+REVOKE ALL ON FUNCTION "public"."insert_sales_daily_sheets_staged_rows_chunk"("p_rows" "jsonb") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."insert_sales_daily_sheets_staged_rows_chunk"("p_rows" "jsonb") TO "anon";
+GRANT ALL ON FUNCTION "public"."insert_sales_daily_sheets_staged_rows_chunk"("p_rows" "jsonb") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."insert_sales_daily_sheets_staged_rows_chunk"("p_rows" "jsonb") TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."insert_staged_sales_row"("p_category" "text", "p_first_name" "text", "p_qty" "text", "p_prod_total" "text", "p_prod_id" "text", "p_date" "text", "p_source_document_number" "text", "p_description" "text", "p_whole_name" "text", "p_product_type" "text", "p_parent_prod_type" "text", "p_prod_cat" "text", "p_name" "text") TO "anon";
 GRANT ALL ON FUNCTION "public"."insert_staged_sales_row"("p_category" "text", "p_first_name" "text", "p_qty" "text", "p_prod_total" "text", "p_prod_id" "text", "p_date" "text", "p_source_document_number" "text", "p_description" "text", "p_whole_name" "text", "p_product_type" "text", "p_parent_prod_type" "text", "p_prod_cat" "text", "p_name" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."insert_staged_sales_row"("p_category" "text", "p_first_name" "text", "p_qty" "text", "p_prod_total" "text", "p_prod_id" "text", "p_date" "text", "p_source_document_number" "text", "p_description" "text", "p_whole_name" "text", "p_product_type" "text", "p_parent_prod_type" "text", "p_prod_cat" "text", "p_name" "text") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."list_active_locations_for_import"() FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."list_active_locations_for_import"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."list_active_locations_for_import"() TO "service_role";
 
 
 
@@ -3364,10 +4326,9 @@ GRANT ALL ON FUNCTION "public"."set_updated_at"() TO "service_role";
 
 
 
-REVOKE ALL ON FUNCTION "public"."trigger_sales_daily_sheets_import"("p_storage_path" "text") FROM PUBLIC;
-GRANT ALL ON FUNCTION "public"."trigger_sales_daily_sheets_import"("p_storage_path" "text") TO "anon";
-GRANT ALL ON FUNCTION "public"."trigger_sales_daily_sheets_import"("p_storage_path" "text") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."trigger_sales_daily_sheets_import"("p_storage_path" "text") TO "service_role";
+REVOKE ALL ON FUNCTION "public"."trigger_sales_daily_sheets_import"("p_storage_path" "text", "p_location_id" "uuid") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."trigger_sales_daily_sheets_import"("p_storage_path" "text", "p_location_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."trigger_sales_daily_sheets_import"("p_storage_path" "text", "p_location_id" "uuid") TO "service_role";
 
 
 
@@ -3398,6 +4359,12 @@ GRANT ALL ON TABLE "public"."raw_sales_import_rows" TO "service_role";
 GRANT ALL ON TABLE "public"."sales_daily_sheets_import_batches" TO "anon";
 GRANT ALL ON TABLE "public"."sales_daily_sheets_import_batches" TO "authenticated";
 GRANT ALL ON TABLE "public"."sales_daily_sheets_import_batches" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."sales_daily_sheets_staged_rows" TO "anon";
+GRANT ALL ON TABLE "public"."sales_daily_sheets_staged_rows" TO "authenticated";
+GRANT ALL ON TABLE "public"."sales_daily_sheets_staged_rows" TO "service_role";
 
 
 

@@ -61,11 +61,16 @@ export type StaffMemberUpdatePayload = {
   secondary_roles: string | null
   remuneration_plan: string | null
   employment_type: string | null
-  fte: number | null
   employment_start_date: string | null
   employment_end_date: string | null
   is_active: boolean
   notes: string | null
+  contractor_company_name: string | null
+  contractor_gst_registered: boolean
+  contractor_ird_number: string | null
+  contractor_street_address: string | null
+  contractor_suburb: string | null
+  contractor_city_postcode: string | null
 }
 
 export async function updateStaffMember(
@@ -80,11 +85,16 @@ export async function updateStaffMember(
       secondary_roles: emptyToNull(payload.secondary_roles),
       remuneration_plan: emptyToNull(payload.remuneration_plan),
       employment_type: emptyToNull(payload.employment_type),
-      fte: payload.fte,
       employment_start_date: emptyToNull(payload.employment_start_date),
       employment_end_date: emptyToNull(payload.employment_end_date),
       is_active: payload.is_active,
       notes: emptyToNull(payload.notes),
+      contractor_company_name: emptyToNull(payload.contractor_company_name),
+      contractor_gst_registered: payload.contractor_gst_registered,
+      contractor_ird_number: emptyToNull(payload.contractor_ird_number),
+      contractor_street_address: emptyToNull(payload.contractor_street_address),
+      contractor_suburb: emptyToNull(payload.contractor_suburb),
+      contractor_city_postcode: emptyToNull(payload.contractor_city_postcode),
     })
     .eq('id', payload.id)
   if (error) throw toError('staff_members update', error)

@@ -14,6 +14,12 @@ export type StaffMemberRow = {
   first_seen_sale_date: string | null
   last_seen_sale_date: string | null
   notes: string | null
+  contractor_company_name: string | null
+  contractor_gst_registered: boolean | null
+  contractor_ird_number: string | null
+  contractor_street_address: string | null
+  contractor_suburb: string | null
+  contractor_city_postcode: string | null
   created_at: string
   updated_at: string
 }

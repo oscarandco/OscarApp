@@ -15,25 +15,32 @@ import { queryErrorDetail } from '@/lib/queryError'
 
 type StatusFilter = 'all' | 'active' | 'inactive'
 
-/** Form state: string fields for inputs; maps to `StaffMemberUpdatePayload` on save. */
-type StaffFormDraft = Omit<
-  StaffMemberUpdatePayload,
-  | 'display_name'
-  | 'primary_role'
-  | 'secondary_roles'
-  | 'remuneration_plan'
-  | 'employment_type'
-  | 'notes'
-> & {
+type EmploymentKind = 'Employee' | 'Contractor'
+
+/** Form state; maps to `StaffMemberUpdatePayload` on save (FTE not sent — preserved in DB). */
+type StaffFormDraft = {
+  id: string
+  full_name: string
   display_name: string
   primary_role: string
   secondary_roles: string
   remuneration_plan: string
-  employment_type: string
+  employment_type: EmploymentKind
   employment_start_date: string
   employment_end_date: string
+  is_active: boolean
   notes: string
-  fteInput: string
+  contractor_company_name: string
+  contractor_gst_registered: boolean
+  contractor_ird_number: string
+  contractor_street_address: string
+  contractor_suburb: string
+  contractor_city_postcode: string
+}
+
+function normalizeEmploymentKind(raw: string | null | undefined): EmploymentKind {
+  const s = (raw ?? '').trim().toLowerCase()
+  return s === 'contractor' ? 'Contractor' : 'Employee'
 }
 
 function isoDateToInput(iso: string | null | undefined): string {
@@ -41,21 +48,78 @@ function isoDateToInput(iso: string | null | undefined): string {
   return iso.slice(0, 10)
 }
 
-function parseFte(s: string): number | null {
-  const t = s.trim()
-  if (t === '') return null
-  const n = Number(t)
-  if (Number.isNaN(n)) return null
-  return Math.min(1, Math.max(0, n))
+/** Left-nav bucket from `primary_role` only (no backend). */
+function staffNavBucket(row: StaffMemberRow): 'stylists' | 'assistants' | 'other' {
+  const role = (row.primary_role ?? '').trim().toLowerCase()
+  if (role === 'assistant') return 'assistants'
+  if (
+    role.includes('stylist') ||
+    role.includes('colourist') ||
+    role.includes('colorist')
+  ) {
+    return 'stylists'
+  }
+  return 'other'
+}
+
+function sortKeyForNav(s: StaffMemberRow): string {
+  const d = (s.display_name ?? '').trim()
+  const f = (s.full_name ?? '').trim()
+  const key = d !== '' ? d : f
+  return key.toLowerCase()
+}
+
+function compareStaffNav(a: StaffMemberRow, b: StaffMemberRow): number {
+  return sortKeyForNav(a).localeCompare(sortKeyForNav(b), undefined, { sensitivity: 'base' })
+}
+
+function StaffNavRow({
+  member: s,
+  active,
+  onSelect,
+}: {
+  member: StaffMemberRow
+  active: boolean
+  onSelect: (id: string) => void
+}) {
+  const disp = s.display_name?.trim() ?? ''
+  const full = (s.full_name ?? '').trim()
+  const showSecondary =
+    disp !== '' && full !== '' && disp.toLowerCase() !== full.toLowerCase()
+  const primary = disp === '' ? full : disp
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={() => onSelect(s.id)}
+        className={`flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2.5 text-left text-sm transition ${
+          active
+            ? 'border-violet-300 bg-violet-50 text-violet-950'
+            : 'border-transparent bg-slate-50/80 text-slate-800 hover:border-slate-200 hover:bg-white'
+        }`}
+      >
+        <span className="block min-w-0 flex-1 truncate text-left">
+          <span className="font-medium text-slate-900">{primary}</span>
+          {showSecondary ? (
+            <span className="text-xs font-normal text-slate-500">
+              {' '}
+              ({full})
+            </span>
+          ) : null}
+        </span>
+        <span
+          className={`shrink-0 text-xs font-medium ${
+            s.is_active ? 'text-emerald-700' : 'text-slate-400'
+          }`}
+        >
+          {s.is_active ? 'Active' : 'Inactive'}
+        </span>
+      </button>
+    </li>
+  )
 }
 
 function draftFromRow(row: StaffMemberRow): StaffFormDraft {
-  const fteNum =
-    row.fte == null || row.fte === ''
-      ? null
-      : typeof row.fte === 'number'
-        ? row.fte
-        : Number(row.fte)
   return {
     id: row.id,
     full_name: row.full_name,
@@ -63,13 +127,17 @@ function draftFromRow(row: StaffMemberRow): StaffFormDraft {
     primary_role: row.primary_role ?? '',
     secondary_roles: row.secondary_roles ?? '',
     remuneration_plan: row.remuneration_plan ?? '',
-    employment_type: row.employment_type ?? '',
-    fte: fteNum != null && !Number.isNaN(fteNum) ? fteNum : null,
-    fteInput: fteNum != null && !Number.isNaN(fteNum) ? String(fteNum) : '',
+    employment_type: normalizeEmploymentKind(row.employment_type),
     employment_start_date: isoDateToInput(row.employment_start_date),
     employment_end_date: isoDateToInput(row.employment_end_date),
     is_active: row.is_active,
     notes: row.notes ?? '',
+    contractor_company_name: row.contractor_company_name ?? '',
+    contractor_gst_registered: row.contractor_gst_registered === true,
+    contractor_ird_number: row.contractor_ird_number ?? '',
+    contractor_street_address: row.contractor_street_address ?? '',
+    contractor_suburb: row.contractor_suburb ?? '',
+    contractor_city_postcode: row.contractor_city_postcode ?? '',
   }
 }
 
@@ -79,22 +147,85 @@ export function StaffConfigurationPage() {
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('active')
+  const [employmentTypeFilter, setEmploymentTypeFilter] = useState<
+    'all' | EmploymentKind
+  >('all')
+  const [remunerationPlanFilter, setRemunerationPlanFilter] = useState('')
+  const [primaryRoleFilter, setPrimaryRoleFilter] = useState('')
   const [draft, setDraft] = useState<StaffFormDraft | null>(null)
 
   const staff = data?.staff ?? []
   const planNames = data?.planNames ?? []
+
+  const primaryRoleFilterOptions = useMemo(() => {
+    const set = new Set<string>()
+    for (const s of staff) {
+      const r = (s.primary_role ?? '').trim()
+      if (r) set.add(r)
+    }
+    return [...set].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+  }, [staff])
+
+  const remunerationFilterOptions = useMemo(() => {
+    const set = new Set(planNames)
+    for (const s of staff) {
+      const p = (s.remuneration_plan ?? '').trim()
+      if (p) set.add(p)
+    }
+    return [...set].sort((a, b) => a.localeCompare(b))
+  }, [staff, planNames])
 
   const filteredStaff = useMemo(() => {
     const q = search.trim().toLowerCase()
     return staff.filter((s) => {
       if (statusFilter === 'active' && !s.is_active) return false
       if (statusFilter === 'inactive' && s.is_active) return false
+      if (employmentTypeFilter !== 'all') {
+        if (normalizeEmploymentKind(s.employment_type) !== employmentTypeFilter) {
+          return false
+        }
+      }
+      if (remunerationPlanFilter !== '') {
+        const plan = (s.remuneration_plan ?? '').trim()
+        if (remunerationPlanFilter === '__none__') {
+          if (plan !== '') return false
+        } else if (plan !== remunerationPlanFilter) {
+          return false
+        }
+      }
+      if (primaryRoleFilter !== '') {
+        if ((s.primary_role ?? '').trim() !== primaryRoleFilter) return false
+      }
       if (!q) return true
-      const hay = `${s.full_name} ${s.display_name ?? ''} ${s.primary_role ?? ''}`.toLowerCase()
+      const hay =
+        `${s.full_name} ${s.display_name ?? ''} ${s.primary_role ?? ''} ${s.secondary_roles ?? ''}`.toLowerCase()
       return hay.includes(q)
     })
-  }, [staff, search, statusFilter])
+  }, [
+    staff,
+    search,
+    statusFilter,
+    employmentTypeFilter,
+    remunerationPlanFilter,
+    primaryRoleFilter,
+  ])
+
+  const staffNavGroups = useMemo(() => {
+    const stylists: StaffMemberRow[] = []
+    const assistants: StaffMemberRow[] = []
+    const other: StaffMemberRow[] = []
+    for (const s of filteredStaff) {
+      const b = staffNavBucket(s)
+      if (b === 'stylists') stylists.push(s)
+      else if (b === 'assistants') assistants.push(s)
+      else other.push(s)
+    }
+    stylists.sort(compareStaffNav)
+    assistants.sort(compareStaffNav)
+    other.sort(compareStaffNav)
+    return { stylists, assistants, other }
+  }, [filteredStaff])
 
   const selected = useMemo(
     () => staff.find((s) => s.id === selectedId) ?? null,
@@ -110,13 +241,13 @@ export function StaffConfigurationPage() {
   }, [selected])
 
   useEffect(() => {
-    if (staff.length === 0) {
-      setSelectedId(null)
+    if (filteredStaff.length === 0) {
+      if (selectedId !== null) setSelectedId(null)
       return
     }
-    if (selectedId != null && staff.some((s) => s.id === selectedId)) return
-    setSelectedId(staff[0].id)
-  }, [staff, selectedId])
+    if (selectedId != null && filteredStaff.some((s) => s.id === selectedId)) return
+    setSelectedId(filteredStaff[0].id)
+  }, [filteredStaff, selectedId])
 
   const dirty = useMemo(() => {
     if (!selected || !draft) return false
@@ -132,22 +263,30 @@ export function StaffConfigurationPage() {
       'employment_end_date',
       'is_active',
       'notes',
+      'contractor_company_name',
+      'contractor_gst_registered',
+      'contractor_ird_number',
+      'contractor_street_address',
+      'contractor_suburb',
+      'contractor_city_postcode',
     ]
     for (const k of keys) {
       const a = draft[k]
       const b = base[k]
+      if (k === 'is_active' || k === 'contractor_gst_registered') {
+        if (a !== b) return true
+        continue
+      }
       const an = typeof a === 'string' ? a.trim() : a
       const bn = typeof b === 'string' ? b.trim() : b
       if (an !== bn) return true
     }
-    if (parseFte(draft.fteInput) !== parseFte(base.fteInput)) return true
     return false
   }, [selected, draft])
 
   const saveMut = useMutation({
     mutationFn: async () => {
       if (!draft) return
-      const fte = parseFte(draft.fteInput)
       const payload: StaffMemberUpdatePayload = {
         id: draft.id,
         full_name: draft.full_name,
@@ -155,12 +294,17 @@ export function StaffConfigurationPage() {
         primary_role: draft.primary_role || null,
         secondary_roles: draft.secondary_roles || null,
         remuneration_plan: draft.remuneration_plan || null,
-        employment_type: draft.employment_type || null,
-        fte,
+        employment_type: draft.employment_type,
         employment_start_date: draft.employment_start_date || null,
         employment_end_date: draft.employment_end_date || null,
         is_active: draft.is_active,
         notes: draft.notes || null,
+        contractor_company_name: draft.contractor_company_name || null,
+        contractor_gst_registered: draft.contractor_gst_registered,
+        contractor_ird_number: draft.contractor_ird_number || null,
+        contractor_street_address: draft.contractor_street_address || null,
+        contractor_suburb: draft.contractor_suburb || null,
+        contractor_city_postcode: draft.contractor_city_postcode || null,
       }
       await updateStaffMember(payload)
     },
@@ -214,114 +358,191 @@ export function StaffConfigurationPage() {
   return (
     <div
       data-testid="staff-config-page"
-      className="flex min-h-0 w-full flex-col lg:h-[calc(100dvh-7.5rem)] lg:min-h-0 lg:flex-row lg:overflow-hidden"
+      className="flex min-h-0 w-full flex-col lg:h-[calc(100dvh-7.5rem)] lg:min-h-0 lg:overflow-hidden"
     >
-      <aside className="flex min-h-0 w-full shrink-0 flex-col border-b border-slate-200 bg-white px-4 py-4 shadow-sm max-h-[min(42vh,22rem)] lg:max-h-none lg:h-full lg:w-72 lg:overflow-hidden lg:rounded-none lg:border-b-0 lg:border-r lg:shadow-none">
-        <h2 className="text-sm font-semibold text-slate-900">Staff</h2>
-        <label className="mt-3 block text-xs font-medium text-slate-600" htmlFor="staff-search">
-          Search
-        </label>
-        <input
-          id="staff-search"
-          type="search"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Name or role…"
-          autoComplete="off"
-          className="mt-1 w-full rounded-md border border-slate-300 px-2 py-2 text-sm shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
-        />
-        <label className="mt-3 block text-xs font-medium text-slate-600" htmlFor="staff-status-filter">
-          Status
-        </label>
-        <select
-          id="staff-status-filter"
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-          className="mt-1 w-full rounded-md border border-slate-300 px-2 py-2 text-sm shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
-        >
-          <option value="all">All</option>
-          <option value="active">Active</option>
-          <option value="inactive">Inactive</option>
-        </select>
-        <button
-          type="button"
-          onClick={() => void createMut.mutateAsync()}
-          disabled={createMut.isPending}
-          className="mt-3 w-full rounded-md bg-violet-600 px-3 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
-        >
-          {createMut.isPending ? 'Creating…' : 'Create new staff'}
-        </button>
-        {createMut.isError ? (
-          <p className="mt-2 text-xs text-red-600">
-            {createMut.error instanceof Error
-              ? createMut.error.message
-              : String(createMut.error)}
-          </p>
-        ) : null}
-        <ul className="mt-4 min-h-0 flex-1 space-y-1 overflow-y-auto">
-          {filteredStaff.length === 0 ? (
-            <li className="text-sm text-slate-500">No staff match your filters.</li>
-          ) : (
-            filteredStaff.map((s) => {
-              const active = s.id === selectedId
-              const disp = s.display_name?.trim() ?? ''
-              const full = (s.full_name ?? '').trim()
-              const showSecondary =
-                disp !== '' &&
-                full !== '' &&
-                disp.toLowerCase() !== full.toLowerCase()
-              const primary = disp === '' ? full : disp
-              return (
-                <li key={s.id}>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedId(s.id)}
-                    className={`flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2.5 text-left text-sm transition ${
-                      active
-                        ? 'border-violet-300 bg-violet-50 text-violet-950'
-                        : 'border-transparent bg-slate-50/80 text-slate-800 hover:border-slate-200 hover:bg-white'
-                    }`}
-                  >
-                    <span className="block min-w-0 flex-1 truncate text-left">
-                      <span className="font-medium text-slate-900">{primary}</span>
-                      {showSecondary ? (
-                        <span className="text-xs font-normal text-slate-500">
-                          {' '}
-                          ({full})
-                        </span>
-                      ) : null}
-                    </span>
-                    <span
-                      className={`shrink-0 text-xs font-medium ${
-                        s.is_active ? 'text-emerald-700' : 'text-slate-400'
-                      }`}
-                    >
-                      {s.is_active ? 'Active' : 'Inactive'}
-                    </span>
-                  </button>
-                </li>
-              )
-            })
-          )}
-        </ul>
-      </aside>
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="shrink-0 border-b border-slate-200/80 bg-slate-50/90 py-2 pl-2 pr-4 sm:py-2.5 sm:pl-3 sm:pr-6">
+          <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+            <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
+              <div className="w-full min-w-0 md:min-w-[14rem] md:flex-[2] md:basis-[min(100%,22rem)]">
+                <label
+                  className="block text-xs font-medium text-slate-600"
+                  htmlFor="staff-filter-search"
+                >
+                  Name or role
+                </label>
+                <input
+                  id="staff-filter-search"
+                  type="search"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search…"
+                  autoComplete="off"
+                  className="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                />
+              </div>
+              <div className="w-full shrink-0 sm:w-44">
+                <label
+                  className="block text-xs font-medium text-slate-600"
+                  htmlFor="staff-filter-status"
+                >
+                  Status
+                </label>
+                <select
+                  id="staff-filter-status"
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+                  className="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                >
+                  <option value="all">All</option>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </div>
+              <div className="w-full shrink-0 sm:w-44">
+                <label
+                  className="block text-xs font-medium text-slate-600"
+                  htmlFor="staff-filter-employment"
+                >
+                  Employment type
+                </label>
+                <select
+                  id="staff-filter-employment"
+                  value={employmentTypeFilter}
+                  onChange={(e) =>
+                    setEmploymentTypeFilter(e.target.value as 'all' | EmploymentKind)
+                  }
+                  className="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                >
+                  <option value="all">All</option>
+                  <option value="Employee">Employee</option>
+                  <option value="Contractor">Contractor</option>
+                </select>
+              </div>
+              <div className="w-full shrink-0 sm:w-44">
+                <label
+                  className="block text-xs font-medium text-slate-600"
+                  htmlFor="staff-filter-remuneration"
+                >
+                  Remuneration plan
+                </label>
+                <select
+                  id="staff-filter-remuneration"
+                  value={remunerationPlanFilter}
+                  onChange={(e) => setRemunerationPlanFilter(e.target.value)}
+                  className="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                >
+                  <option value="">All</option>
+                  <option value="__none__">— None —</option>
+                  {remunerationFilterOptions.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="w-full shrink-0 sm:w-44">
+                <label
+                  className="block text-xs font-medium text-slate-600"
+                  htmlFor="staff-filter-primary-role"
+                >
+                  Primary role
+                </label>
+                <select
+                  id="staff-filter-primary-role"
+                  value={primaryRoleFilter}
+                  onChange={(e) => setPrimaryRoleFilter(e.target.value)}
+                  className="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                >
+                  <option value="">All</option>
+                  {primaryRoleFilterOptions.map((role) => (
+                    <option key={role} value={role}>
+                      {role}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
 
-      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto px-4 pb-8 pt-4 sm:px-6 lg:py-6 lg:pl-8 lg:pr-8">
-        <div className="mx-auto w-full max-w-7xl">
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden pb-4 pl-2 pr-4 pt-2 sm:pl-3 sm:pr-6 lg:flex-row lg:pt-3">
+        <aside className="flex min-h-0 w-full shrink-0 flex-col border-b border-slate-200 bg-white px-3 py-3 shadow-sm max-h-[min(46vh,26rem)] sm:px-4 lg:max-h-none lg:h-full lg:w-72 lg:overflow-hidden lg:rounded-lg lg:border lg:border-slate-200 lg:py-4 lg:shadow-sm">
+          <button
+            type="button"
+            onClick={() => void createMut.mutateAsync()}
+            disabled={createMut.isPending}
+            className="w-full shrink-0 rounded-md bg-violet-600 px-3 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
+          >
+            {createMut.isPending ? 'Creating…' : 'Create new staff'}
+          </button>
+          {createMut.isError ? (
+            <p className="mt-2 shrink-0 text-xs text-red-600">
+              {createMut.error instanceof Error
+                ? createMut.error.message
+                : String(createMut.error)}
+            </p>
+          ) : null}
+          <div className="mt-3 min-h-0 flex-1 overflow-y-auto pr-0.5">
+            {filteredStaff.length === 0 ? (
+              <p className="text-sm text-slate-500">No staff match your filters.</p>
+            ) : (
+              <div className="space-y-4 pb-2">
+                <div>
+                  <h3 className="sticky top-0 z-10 bg-white pb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Stylists
+                  </h3>
+                  <ul className="mt-1 space-y-1">
+                    {staffNavGroups.stylists.map((s) => (
+                      <StaffNavRow
+                        key={s.id}
+                        member={s}
+                        active={s.id === selectedId}
+                        onSelect={setSelectedId}
+                      />
+                    ))}
+                  </ul>
+                </div>
+                <div>
+                  <h3 className="sticky top-0 z-10 bg-white pb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Assistants
+                  </h3>
+                  <ul className="mt-1 space-y-1">
+                    {staffNavGroups.assistants.map((s) => (
+                      <StaffNavRow
+                        key={s.id}
+                        member={s}
+                        active={s.id === selectedId}
+                        onSelect={setSelectedId}
+                      />
+                    ))}
+                  </ul>
+                </div>
+                <div>
+                  <h3 className="sticky top-0 z-10 bg-white pb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Admin
+                  </h3>
+                  <ul className="mt-1 space-y-1">
+                    {staffNavGroups.other.map((s) => (
+                      <StaffNavRow
+                        key={s.id}
+                        member={s}
+                        active={s.id === selectedId}
+                        onSelect={setSelectedId}
+                      />
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            )}
+          </div>
+        </aside>
+
+        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto pb-6 pt-0">
           <PageHeader
             title="Staff Configuration"
             description="Manage the staff records used by imports, commission calculations, and reporting."
           />
-
-          <div className="mb-6 rounded-lg border border-slate-200 bg-slate-50/90 px-4 py-3 text-sm text-slate-800 shadow-sm">
-            <p className="font-semibold text-slate-900">How it works</p>
-            <ol className="mt-2 list-decimal space-y-1 pl-5 text-slate-700">
-              <li>Staff records are matched during sales import and downstream calculations.</li>
-              <li>Each staff member can be assigned a remuneration plan.</li>
-              <li>Access Management links logins to these staff records.</li>
-              <li>Changes here affect how staff appear in commission and reporting flows.</li>
-            </ol>
-          </div>
 
           <div
             className="mb-6 w-full rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950"
@@ -337,14 +558,31 @@ export function StaffConfigurationPage() {
               <p className="text-sm text-slate-600">Select a staff member, or create one.</p>
             ) : (
               <form
-                className="space-y-5"
+                className="space-y-6"
                 onSubmit={(e) => {
                   e.preventDefault()
                   void saveMut.mutateAsync()
                 }}
               >
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="sm:col-span-2">
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700" htmlFor="display_name">
+                      Kitomba Display Name
+                    </label>
+                    <input
+                      id="display_name"
+                      value={draft.display_name}
+                      onChange={(e) =>
+                        setDraft((d) => (d ? { ...d, display_name: e.target.value } : d))
+                      }
+                      className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                    />
+                    <p className="mt-1 text-xs text-slate-500">
+                      Kitomba / sales-import identifier: matched to display names on imported sale
+                      lines.
+                    </p>
+                  </div>
+                  <div>
                     <label className="block text-sm font-medium text-slate-700" htmlFor="full_name">
                       Full name <span className="text-red-600">*</span>
                     </label>
@@ -357,21 +595,13 @@ export function StaffConfigurationPage() {
                       required
                       className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
                     />
-                    <p className="mt-1 text-xs text-slate-500">Unique in the system; used for matching.</p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Required. Use the person’s legal or payroll name for records.
+                    </p>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700" htmlFor="display_name">
-                      Display name
-                    </label>
-                    <input
-                      id="display_name"
-                      value={draft.display_name}
-                      onChange={(e) =>
-                        setDraft((d) => (d ? { ...d, display_name: e.target.value } : d))
-                      }
-                      className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
-                    />
-                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                   <div>
                     <label className="block text-sm font-medium text-slate-700" htmlFor="primary_role">
                       Primary role
@@ -385,7 +615,7 @@ export function StaffConfigurationPage() {
                       className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
                     />
                   </div>
-                  <div className="sm:col-span-2">
+                  <div>
                     <label className="block text-sm font-medium text-slate-700" htmlFor="secondary_roles">
                       Secondary roles
                     </label>
@@ -395,10 +625,13 @@ export function StaffConfigurationPage() {
                       onChange={(e) =>
                         setDraft((d) => (d ? { ...d, secondary_roles: e.target.value } : d))
                       }
-                      placeholder="e.g. comma-separated"
+                      placeholder="e.g. Head of Training"
                       className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
                     />
                   </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
                   <div>
                     <label className="block text-sm font-medium text-slate-700" htmlFor="remuneration_plan">
                       Remuneration plan
@@ -423,40 +656,6 @@ export function StaffConfigurationPage() {
                     </p>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700" htmlFor="employment_type">
-                      Employment type
-                    </label>
-                    <input
-                      id="employment_type"
-                      value={draft.employment_type}
-                      onChange={(e) =>
-                        setDraft((d) => (d ? { ...d, employment_type: e.target.value } : d))
-                      }
-                      className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700" htmlFor="fte">
-                      FTE
-                    </label>
-                    <input
-                      id="fte"
-                      type="number"
-                      min={0}
-                      max={1}
-                      step={0.01}
-                      value={draft.fteInput}
-                      onChange={(e) => {
-                        const v = e.target.value
-                        setDraft((d) =>
-                          d ? { ...d, fteInput: v, fte: parseFte(v) } : d,
-                        )
-                      }}
-                      className="mt-1 w-full max-w-[12rem] rounded-md border border-slate-300 px-3 py-2 text-sm tabular-nums shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
-                    />
-                    <p className="mt-1 text-xs text-slate-500">Full-time equivalent (0–1).</p>
-                  </div>
-                  <div>
                     <label className="block text-sm font-medium text-slate-700" htmlFor="emp_start">
                       Start date
                     </label>
@@ -469,7 +668,7 @@ export function StaffConfigurationPage() {
                           d ? { ...d, employment_start_date: e.target.value } : d,
                         )
                       }
-                      className="mt-1 w-full max-w-[12rem] rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                      className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
                     />
                   </div>
                   <div>
@@ -485,24 +684,170 @@ export function StaffConfigurationPage() {
                           d ? { ...d, employment_end_date: e.target.value } : d,
                         )
                       }
-                      className="mt-1 w-full max-w-[12rem] rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                      className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
                     />
                   </div>
-                  <div className="flex items-center gap-2 sm:col-span-2">
-                    <input
-                      id="is_active"
-                      type="checkbox"
-                      checked={draft.is_active}
-                      onChange={(e) =>
-                        setDraft((d) => (d ? { ...d, is_active: e.target.checked } : d))
-                      }
-                      className="rounded border-slate-300"
-                    />
-                    <label htmlFor="is_active" className="text-sm font-medium text-slate-800">
-                      Active
+                  <div>
+                    <label
+                      className="block text-sm font-medium text-slate-700"
+                      htmlFor="employment_status"
+                    >
+                      Employment status
                     </label>
+                    <select
+                      id="employment_status"
+                      value={draft.is_active ? 'active' : 'inactive'}
+                      onChange={(e) =>
+                        setDraft((d) =>
+                          d ? { ...d, is_active: e.target.value === 'active' } : d,
+                        )
+                      }
+                      className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                    >
+                      <option value="active">Active</option>
+                      <option value="inactive">Inactive</option>
+                    </select>
                   </div>
                 </div>
+
+                <div className="max-w-md">
+                  <label className="block text-sm font-medium text-slate-700" htmlFor="employment_type">
+                    Employment type
+                  </label>
+                  <select
+                    id="employment_type"
+                    value={draft.employment_type}
+                    onChange={(e) =>
+                      setDraft((d) =>
+                        d
+                          ? {
+                              ...d,
+                              employment_type: e.target.value as EmploymentKind,
+                            }
+                          : d,
+                      )
+                    }
+                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                  >
+                    <option value="Employee">Employee</option>
+                    <option value="Contractor">Contractor</option>
+                  </select>
+                </div>
+
+                {draft.employment_type === 'Contractor' ? (
+                  <div className="space-y-3 border-t border-slate-100 pt-4">
+                    <h3 className="text-base font-semibold text-slate-900">
+                      Contractor Information
+                    </h3>
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700" htmlFor="c_company">
+                          Company Name
+                        </label>
+                        <input
+                          id="c_company"
+                          type="text"
+                          value={draft.contractor_company_name}
+                          onChange={(e) =>
+                            setDraft((d) =>
+                              d ? { ...d, contractor_company_name: e.target.value } : d,
+                            )
+                          }
+                          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                        />
+                        <p className="mt-1 text-xs text-slate-500">
+                          Enter name of company, or employee name if a sole trader
+                        </p>
+                      </div>
+                      <div className="flex flex-col gap-2 pt-0.5">
+                        <span className="text-sm font-medium text-slate-700">GST Registered</span>
+                        <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-slate-800">
+                          <input
+                            id="c_gst"
+                            type="checkbox"
+                            checked={draft.contractor_gst_registered}
+                            onChange={(e) =>
+                              setDraft((d) =>
+                                d
+                                  ? { ...d, contractor_gst_registered: e.target.checked }
+                                  : d,
+                              )
+                            }
+                            className="rounded border-slate-300"
+                          />
+                          Registered for GST
+                        </label>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700" htmlFor="c_ird">
+                          IRD Number
+                        </label>
+                        <input
+                          id="c_ird"
+                          type="text"
+                          value={draft.contractor_ird_number}
+                          onChange={(e) =>
+                            setDraft((d) =>
+                              d ? { ...d, contractor_ird_number: e.target.value } : d,
+                            )
+                          }
+                          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                        />
+                        <p className="mt-1 text-xs text-slate-500">
+                          Company IRD number for GST purposes, or employee name if sole trader
+                        </p>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700" htmlFor="c_street">
+                          Street Address
+                        </label>
+                        <input
+                          id="c_street"
+                          type="text"
+                          value={draft.contractor_street_address}
+                          onChange={(e) =>
+                            setDraft((d) =>
+                              d ? { ...d, contractor_street_address: e.target.value } : d,
+                            )
+                          }
+                          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700" htmlFor="c_suburb">
+                          Suburb
+                        </label>
+                        <input
+                          id="c_suburb"
+                          type="text"
+                          value={draft.contractor_suburb}
+                          onChange={(e) =>
+                            setDraft((d) =>
+                              d ? { ...d, contractor_suburb: e.target.value } : d,
+                            )
+                          }
+                          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700" htmlFor="c_city">
+                          City & Postcode
+                        </label>
+                        <input
+                          id="c_city"
+                          type="text"
+                          value={draft.contractor_city_postcode}
+                          onChange={(e) =>
+                            setDraft((d) =>
+                              d ? { ...d, contractor_city_postcode: e.target.value } : d,
+                            )
+                          }
+                          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
 
                 <div>
                   <label className="block text-sm font-medium text-slate-700" htmlFor="notes">
@@ -554,6 +899,7 @@ export function StaffConfigurationPage() {
               </form>
             )}
           </section>
+        </div>
         </div>
       </div>
     </div>
