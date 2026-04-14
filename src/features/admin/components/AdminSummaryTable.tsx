@@ -1,5 +1,15 @@
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 
+import { AdminSummaryColumnPicker } from '@/features/admin/components/AdminSummaryColumnPicker'
+import { useAdminPayrollSummaryColumnPreferences } from '@/features/admin/hooks/useAdminPayrollSummaryColumnPreferences'
+import {
+  adminMiddleRowKeysForPreferences,
+  isAdminMiddleColumnId,
+  reorderAdminMiddleColumnOrder,
+  visibleAdminMiddleColumns,
+  type AdminMiddleColumnId,
+} from '@/features/admin/adminWeeklySummaryTableColumns'
 import { TableScrollArea } from '@/components/ui/TableScrollArea'
 import type { AdminPayrollSummaryRow } from '@/features/admin/types'
 import { isEmptyish, formatScalarText } from '@/lib/cellValue'
@@ -12,33 +22,6 @@ import {
 
 type AdminSummaryTableProps = {
   rows: AdminPayrollSummaryRow[]
-}
-
-/** Business-facing columns; omits user_id, staff_member_id, access_role, internal derived_* ids. */
-function orderedVisibleKeys(sample: AdminPayrollSummaryRow): string[] {
-  const keySet = new Set(Object.keys(sample))
-  const out: string[] = []
-  const pushIf = (k: string) => {
-    if (keySet.has(k)) out.push(k)
-  }
-  pushIf('pay_week_end')
-  pushIf('pay_date')
-  if (keySet.has('location_name')) {
-    out.push('location_name')
-  } else {
-    pushIf('location_id')
-  }
-  pushIf('derived_staff_paid_display_name')
-  pushIf('staff_full_name')
-  pushIf('total_sales_ex_gst')
-  pushIf('total_actual_commission')
-  pushIf('total_assistant_commission')
-  pushIf('row_count')
-  pushIf('payable_line_count')
-  pushIf('expected_no_commission_line_count')
-  pushIf('unconfigured_paid_staff_line_count')
-  pushIf('has_unconfigured_paid_staff_rows')
-  return out
 }
 
 const thBase =
@@ -60,9 +43,12 @@ function Cell({ rowKey, value }: { rowKey: string; value: unknown }) {
   }
   if (
     rowKey === 'row_count' ||
+    rowKey === 'line_count' ||
     rowKey === 'unconfigured_paid_staff_line_count' ||
     rowKey === 'payable_line_count' ||
-    rowKey === 'expected_no_commission_line_count'
+    rowKey === 'expected_no_commission_line_count' ||
+    rowKey === 'zero_value_line_count' ||
+    rowKey === 'review_line_count'
   ) {
     const n = typeof value === 'number' ? value : Number(value)
     return <span className="tabular-nums">{Number.isNaN(n) ? '—' : String(n)}</span>
@@ -109,90 +95,169 @@ function stableAdminSummaryRowKey(row: AdminPayrollSummaryRow, index: number): s
   return `${week}-${loc}-${uid}-${index}`
 }
 
+const DND_TYPE = 'application/x-admin-payroll-middle-column'
+
 export function AdminSummaryTable({ rows }: AdminSummaryTableProps) {
-  const keys = orderedVisibleKeys(rows[0])
+  const { prefs, setPrefs, reset } = useAdminPayrollSummaryColumnPreferences()
+  const [draggingId, setDraggingId] = useState<AdminMiddleColumnId | null>(null)
+  const [dropTargetId, setDropTargetId] = useState<AdminMiddleColumnId | null>(
+    null,
+  )
+
+  const sample = rows[0]
+
+  const keys = useMemo(
+    () => (sample ? adminMiddleRowKeysForPreferences(sample, prefs) : []),
+    [sample, prefs],
+  )
+
+  const visibleMiddle = useMemo(
+    () => (sample ? visibleAdminMiddleColumns(sample, prefs) : []),
+    [sample, prefs],
+  )
 
   if (!rows.length) {
     return null
   }
 
+  function onDragStart(e: React.DragEvent, id: AdminMiddleColumnId) {
+    e.dataTransfer.setData(DND_TYPE, id)
+    e.dataTransfer.setData('text/plain', id)
+    e.dataTransfer.effectAllowed = 'move'
+    setDraggingId(id)
+    setDropTargetId(null)
+  }
+
+  function onDragOverCol(e: React.DragEvent, id: AdminMiddleColumnId) {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    if (draggingId && draggingId !== id) setDropTargetId(id)
+  }
+
+  function onDropOnCol(e: React.DragEvent, targetId: AdminMiddleColumnId) {
+    e.preventDefault()
+    const raw =
+      e.dataTransfer.getData(DND_TYPE) || e.dataTransfer.getData('text/plain')
+    const fromId = isAdminMiddleColumnId(raw) ? raw : null
+    setDraggingId(null)
+    setDropTargetId(null)
+    if (fromId == null || fromId === targetId) return
+    setPrefs((prev) => ({
+      ...prev,
+      order: reorderAdminMiddleColumnOrder(prev.order, fromId, targetId),
+    }))
+  }
+
+  function onDragEnd() {
+    setDraggingId(null)
+    setDropTargetId(null)
+  }
+
   return (
-    <TableScrollArea testId="admin-summary-table">
-      <table className="min-w-[760px] w-full border-collapse text-left text-sm">
-        <thead className="sticky top-0 z-20 bg-slate-50 shadow-[0_1px_0_0_rgb(226_232_240)]">
-          <tr>
-            <th
-              scope="col"
-              className={`${thBase} sticky left-0 z-30 min-w-[8.5rem] bg-slate-50`}
-            >
-              Week
-            </th>
-            <th scope="col" className={thBase}>
-              Pay week start
-            </th>
-            {keys.map((k) => (
-              <th key={k} scope="col" className={thBase}>
-                {tableColumnTitle(k)}
-              </th>
-            ))}
-            <th scope="col" className={`${thBase} min-w-[5.5rem]`}>
-              Detail
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, idx) => {
-            const weekRaw = row.pay_week_start
-            const weekStart =
-              weekRaw != null && String(weekRaw).trim() !== ''
-                ? String(weekRaw).trim()
-                : ''
-            const rowKey = stableAdminSummaryRowKey(row, idx)
-            return (
-              <tr
-                key={rowKey}
-                className="group border-b border-slate-100 odd:bg-white even:bg-slate-50/90 hover:bg-violet-50/60"
+    <div className="space-y-2">
+      <div className="flex justify-end">
+        <AdminSummaryColumnPicker prefs={prefs} onChange={setPrefs} onReset={reset} />
+      </div>
+      <TableScrollArea testId="admin-summary-table">
+        <table className="min-w-[760px] w-full border-collapse text-left text-sm">
+          <thead className="sticky top-0 z-20 bg-slate-50 shadow-[0_1px_0_0_rgb(226_232_240)]">
+            <tr>
+              <th
+                scope="col"
+                className={`${thBase} sticky left-0 z-30 min-w-[8.5rem] bg-slate-50`}
               >
-                <td
-                  className={`${tdBase} sticky left-0 z-10 min-w-[8.5rem] border-slate-100 font-medium ${
-                    idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/90'
-                  } group-hover:bg-violet-50/60`}
+                Week
+              </th>
+              <th scope="col" className={thBase}>
+                Pay week start
+              </th>
+              {visibleMiddle.map(({ id, rowKey: k }) => {
+                const isDragging = draggingId === id
+                const isDropTarget =
+                  dropTargetId === id && draggingId != null && draggingId !== id
+                return (
+                  <th
+                    key={`${id}-${k}`}
+                    scope="col"
+                    draggable
+                    onDragStart={(e) => onDragStart(e, id)}
+                    onDragOver={(e) => onDragOverCol(e, id)}
+                    onDrop={(e) => onDropOnCol(e, id)}
+                    onDragEnd={onDragEnd}
+                    title="Drag to reorder column"
+                    className={`${thBase} cursor-grab select-none active:cursor-grabbing ${
+                      isDragging ? 'opacity-50' : ''
+                    } ${
+                      isDropTarget
+                        ? 'bg-violet-100/90 ring-1 ring-inset ring-violet-300'
+                        : ''
+                    }`}
+                    aria-grabbed={isDragging}
+                  >
+                    {tableColumnTitle(k)}
+                  </th>
+                )
+              })}
+              <th scope="col" className={`${thBase} min-w-[5.5rem]`}>
+                Detail
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, idx) => {
+              const weekRaw = row.pay_week_start
+              const weekStart =
+                weekRaw != null && String(weekRaw).trim() !== ''
+                  ? String(weekRaw).trim()
+                  : ''
+              const rowKey = stableAdminSummaryRowKey(row, idx)
+              return (
+                <tr
+                  key={rowKey}
+                  className="group border-b border-slate-100 odd:bg-white even:bg-slate-50/90 hover:bg-violet-50/60"
                 >
-                  {weekStart ? (
-                    <Cell rowKey="pay_week_start" value={row.pay_week_start} />
-                  ) : (
-                    <span className="text-slate-400">—</span>
-                  )}
-                </td>
-                <td className={tdBase}>
-                  {weekStart ? (
-                    <span>{formatShortDate(row.pay_week_start)}</span>
-                  ) : (
-                    <span className="text-slate-400">—</span>
-                  )}
-                </td>
-                {keys.map((k) => (
-                  <td key={k} className={tdBase}>
-                    <Cell rowKey={k} value={row[k]} />
+                  <td
+                    className={`${tdBase} sticky left-0 z-10 min-w-[8.5rem] border-slate-100 font-medium ${
+                      idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/90'
+                    } group-hover:bg-violet-50/60`}
+                  >
+                    {weekStart ? (
+                      <Cell rowKey="pay_week_start" value={row.pay_week_start} />
+                    ) : (
+                      <span className="text-slate-400">—</span>
+                    )}
                   </td>
-                ))}
-                <td className={`${tdBase} min-w-[5.5rem]`}>
-                  {weekStart ? (
-                    <Link
-                      to={`/app/admin/payroll/${encodeURIComponent(weekStart)}`}
-                      className="font-medium text-violet-700 hover:text-violet-900"
-                    >
-                      View lines
-                    </Link>
-                  ) : (
-                    <span className="text-slate-400">—</span>
-                  )}
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-    </TableScrollArea>
+                  <td className={tdBase}>
+                    {weekStart ? (
+                      <span>{formatShortDate(row.pay_week_start)}</span>
+                    ) : (
+                      <span className="text-slate-400">—</span>
+                    )}
+                  </td>
+                  {keys.map((k) => (
+                    <td key={k} className={tdBase}>
+                      <Cell rowKey={k} value={row[k]} />
+                    </td>
+                  ))}
+                  <td className={`${tdBase} min-w-[5.5rem]`}>
+                    {weekStart ? (
+                      <Link
+                        to={`/app/admin/payroll/${encodeURIComponent(weekStart)}`}
+                        className="font-medium text-violet-700 hover:text-violet-900"
+                        data-testid="admin-summary-view-lines"
+                      >
+                        View lines
+                      </Link>
+                    ) : (
+                      <span className="text-slate-400">—</span>
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </TableScrollArea>
+    </div>
   )
 }

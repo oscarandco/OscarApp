@@ -39,7 +39,7 @@ export function SummaryFiltersBar({
   const showWeekBeginning =
     weekBeginningOptions != null &&
     onWeekBeginningFilter != null &&
-    variant === 'stylist'
+    (variant === 'stylist' || variant === 'admin')
 
   return (
     <div

@@ -127,8 +127,12 @@ export async function rpcUpdateAccessMapping(args: {
   accessRole: string
   isActive: boolean
 }): Promise<void> {
+  const pMappingId = String(args.mappingId ?? '').trim()
+  if (pMappingId === '') {
+    throw new Error('update_access_mapping: p_mapping_id is required')
+  }
   const { error } = await requireSupabaseClient().rpc('update_access_mapping', {
-    p_mapping_id: args.mappingId,
+    p_mapping_id: pMappingId,
     p_staff_member_id: args.staffMemberId,
     p_access_role: args.accessRole,
     p_is_active: args.isActive,

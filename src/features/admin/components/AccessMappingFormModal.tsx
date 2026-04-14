@@ -4,7 +4,8 @@ import {
   ACCESS_ROLE_OPTIONS,
   accessRoleDisplayLabel,
   normalizeAccessRoleForForm,
-  roleRequiresStaffMember,
+  roleShowsStaffMemberField,
+  staffMemberRequiredForRole,
   type AdminAccessMappingRow,
   type AuthUserSearchRow,
   type StaffMemberSearchRow,
@@ -55,16 +56,17 @@ export function AccessMappingFormModal({
   const [accessRole, setAccessRole] = useState('stylist')
   const [isActive, setIsActive] = useState(true)
 
-  const authQ = useAuthUserSearch(debouncedAuth, open && mode === 'create')
-  const staffQ = useStaffMemberSearch(debouncedStaff, open)
-
   const safeRole = normalizeAccessRoleForForm(accessRole)
-  const needsStaff = roleRequiresStaffMember(safeRole)
+  const showStaffField = roleShowsStaffMemberField(safeRole)
+  const strictStaff = staffMemberRequiredForRole(safeRole)
+
+  const authQ = useAuthUserSearch(debouncedAuth, open && mode === 'create')
+  const staffQ = useStaffMemberSearch(debouncedStaff, open && showStaffField)
 
   function handleAccessRoleChange(nextRaw: string) {
     setAccessRole(nextRaw)
     const next = normalizeAccessRoleForForm(nextRaw)
-    if (!roleRequiresStaffMember(next)) {
+    if (next === 'admin') {
       setPickedStaff(null)
       setStaffSearch('')
     }
@@ -90,7 +92,9 @@ export function AccessMappingFormModal({
       })
       const r = normalizeAccessRoleForForm(initial.access_role)
       setAccessRole(r)
-      if (roleRequiresStaffMember(r) && initial.staff_member_id) {
+      if (r === 'admin') {
+        setPickedStaff(null)
+      } else if (initial.staff_member_id) {
         setPickedStaff({
           staff_member_id: initial.staff_member_id,
           display_name: initial.staff_display_name,
@@ -110,13 +114,13 @@ export function AccessMappingFormModal({
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
     const role = normalizeAccessRoleForForm(accessRole)
-    const staffMemberId = roleRequiresStaffMember(role)
-      ? (pickedStaff?.staff_member_id ?? null)
-      : null
+    const staffMemberId =
+      role === 'admin' ? null : (pickedStaff?.staff_member_id ?? null)
+
+    if (staffMemberRequiredForRole(role) && !staffMemberId) return
 
     if (mode === 'create') {
       if (!pickedUser) return
-      if (roleRequiresStaffMember(role) && !staffMemberId) return
       await createMut.mutateAsync({
         userId: pickedUser.user_id,
         staffMemberId,
@@ -127,7 +131,6 @@ export function AccessMappingFormModal({
       return
     }
     if (!initial) return
-    if (roleRequiresStaffMember(role) && !staffMemberId) return
     await updateMut.mutateAsync({
       mappingId: initial.mapping_id,
       staffMemberId,
@@ -141,7 +144,7 @@ export function AccessMappingFormModal({
     pending ||
     !safeRole ||
     (mode === 'create' && !pickedUser) ||
-    (needsStaff && !pickedStaff?.staff_member_id)
+    (strictStaff && !pickedStaff?.staff_member_id)
 
   if (!open) return null
   if (mode === 'edit' && !initial) return null
@@ -162,8 +165,8 @@ export function AccessMappingFormModal({
         </h2>
         <p className="mt-1 text-sm text-slate-600">
           {mode === 'create'
-            ? 'Choose the account, role, and (for Stylist, Assistant, or Manager) the staff member.'
-            : 'Update role and access. Stylist, Assistant, and Manager need a linked staff member.'}
+            ? 'Choose the account and role. Stylist and Assistant need a staff member; Manager can optionally link one; Admin does not use staff linking.'
+            : 'Update role and access. Stylist and Assistant require a staff member; Manager is optional; Admin clears staff linking.'}
         </p>
 
         <form className="mt-6 space-y-5" onSubmit={(e) => void onSubmit(e)}>
@@ -257,20 +260,25 @@ export function AccessMappingFormModal({
               ))}
               {accessRole &&
               !ACCESS_ROLE_OPTIONS.some((o) => o.value === accessRole) ? (
-                <option value={accessRole}>
+                <option
+                  key={`access-role-legacy-${accessRole}`}
+                  value={accessRole}
+                >
                   {accessRoleDisplayLabel(accessRole)}
                 </option>
               ) : null}
             </select>
           </div>
 
-          {needsStaff ? (
+          {showStaffField ? (
             <div>
               <label className="block text-sm font-medium text-slate-700">
                 Staff member
               </label>
               <p className="mt-0.5 text-xs text-slate-500">
-                Required for Stylist, Assistant, and Manager.
+                {strictStaff
+                  ? 'Required for Stylist and Assistant.'
+                  : 'Optional for Manager — leave empty if this login is not tied to one staff profile.'}
               </p>
               <input
                 type="search"

@@ -8,6 +8,8 @@ export type AdminAccessMappingRow = {
   staff_member_id: string | null
   staff_display_name: string | null
   staff_full_name: string | null
+  /** display_name if set, else full_name (from get_admin_access_mappings). */
+  staff_name: string | null
   access_role: string | null
   is_active: boolean
   created_at: string | null
@@ -37,8 +39,14 @@ export const ACCESS_ROLE_OPTIONS = [
 
 export type StoredAccessRole = (typeof ACCESS_ROLE_OPTIONS)[number]['value']
 
-/** Stylist, Assistant, and Manager require a staff link; Admin does not. */
-export function roleRequiresStaffMember(role: string | null | undefined): boolean {
+/** Stylist and Assistant must have a linked staff member before save. */
+export function staffMemberRequiredForRole(role: string | null | undefined): boolean {
+  const r = (role ?? '').trim().toLowerCase()
+  return r === 'stylist' || r === 'assistant'
+}
+
+/** Show staff picker for Stylist, Assistant, and Manager; hide for Admin. */
+export function roleShowsStaffMemberField(role: string | null | undefined): boolean {
   const r = (role ?? '').trim().toLowerCase()
   return r === 'stylist' || r === 'assistant' || r === 'manager'
 }

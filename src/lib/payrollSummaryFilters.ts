@@ -40,9 +40,9 @@ export function uniqueLocationOptions<
 /** Distinct pay week starts (newest first) with display labels for filter dropdowns. */
 export type PayWeekStartFilterOption = { value: string; label: string }
 
-export function uniquePayWeekStartOptions(
-  rows: WeeklyCommissionSummaryRow[],
-): PayWeekStartFilterOption[] {
+export function uniquePayWeekStartOptions<
+  T extends { pay_week_start?: string | null },
+>(rows: T[]): PayWeekStartFilterOption[] {
   const seen = new Set<string>()
   for (const r of rows) {
     const w = r.pay_week_start
@@ -144,9 +144,13 @@ export function filterStylistSummaryRows(
 
 export function filterAdminSummaryRows(
   rows: AdminPayrollSummaryRow[],
-  opts: { locationId: string; search: string },
+  opts: { locationId: string; search: string; payWeekStart?: string },
 ): AdminPayrollSummaryRow[] {
   let out = rows
+  if (opts.payWeekStart?.trim()) {
+    const wk = opts.payWeekStart.trim()
+    out = out.filter((r) => String(r.pay_week_start ?? '').trim() === wk)
+  }
   if (opts.locationId) {
     out = out.filter((r) => String(r.location_id ?? '') === opts.locationId)
   }

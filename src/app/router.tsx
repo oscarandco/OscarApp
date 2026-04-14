@@ -8,6 +8,8 @@ import { AdminHomePage } from '@/features/admin/pages/AdminHomePage'
 import { AdminImportsPage } from '@/features/admin/pages/AdminImportsPage'
 import { AdminPayrollDetailPage } from '@/features/admin/pages/AdminPayrollDetailPage'
 import { AdminPayrollSummaryPage } from '@/features/admin/pages/AdminPayrollSummaryPage'
+import { RemunerationConfigurationPage } from '@/features/admin/pages/RemunerationConfigurationPage'
+import { StaffConfigurationPage } from '@/features/admin/pages/StaffConfigurationPage'
 import { LoginPage } from '@/features/auth/pages/LoginPage'
 import { PayrollSummaryPage } from '@/features/payroll/pages/PayrollSummaryPage'
 import { PayrollWeekDetailPage } from '@/features/payroll/pages/PayrollWeekDetailPage'
@@ -33,6 +35,14 @@ export function AppRouter() {
             />
             <Route path="admin/imports" element={<AdminImportsPage />} />
             <Route path="admin/payroll" element={<AdminPayrollSummaryPage />} />
+            <Route
+              path="admin/remuneration"
+              element={<RemunerationConfigurationPage />}
+            />
+            <Route
+              path="admin/staff"
+              element={<StaffConfigurationPage />}
+            />
             <Route
               path="admin/payroll/:payWeekStart"
               element={<AdminPayrollDetailPage />}

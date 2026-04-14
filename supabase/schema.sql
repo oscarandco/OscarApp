@@ -359,7 +359,7 @@ CREATE TABLE IF NOT EXISTS "public"."remuneration_plan_rates" (
     "rate" numeric(8,6) NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    CONSTRAINT "remuneration_plan_rates_category_valid" CHECK (("commission_category" = ANY (ARRAY['retail_product'::"text", 'professional_product'::"text", 'service'::"text", 'voucher'::"text", 'toner_with_other_service'::"text", 'extensions_product'::"text", 'extensions_service'::"text", 'creative_director'::"text"]))),
+    CONSTRAINT "remuneration_plan_rates_category_valid" CHECK (("commission_category" = ANY (ARRAY['retail_product'::"text", 'professional_product'::"text", 'service'::"text", 'toner_with_other_service'::"text", 'extensions_product'::"text", 'extensions_service'::"text"]))),
     CONSTRAINT "remuneration_plan_rates_rate_valid" CHECK ((("rate" >= (0)::numeric) AND ("rate" <= (1)::numeric)))
 );
 
@@ -431,8 +431,12 @@ CREATE TABLE IF NOT EXISTS "public"."staff_members" (
     "full_name" "text" NOT NULL,
     "display_name" "text",
     "primary_role" "text",
+    "secondary_roles" "text",
     "remuneration_plan" "text",
     "employment_type" "text",
+    "fte" numeric(5, 4),
+    "employment_start_date" "date",
+    "employment_end_date" "date",
     "is_active" boolean DEFAULT true NOT NULL,
     "first_seen_sale_date" "date",
     "last_seen_sale_date" "date",
@@ -675,7 +679,6 @@ CREATE OR REPLACE VIEW "public"."v_sales_transactions_powerbi_parity" AS
                     WHEN ("upper"(COALESCE("b"."product_header", ''::"text")) ~~ '%TONER WITH OTHER SERVICE%'::"text") THEN 'toner_with_other_service'::"text"
                     WHEN ("upper"(COALESCE("b"."product_header", ''::"text")) ~~ '%BONDED EXTENSIONS%'::"text") THEN 'extensions_product'::"text"
                     WHEN ("upper"(COALESCE("b"."product_header", ''::"text")) ~~ '%EXTENSIONS BONDS%'::"text") THEN 'extensions_product'::"text"
-                    WHEN ("upper"(COALESCE("b"."product_header", ''::"text")) ~~ '%CREATIVE DIRECTOR%'::"text") THEN 'creative_director'::"text"
                     WHEN ("upper"(COALESCE("b"."product_header", ''::"text")) ~~ '%EXTENSIONS (TAPES%'::"text") THEN 'extensions_service'::"text"
                     WHEN (
                     CASE
@@ -2064,12 +2067,10 @@ CREATE TABLE IF NOT EXISTS "public"."stg_dimremunerationplans" (
     "retail_product" "text",
     "professional_product" "text",
     "service" "text",
-    "voucher" "text",
     "can_use_assistants" "text",
     "toner_with_other_service" "text",
     "extensions_product" "text",
     "extensions_service" "text",
-    "creative_director" "text",
     "conditions" "text",
     "staff_on_this_plan" "text"
 );
@@ -2877,6 +2878,18 @@ ALTER TABLE "public"."staff_member_user_access" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "public"."staff_members" ENABLE ROW LEVEL SECURITY;
 
 
+CREATE POLICY "staff_members_elevated_select" ON "public"."staff_members" FOR SELECT TO "authenticated" USING (( SELECT "private"."user_has_elevated_access"() AS "user_has_elevated_access"));
+
+
+CREATE POLICY "staff_members_elevated_insert" ON "public"."staff_members" FOR INSERT TO "authenticated" WITH CHECK (( SELECT "private"."user_has_elevated_access"() AS "user_has_elevated_access"));
+
+
+CREATE POLICY "staff_members_elevated_update" ON "public"."staff_members" FOR UPDATE TO "authenticated" USING (( SELECT "private"."user_has_elevated_access"() AS "user_has_elevated_access")) WITH CHECK (( SELECT "private"."user_has_elevated_access"() AS "user_has_elevated_access"));
+
+
+CREATE TRIGGER "trg_staff_members_updated_at" BEFORE UPDATE ON "public"."staff_members" FOR EACH ROW EXECUTE FUNCTION "public"."set_updated_at"();
+
+
 CREATE POLICY "user_can_read_own_access" ON "public"."staff_member_user_access" FOR SELECT TO "authenticated" USING (("user_id" = "auth"."uid"()));
 
 
@@ -3123,6 +3136,9 @@ GRANT ALL ON TABLE "public"."remuneration_plans" TO "service_role";
 
 GRANT ALL ON TABLE "public"."sales_transactions" TO "service_role";
 
+
+
+GRANT SELECT, INSERT, UPDATE ON TABLE "public"."staff_members" TO "authenticated";
 
 
 GRANT ALL ON TABLE "public"."staff_members" TO "service_role";

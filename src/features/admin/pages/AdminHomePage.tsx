@@ -67,6 +67,30 @@ export function AdminHomePage() {
         </li>
         <li>
           <Link
+            to="/app/admin/remuneration"
+            className="block rounded-lg border border-slate-200 bg-white px-4 py-4 text-left shadow-sm transition hover:border-violet-200 hover:bg-violet-50/50"
+          >
+            <span className="font-semibold text-slate-900">
+              Remuneration configuration
+            </span>
+            <p className="mt-1 text-sm text-slate-600">
+              Manage commission plans, category rates, and assistant rules used in payroll.
+            </p>
+          </Link>
+        </li>
+        <li>
+          <Link
+            to="/app/admin/staff"
+            className="block rounded-lg border border-slate-200 bg-white px-4 py-4 text-left shadow-sm transition hover:border-violet-200 hover:bg-violet-50/50"
+          >
+            <span className="font-semibold text-slate-900">Staff configuration</span>
+            <p className="mt-1 text-sm text-slate-600">
+              Maintain staff master data, roles, and remuneration assignment.
+            </p>
+          </Link>
+        </li>
+        <li>
+          <Link
             to="/app/payroll"
             className="block rounded-lg border border-slate-200 bg-white px-4 py-4 text-left shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
           >

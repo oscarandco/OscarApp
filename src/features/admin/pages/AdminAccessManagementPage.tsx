@@ -158,9 +158,12 @@ export function AdminAccessManagementPage() {
                   </td>
                   <td className="px-3 py-2 text-slate-800">
                     <span className="font-medium">
-                      {row.staff_display_name ?? '—'}
+                      {row.staff_display_name ?? row.staff_full_name ?? '—'}
                     </span>
-                    {row.staff_full_name ? (
+                    {row.staff_display_name &&
+                    row.staff_full_name &&
+                    row.staff_display_name.trim() !==
+                      row.staff_full_name.trim() ? (
                       <span className="ml-1 text-slate-500">
                         ({row.staff_full_name})
                       </span>
