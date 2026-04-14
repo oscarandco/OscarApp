@@ -29,6 +29,6 @@ export type NormalizedAccess = {
   isAdmin: boolean
   /** True when access_role is manager (or optional is_manager flag). */
   isManager: boolean
-  /** True for admin, legacy superadmin, or manager (elevated app areas); `self` is not elevated. */
+  /** True for admin, legacy superadmin, or manager (elevated app areas); stylist/assistant are not elevated. */
   hasElevatedAccess: boolean
 }

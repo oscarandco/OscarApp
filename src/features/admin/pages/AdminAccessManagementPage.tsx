@@ -1,6 +1,8 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 
 import { AccessMappingFormModal } from '@/features/admin/components/AccessMappingFormModal'
+import { InviteUserModal } from '@/features/admin/components/InviteUserModal'
 import { useAdminAccessMappings } from '@/features/admin/hooks/useAdminAccessMappings'
 import { useUpdateAccessMappingMutation } from '@/features/admin/hooks/useAccessMappingMutations'
 import {
@@ -16,8 +18,10 @@ import { LoadingState } from '@/components/feedback/LoadingState'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { formatShortDate } from '@/lib/formatters'
 import { queryErrorDetail } from '@/lib/queryError'
+import { invokeInviteAccessUser } from '@/lib/inviteAccessUser'
 
 export function AdminAccessManagementPage() {
+  const queryClient = useQueryClient()
   const { normalized } = useAccessProfile()
   const canManage = canManageStaffAccessMappings(normalized)
 
@@ -26,6 +30,7 @@ export function AdminAccessManagementPage() {
 
   const [modalMode, setModalMode] = useState<'create' | 'edit' | null>(null)
   const [editRow, setEditRow] = useState<AdminAccessMappingRow | null>(null)
+  const [inviteOpen, setInviteOpen] = useState(false)
 
   function openCreate() {
     setEditRow(null)
@@ -92,14 +97,24 @@ export function AdminAccessManagementPage() {
           {rows.length} mapping{rows.length === 1 ? '' : 's'}
         </p>
         {canManage ? (
-          <button
-            type="button"
-            onClick={openCreate}
-            className="rounded-md bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700"
-            data-testid="admin-access-create"
-          >
-            Create mapping
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setInviteOpen(true)}
+              className="rounded-md border border-violet-200 bg-white px-4 py-2 text-sm font-medium text-violet-800 hover:bg-violet-50"
+              data-testid="admin-access-invite-user"
+            >
+              Invite user
+            </button>
+            <button
+              type="button"
+              onClick={openCreate}
+              className="rounded-md bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700"
+              data-testid="admin-access-create"
+            >
+              Create mapping
+            </button>
+          </div>
         ) : null}
       </div>
 
@@ -201,6 +216,17 @@ export function AdminAccessManagementPage() {
           mode={modalMode}
           initial={modalMode === 'edit' ? editRow : null}
           onClose={closeModal}
+        />
+      ) : null}
+
+      {canManage ? (
+        <InviteUserModal
+          open={inviteOpen}
+          onClose={() => setInviteOpen(false)}
+          onInvite={async (email) => {
+            await invokeInviteAccessUser(email)
+            void queryClient.invalidateQueries({ queryKey: ['search-auth-users'] })
+          }}
         />
       ) : null}
     </div>

@@ -1,6 +1,9 @@
 import type { AdminPayrollSummaryRow } from '@/features/admin/types'
 import { locationLabelFromRow, type LocationFilterOption } from '@/lib/locationDisplay'
-import type { WeeklyCommissionSummaryRow } from '@/features/payroll/types'
+import type {
+  WeeklyCommissionLineRow,
+  WeeklyCommissionSummaryRow,
+} from '@/features/payroll/types'
 import { formatDateLabel } from '@/lib/formatters'
 import { comparePayWeekStartDesc } from '@/lib/payrollSorting'
 
@@ -50,6 +53,70 @@ export function uniquePayWeekStartOptions(
     value,
     label: formatDateLabel(value),
   }))
+}
+
+/** Client-side filters for weekly line detail (single week; no pay-week filter). */
+export function filterLineRows(
+  rows: WeeklyCommissionLineRow[],
+  opts: { locationId: string; search: string },
+): WeeklyCommissionLineRow[] {
+  let out = rows
+  if (opts.locationId) {
+    out = out.filter((r) => String(r.location_id ?? '') === opts.locationId)
+  }
+  const q = opts.search.trim().toLowerCase()
+  if (q) {
+    out = out.filter((r) => {
+      const parts = [
+        r.derived_staff_paid_display_name,
+        r.customer_name,
+        r.invoice,
+        r.product_service_name,
+      ]
+      return parts.some(
+        (p) =>
+          p != null &&
+          String(p).trim() !== '' &&
+          String(p).toLowerCase().includes(q),
+      )
+    })
+  }
+  return out
+}
+
+/**
+ * Narrow weekly line rows to those matching one summary row (week + location + staff).
+ * Prefer `derived_staff_paid_id` when present on both sides; otherwise match display/full name.
+ */
+export function filterCommissionLinesForSummaryRow(
+  summary: WeeklyCommissionSummaryRow,
+  lines: WeeklyCommissionLineRow[],
+): WeeklyCommissionLineRow[] {
+  const pw = String(summary.pay_week_start ?? '').trim()
+  const loc = String(summary.location_id ?? '').trim()
+  const staffId = String(summary.derived_staff_paid_id ?? '').trim()
+
+  const disp = String(summary.derived_staff_paid_display_name ?? '').trim().toLowerCase()
+  const full = String(summary.derived_staff_paid_full_name ?? '').trim().toLowerCase()
+
+  return lines.filter((l) => {
+    if (String(l.pay_week_start ?? '').trim() !== pw) return false
+    if (String(l.location_id ?? '').trim() !== loc) return false
+
+    if (staffId !== '') {
+      const lid = String(l.derived_staff_paid_id ?? '').trim()
+      if (lid === staffId) return true
+    }
+
+    const ld = String(l.derived_staff_paid_display_name ?? '').trim().toLowerCase()
+    const lf = String(l.derived_staff_paid_full_name ?? '').trim().toLowerCase()
+
+    if (disp !== '' && (ld === disp || lf === disp)) return true
+    if (full !== '' && (ld === full || lf === full)) return true
+
+    if (staffId === '' && disp === '' && full === '') return true
+    return false
+  })
 }
 
 export function filterStylistSummaryRows(

@@ -44,6 +44,7 @@ export interface WeeklyCommissionLineRow {
   id?: string | null
   invoice?: string | null
   sale_date?: string | null
+  sale_datetime?: string | null
   pay_week_start?: string | null
   pay_week_end?: string | null
   pay_date?: string | null
@@ -52,7 +53,12 @@ export interface WeeklyCommissionLineRow {
   quantity?: number | string | null
   price_ex_gst?: number | string | null
   derived_staff_paid_display_name?: string | null
+  derived_staff_paid_full_name?: string | null
+  derived_staff_paid_id?: string | null
+  /** Prefer API field from `v_stylist_commission_lines_weekly_final`. */
+  actual_commission_amt_ex_gst?: number | string | null
   actual_commission_amount?: number | string | null
+  assistant_commission_amt_ex_gst?: number | string | null
   assistant_commission_amount?: number | string | null
   payroll_status?: string | null
   stylist_visible_note?: string | null

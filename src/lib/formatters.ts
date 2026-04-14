@@ -12,6 +12,25 @@ export function formatNzd(value: unknown): string {
   return nzdFormatter.format(n)
 }
 
+/**
+ * Commission rate from payroll lines: DB uses a fractional multiplier (`price_ex_gst * rate`);
+ * |value| ≤ 1 is treated as a fraction (0.35 → 35%), otherwise as percentage points (35 → 35%).
+ */
+export function formatCommissionRatePercent(value: unknown): string {
+  if (value == null || value === '') return '—'
+  const raw =
+    typeof value === 'string' ? value.replace(/,/g, '').trim() : value
+  const n = typeof raw === 'number' ? raw : Number(raw)
+  if (Number.isNaN(n)) return String(value)
+  const pct = Math.abs(n) <= 1 ? n * 100 : n
+  return (
+    new Intl.NumberFormat(undefined, {
+      maximumFractionDigits: 4,
+      minimumFractionDigits: 0,
+    }).format(pct) + '%'
+  )
+}
+
 /** Display a date-only ISO string or timestamp in the user locale. */
 export function formatDateLabel(isoDate: string | null | undefined): string {
   if (!isoDate) return '—'

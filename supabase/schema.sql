@@ -92,6 +92,17 @@ $$;
 ALTER FUNCTION "private"."user_has_elevated_access"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."caller_can_manage_access_mappings"() RETURNS boolean
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public', 'auth', 'pg_temp'
+    AS $$
+  SELECT private.user_can_manage_access_mappings();
+$$;
+
+
+ALTER FUNCTION "public"."caller_can_manage_access_mappings"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."bulk_stage_sales_rows"("p_rows" "jsonb") RETURNS integer
     LANGUAGE "plpgsql"
     AS $$
@@ -156,11 +167,11 @@ CREATE TABLE IF NOT EXISTS "public"."staff_member_user_access" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "user_id" "uuid" NOT NULL,
     "staff_member_id" "uuid",
-    "access_role" "text" DEFAULT 'self'::"text" NOT NULL,
+    "access_role" "text" DEFAULT 'stylist'::"text" NOT NULL,
     "is_active" boolean DEFAULT true NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    CONSTRAINT "staff_member_user_access_role_check" CHECK (("access_role" = ANY (ARRAY['self'::"text", 'manager'::"text", 'admin'::"text"])))
+    CONSTRAINT "staff_member_user_access_role_check" CHECK (("access_role" = ANY (ARRAY['stylist'::"text", 'assistant'::"text", 'manager'::"text", 'admin'::"text"])))
 );
 
 
@@ -1485,7 +1496,7 @@ CREATE OR REPLACE VIEW "public"."v_stylist_commission_lines_weekly_final" AS
     "a"."access_role",
     "l"."location_name"
    FROM ("public"."v_admin_payroll_lines_weekly" "l"
-     JOIN "public"."staff_member_user_access" "a" ON ((("a"."is_active" = true) AND ((("a"."access_role" = 'self'::"text") AND ("a"."staff_member_id" = "l"."derived_staff_paid_id")) OR ("a"."access_role" = ANY (ARRAY['manager'::"text", 'admin'::"text"]))))))
+     JOIN "public"."staff_member_user_access" "a" ON ((("a"."is_active" = true) AND ((("a"."access_role" = ANY (ARRAY['stylist'::"text", 'assistant'::"text"])) AND ("a"."staff_member_id" = "l"."derived_staff_paid_id")) OR ("a"."access_role" = ANY (ARRAY['manager'::"text", 'admin'::"text"]))))))
   WHERE (("l"."derived_staff_paid_id" IS NOT NULL) AND (COALESCE("lower"(TRIM(BOTH FROM "l"."derived_staff_paid_display_name")), ''::"text") <> 'internal'::"text") AND (COALESCE("l"."calculation_alert", ''::"text") <> 'non_commission_unconfigured_paid_staff'::"text"));
 
 
@@ -1531,7 +1542,7 @@ CREATE OR REPLACE VIEW "public"."v_stylist_commission_summary_weekly_final" AS
     "a"."access_role",
     "w"."location_name"
    FROM ("public"."v_admin_payroll_summary_weekly" "w"
-     JOIN "public"."staff_member_user_access" "a" ON ((("a"."is_active" = true) AND ((("a"."access_role" = 'self'::"text") AND ("a"."staff_member_id" = "w"."derived_staff_paid_id")) OR ("a"."access_role" = ANY (ARRAY['manager'::"text", 'admin'::"text"]))))))
+     JOIN "public"."staff_member_user_access" "a" ON ((("a"."is_active" = true) AND ((("a"."access_role" = ANY (ARRAY['stylist'::"text", 'assistant'::"text"])) AND ("a"."staff_member_id" = "w"."derived_staff_paid_id")) OR ("a"."access_role" = ANY (ARRAY['manager'::"text", 'admin'::"text"]))))))
   WHERE (("w"."derived_staff_paid_id" IS NOT NULL) AND (COALESCE("lower"(TRIM(BOTH FROM "w"."derived_staff_paid_display_name")), ''::"text") <> 'internal'::"text") AND ("w"."has_unconfigured_paid_staff_rows" = false));
 
 
@@ -2540,7 +2551,7 @@ CREATE OR REPLACE VIEW "public"."v_stylist_commission_lines_access_scoped" AS
     "l"."stylist_visible_note",
     "a"."access_role"
    FROM ("public"."v_stylist_commission_lines_secure" "l"
-     JOIN "public"."staff_member_user_access" "a" ON ((("a"."is_active" = true) AND ((("a"."access_role" = 'self'::"text") AND ("a"."staff_member_id" = "l"."derived_staff_paid_id")) OR ("a"."access_role" = ANY (ARRAY['manager'::"text", 'admin'::"text"]))))));
+     JOIN "public"."staff_member_user_access" "a" ON ((("a"."is_active" = true) AND ((("a"."access_role" = ANY (ARRAY['stylist'::"text", 'assistant'::"text"])) AND ("a"."staff_member_id" = "l"."derived_staff_paid_id")) OR ("a"."access_role" = ANY (ARRAY['manager'::"text", 'admin'::"text"]))))));
 
 
 ALTER VIEW "public"."v_stylist_commission_lines_access_scoped" OWNER TO "postgres";
@@ -2639,7 +2650,7 @@ CREATE OR REPLACE VIEW "public"."v_stylist_commission_summary_access_scoped" AS
     "s"."total_assistant_commission_ex_gst",
     "a"."access_role"
    FROM ("public"."v_stylist_commission_summary_self_service" "s"
-     JOIN "public"."staff_member_user_access" "a" ON ((("a"."is_active" = true) AND ((("a"."access_role" = 'self'::"text") AND ("a"."staff_member_id" = "s"."derived_staff_paid_id")) OR ("a"."access_role" = ANY (ARRAY['manager'::"text", 'admin'::"text"]))))));
+     JOIN "public"."staff_member_user_access" "a" ON ((("a"."is_active" = true) AND ((("a"."access_role" = ANY (ARRAY['stylist'::"text", 'assistant'::"text"])) AND ("a"."staff_member_id" = "s"."derived_staff_paid_id")) OR ("a"."access_role" = ANY (ARRAY['manager'::"text", 'admin'::"text"]))))));
 
 
 ALTER VIEW "public"."v_stylist_commission_summary_access_scoped" OWNER TO "postgres";
@@ -3168,6 +3179,12 @@ GRANT ALL ON FUNCTION "public"."get_location_id_from_filename"("p_file_name" "te
 
 GRANT ALL ON FUNCTION "public"."get_my_access_profile"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."get_my_access_profile"() TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."caller_can_manage_access_mappings"() FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."caller_can_manage_access_mappings"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."caller_can_manage_access_mappings"() TO "service_role";
 
 
 

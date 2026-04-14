@@ -104,7 +104,7 @@ export async function rpcSearchAuthUsers(
 
 export async function rpcCreateAccessMapping(args: {
   userId: string
-  staffMemberId: string
+  staffMemberId: string | null
   accessRole: string
   isActive?: boolean
 }): Promise<string> {
@@ -123,7 +123,7 @@ export async function rpcCreateAccessMapping(args: {
 
 export async function rpcUpdateAccessMapping(args: {
   mappingId: string
-  staffMemberId: string
+  staffMemberId: string | null
   accessRole: string
   isActive: boolean
 }): Promise<void> {

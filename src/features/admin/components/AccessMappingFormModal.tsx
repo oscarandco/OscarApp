@@ -4,6 +4,7 @@ import {
   ACCESS_ROLE_OPTIONS,
   accessRoleDisplayLabel,
   normalizeAccessRoleForForm,
+  roleRequiresStaffMember,
   type AdminAccessMappingRow,
   type AuthUserSearchRow,
   type StaffMemberSearchRow,
@@ -51,11 +52,23 @@ export function AccessMappingFormModal({
   const [pickedStaff, setPickedStaff] = useState<StaffMemberSearchRow | null>(
     null,
   )
-  const [accessRole, setAccessRole] = useState('self')
+  const [accessRole, setAccessRole] = useState('stylist')
   const [isActive, setIsActive] = useState(true)
 
   const authQ = useAuthUserSearch(debouncedAuth, open && mode === 'create')
   const staffQ = useStaffMemberSearch(debouncedStaff, open)
+
+  const safeRole = normalizeAccessRoleForForm(accessRole)
+  const needsStaff = roleRequiresStaffMember(safeRole)
+
+  function handleAccessRoleChange(nextRaw: string) {
+    setAccessRole(nextRaw)
+    const next = normalizeAccessRoleForForm(nextRaw)
+    if (!roleRequiresStaffMember(next)) {
+      setPickedStaff(null)
+      setStaffSearch('')
+    }
+  }
 
   useEffect(() => {
     if (!open) return
@@ -66,7 +79,7 @@ export function AccessMappingFormModal({
       setStaffSearch('')
       setPickedUser(null)
       setPickedStaff(null)
-      setAccessRole('self')
+      setAccessRole('stylist')
       setIsActive(true)
     } else if (mode === 'edit' && initial) {
       setAuthSearch('')
@@ -75,12 +88,17 @@ export function AccessMappingFormModal({
         user_id: initial.user_id,
         email: initial.email,
       })
-      setPickedStaff({
-        staff_member_id: initial.staff_member_id,
-        display_name: initial.staff_display_name,
-        full_name: initial.staff_full_name,
-      })
-      setAccessRole(normalizeAccessRoleForForm(initial.access_role))
+      const r = normalizeAccessRoleForForm(initial.access_role)
+      setAccessRole(r)
+      if (roleRequiresStaffMember(r) && initial.staff_member_id) {
+        setPickedStaff({
+          staff_member_id: initial.staff_member_id,
+          display_name: initial.staff_display_name,
+          full_name: initial.staff_full_name,
+        })
+      } else {
+        setPickedStaff(null)
+      }
       setIsActive(initial.is_active)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reset mutation errors when dialog opens
@@ -91,28 +109,39 @@ export function AccessMappingFormModal({
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
+    const role = normalizeAccessRoleForForm(accessRole)
+    const staffMemberId = roleRequiresStaffMember(role)
+      ? (pickedStaff?.staff_member_id ?? null)
+      : null
+
     if (mode === 'create') {
-      if (!pickedUser || !pickedStaff) return
-      const safeRole = normalizeAccessRoleForForm(accessRole)
+      if (!pickedUser) return
+      if (roleRequiresStaffMember(role) && !staffMemberId) return
       await createMut.mutateAsync({
         userId: pickedUser.user_id,
-        staffMemberId: pickedStaff.staff_member_id,
-        accessRole: safeRole,
+        staffMemberId,
+        accessRole: role,
         isActive,
       })
       onClose()
       return
     }
-    if (!initial || !pickedStaff) return
-    const safeRole = normalizeAccessRoleForForm(accessRole)
+    if (!initial) return
+    if (roleRequiresStaffMember(role) && !staffMemberId) return
     await updateMut.mutateAsync({
       mappingId: initial.mapping_id,
-      staffMemberId: pickedStaff.staff_member_id,
-      accessRole: safeRole,
+      staffMemberId,
+      accessRole: role,
       isActive,
     })
     onClose()
   }
+
+  const submitDisabled =
+    pending ||
+    !safeRole ||
+    (mode === 'create' && !pickedUser) ||
+    (needsStaff && !pickedStaff?.staff_member_id)
 
   if (!open) return null
   if (mode === 'edit' && !initial) return null
@@ -133,15 +162,15 @@ export function AccessMappingFormModal({
         </h2>
         <p className="mt-1 text-sm text-slate-600">
           {mode === 'create'
-            ? 'Link a Supabase login to a staff member and role.'
-            : 'Update staff link, role, or active state.'}
+            ? 'Choose the account, role, and (for Stylist, Assistant, or Manager) the staff member.'
+            : 'Update role and access. Stylist, Assistant, and Manager need a linked staff member.'}
         </p>
 
         <form className="mt-6 space-y-5" onSubmit={(e) => void onSubmit(e)}>
           {mode === 'edit' && initial ? (
             <div className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-sm">
               <p>
-                <span className="font-medium text-slate-700">Email</span>
+                <span className="font-medium text-slate-700">Auth user</span>
                 <br />
                 <span className="font-mono text-slate-900">
                   {initial.email ?? '—'}
@@ -208,52 +237,6 @@ export function AccessMappingFormModal({
           ) : null}
 
           <div>
-            <label className="block text-sm font-medium text-slate-700">
-              Staff member
-            </label>
-            <input
-              type="search"
-              value={staffSearch}
-              onChange={(e) => setStaffSearch(e.target.value)}
-              className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
-              placeholder="Search display or full name…"
-              autoComplete="off"
-              data-testid="access-modal-staff-search"
-            />
-            {staffQ.isLoading ? (
-              <p className="mt-2 text-xs text-slate-500">Searching…</p>
-            ) : staffQ.isError ? (
-              <p className="mt-2 text-xs text-red-600">Could not search staff.</p>
-            ) : (
-              <ul
-                className="mt-2 max-h-36 overflow-y-auto rounded-md border border-slate-100"
-                data-testid="access-modal-staff-results"
-              >
-                {(staffQ.data ?? []).map((s) => (
-                  <li key={s.staff_member_id}>
-                    <button
-                      type="button"
-                      className={
-                        pickedStaff?.staff_member_id === s.staff_member_id
-                          ? 'w-full bg-violet-50 px-3 py-2 text-left text-sm text-violet-900'
-                          : 'w-full px-3 py-2 text-left text-sm text-slate-800 hover:bg-slate-50'
-                      }
-                      onClick={() => setPickedStaff(s)}
-                    >
-                      {staffLabel(s)}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {pickedStaff ? (
-              <p className="mt-2 text-xs text-slate-600">
-                Selected: {staffLabel(pickedStaff)}
-              </p>
-            ) : null}
-          </div>
-
-          <div>
             <label
               htmlFor="access-role"
               className="block text-sm font-medium text-slate-700"
@@ -263,7 +246,7 @@ export function AccessMappingFormModal({
             <select
               id="access-role"
               value={accessRole}
-              onChange={(e) => setAccessRole(e.target.value)}
+              onChange={(e) => handleAccessRoleChange(e.target.value)}
               className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
               data-testid="access-modal-role"
             >
@@ -280,6 +263,57 @@ export function AccessMappingFormModal({
               ) : null}
             </select>
           </div>
+
+          {needsStaff ? (
+            <div>
+              <label className="block text-sm font-medium text-slate-700">
+                Staff member
+              </label>
+              <p className="mt-0.5 text-xs text-slate-500">
+                Required for Stylist, Assistant, and Manager.
+              </p>
+              <input
+                type="search"
+                value={staffSearch}
+                onChange={(e) => setStaffSearch(e.target.value)}
+                className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+                placeholder="Search display or full name…"
+                autoComplete="off"
+                data-testid="access-modal-staff-search"
+              />
+              {staffQ.isLoading ? (
+                <p className="mt-2 text-xs text-slate-500">Searching…</p>
+              ) : staffQ.isError ? (
+                <p className="mt-2 text-xs text-red-600">Could not search staff.</p>
+              ) : (
+                <ul
+                  className="mt-2 max-h-36 overflow-y-auto rounded-md border border-slate-100"
+                  data-testid="access-modal-staff-results"
+                >
+                  {(staffQ.data ?? []).map((s) => (
+                    <li key={s.staff_member_id}>
+                      <button
+                        type="button"
+                        className={
+                          pickedStaff?.staff_member_id === s.staff_member_id
+                            ? 'w-full bg-violet-50 px-3 py-2 text-left text-sm text-violet-900'
+                            : 'w-full px-3 py-2 text-left text-sm text-slate-800 hover:bg-slate-50'
+                        }
+                        onClick={() => setPickedStaff(s)}
+                      >
+                        {staffLabel(s)}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {pickedStaff ? (
+                <p className="mt-2 text-xs text-slate-600">
+                  Selected: {staffLabel(pickedStaff)}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
 
           <label className="flex items-center gap-2 text-sm text-slate-800">
             <input
@@ -310,12 +344,7 @@ export function AccessMappingFormModal({
             </button>
             <button
               type="submit"
-              disabled={
-                pending ||
-                !pickedStaff ||
-                (mode === 'create' && !pickedUser) ||
-                !accessRole.trim()
-              }
+              disabled={submitDisabled}
               className="rounded-md bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
               data-testid="access-modal-submit"
             >

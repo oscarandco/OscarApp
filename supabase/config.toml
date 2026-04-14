@@ -4,3 +4,7 @@
 
 [functions.sales-daily-sheets-import]
 verify_jwt = false
+
+# Gateway JWT verify is incompatible with JWT signing keys; auth is enforced in-function.
+[functions.invite-access-user]
+verify_jwt = false

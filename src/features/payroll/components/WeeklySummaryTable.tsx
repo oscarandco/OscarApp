@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 
+import { PayrollLinesPreviewModal } from '@/features/payroll/components/PayrollLinesPreviewModal'
 import { WeeklySummaryColumnPicker } from '@/features/payroll/components/WeeklySummaryColumnPicker'
 import { usePayrollSummaryColumnPreferences } from '@/features/payroll/hooks/usePayrollSummaryColumnPreferences'
 import {
+  COLUMN_LABEL,
   isMiddleColumnId,
   middleRowKeysForPreferences,
   reorderMiddleColumnOrder,
@@ -13,12 +15,7 @@ import {
 import { TableScrollArea } from '@/components/ui/TableScrollArea'
 import type { WeeklyCommissionSummaryRow } from '@/features/payroll/types'
 import { isEmptyish, formatScalarText } from '@/lib/cellValue'
-import {
-  formatDateLabel,
-  formatNzd,
-  formatShortDate,
-  tableColumnTitle,
-} from '@/lib/formatters'
+import { formatDateLabel, formatNzd, formatShortDate } from '@/lib/formatters'
 
 type WeeklySummaryTableProps = {
   rows: WeeklyCommissionSummaryRow[]
@@ -104,6 +101,8 @@ const DND_TYPE = 'application/x-payroll-middle-column'
 
 export function WeeklySummaryTable({ rows }: WeeklySummaryTableProps) {
   const { prefs, setPrefs, reset } = usePayrollSummaryColumnPreferences()
+  const [previewSummaryRow, setPreviewSummaryRow] =
+    useState<WeeklyCommissionSummaryRow | null>(null)
   const [draggingId, setDraggingId] = useState<MiddleColumnId | null>(null)
   const [dropTargetId, setDropTargetId] = useState<MiddleColumnId | null>(null)
 
@@ -173,10 +172,10 @@ export function WeeklySummaryTable({ rows }: WeeklySummaryTableProps) {
                 scope="col"
                 className={`${thBase} sticky left-0 z-30 min-w-[8.5rem] bg-slate-50`}
               >
-                Week
+                Pay Week
               </th>
               <th scope="col" className={thBase}>
-                Pay week start
+                Start
               </th>
               {visibleMiddle.map(({ id, rowKey: k }) => {
                 const isDragging = draggingId === id
@@ -201,7 +200,7 @@ export function WeeklySummaryTable({ rows }: WeeklySummaryTableProps) {
                     }`}
                     aria-grabbed={isDragging}
                   >
-                    {tableColumnTitle(k)}
+                    {COLUMN_LABEL[id]}
                   </th>
                 )
               })}
@@ -253,7 +252,21 @@ export function WeeklySummaryTable({ rows }: WeeklySummaryTableProps) {
                     {weekStart ? (
                       <Link
                         to={`/app/payroll/${encodeURIComponent(weekStart)}`}
+                        onClick={(e) => {
+                          if (
+                            e.ctrlKey ||
+                            e.metaKey ||
+                            e.shiftKey ||
+                            e.altKey ||
+                            e.button !== 0
+                          ) {
+                            return
+                          }
+                          e.preventDefault()
+                          setPreviewSummaryRow(row)
+                        }}
                         className="font-medium text-violet-700 hover:text-violet-900"
+                        data-testid="weekly-summary-view-lines"
                       >
                         View lines
                       </Link>
@@ -267,6 +280,10 @@ export function WeeklySummaryTable({ rows }: WeeklySummaryTableProps) {
           </tbody>
         </table>
       </TableScrollArea>
+      <PayrollLinesPreviewModal
+        summaryRow={previewSummaryRow}
+        onClose={() => setPreviewSummaryRow(null)}
+      />
     </div>
   )
 }

@@ -2,11 +2,14 @@ import { Link } from 'react-router-dom'
 
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useAccessProfile } from '@/features/access/accessContext'
+import { accessRoleDisplayLabel } from '@/features/admin/types/accessManagement'
 
 export function AdminHomePage() {
   const { normalized } = useAccessProfile()
 
-  const roleLabel = normalized?.accessRole ? normalized.accessRole : '—'
+  const roleLabel = normalized?.accessRole
+    ? accessRoleDisplayLabel(normalized.accessRole)
+    : '—'
 
   return (
     <>

@@ -5,7 +5,7 @@ export type AdminAccessMappingRow = {
   mapping_id: string
   user_id: string
   email: string | null
-  staff_member_id: string
+  staff_member_id: string | null
   staff_display_name: string | null
   staff_full_name: string | null
   access_role: string | null
@@ -29,17 +29,27 @@ export type AuthUserSearchRow = {
 
 /** Stored values for `staff_member_user_access.access_role` (DB check constraint). */
 export const ACCESS_ROLE_OPTIONS = [
-  { value: 'self', label: 'Stylist' },
+  { value: 'stylist', label: 'Stylist' },
+  { value: 'assistant', label: 'Assistant' },
   { value: 'manager', label: 'Manager' },
   { value: 'admin', label: 'Admin' },
 ] as const
 
+export type StoredAccessRole = (typeof ACCESS_ROLE_OPTIONS)[number]['value']
+
+/** Stylist, Assistant, and Manager require a staff link; Admin does not. */
+export function roleRequiresStaffMember(role: string | null | undefined): boolean {
+  const r = (role ?? '').trim().toLowerCase()
+  return r === 'stylist' || r === 'assistant' || r === 'manager'
+}
+
 const DISPLAY_BY_STORED: Record<string, string> = {
-  self: 'Stylist',
+  stylist: 'Stylist',
+  assistant: 'Assistant',
   manager: 'Manager',
   admin: 'Admin',
-  /** Legacy stored values — label only; new rows use `self` / `manager` / `admin`. */
-  stylist: 'Stylist',
+  /** Legacy before `stylist` rename */
+  self: 'Stylist',
   superadmin: 'Admin',
 }
 
@@ -50,15 +60,20 @@ export function accessRoleDisplayLabel(stored: string | null | undefined): strin
   return DISPLAY_BY_STORED[k] ?? stored
 }
 
-const VALID_FORM_ROLES = new Set(['self', 'manager', 'admin'])
+const VALID_FORM_ROLES = new Set<string>([
+  'stylist',
+  'assistant',
+  'manager',
+  'admin',
+])
 
-/** Maps DB / legacy values to a form-safe role (only self | manager | admin). */
+/** Maps DB / legacy values to a form-safe role (stylist | assistant | manager | admin). */
 export function normalizeAccessRoleForForm(
   raw: string | null | undefined,
-): 'self' | 'manager' | 'admin' {
+): StoredAccessRole {
   const r = (raw ?? '').trim().toLowerCase()
-  if (r === 'stylist') return 'self'
+  if (r === 'self') return 'stylist'
   if (r === 'superadmin') return 'admin'
-  if (VALID_FORM_ROLES.has(r)) return r as 'self' | 'manager' | 'admin'
-  return 'self'
+  if (VALID_FORM_ROLES.has(r)) return r as StoredAccessRole
+  return 'stylist'
 }
