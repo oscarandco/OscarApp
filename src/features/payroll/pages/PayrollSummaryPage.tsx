@@ -8,6 +8,7 @@ import { SummaryFiltersBar } from '@/features/payroll/components/SummaryFiltersB
 import { WeeklySummaryStats } from '@/features/payroll/components/WeeklySummaryStats'
 import { WeeklySummaryTable } from '@/features/payroll/components/WeeklySummaryTable'
 import { useMyWeeklyCommissionSummary } from '@/features/payroll/hooks/useMyWeeklyCommissionSummary'
+import { aggregateWeeklyCommissionSummaryByStaffWeek } from '@/lib/aggregateWeeklyCommissionSummaryByStaffWeek'
 import {
   filterStylistSummaryRows,
   uniqueLocationOptions,
@@ -23,6 +24,7 @@ export function PayrollSummaryPage() {
   const [locationId, setLocationId] = useState('')
   const [payWeekStart, setPayWeekStart] = useState('')
   const [search, setSearch] = useState('')
+  const [splitByLocation, setSplitByLocation] = useState(false)
 
   const sourceRows = useMemo(() => {
     const raw = data ?? []
@@ -48,6 +50,11 @@ export function PayrollSummaryPage() {
       }),
     [sourceRows, locationId, search, payWeekStart],
   )
+
+  const displayRows = useMemo(() => {
+    if (splitByLocation) return filteredRows
+    return aggregateWeeklyCommissionSummaryByStaffWeek(filteredRows)
+  }, [filteredRows, splitByLocation])
 
   const hasFilters = Boolean(locationId || payWeekStart || search.trim())
   const showReset = hasFilters
@@ -88,7 +95,7 @@ export function PayrollSummaryPage() {
     <div data-testid="payroll-summary-page">
       <PageHeader
         title="Weekly payroll"
-        description="Pay weeks run Monday–Sunday. Commission is finalized after Sunday; pay is the following Thursday. Each row is one location split for that week — use filters to narrow the list."
+        description="Pay weeks run Monday–Sunday. Commission is finalized after Sunday; pay is the following Thursday. By default, rows combine commission across locations for each pay week; use Summary rows to split by site. Filter to narrow the list."
       />
       {sourceRows.length === 0 ? (
         <EmptyState
@@ -111,16 +118,18 @@ export function PayrollSummaryPage() {
             searchPlaceholder="Search by display name…"
             onReset={resetFilters}
             showReset={showReset}
+            splitByLocation={splitByLocation}
+            onSplitByLocationChange={setSplitByLocation}
           />
           {hasFilters ? (
             <p
               className="mb-4 text-xs text-slate-500"
               data-testid="payroll-summary-diagnostics"
             >
-              Showing {filteredRows.length} of {sourceRows.length} row
-              {sourceRows.length === 1 ? '' : 's'} (filters on).
+              Showing {displayRows.length} of {filteredRows.length} row
+              {filteredRows.length === 1 ? '' : 's'} (filters on).
             </p>
-          ) : (
+          ) : splitByLocation ? (
             <p
               className="mb-4 text-xs text-slate-500"
               data-testid="payroll-summary-diagnostics"
@@ -128,6 +137,15 @@ export function PayrollSummaryPage() {
               Showing {sourceRows.length} row
               {sourceRows.length === 1 ? '' : 's'} from the server (newest pay
               week first).
+            </p>
+          ) : (
+            <p
+              className="mb-4 text-xs text-slate-500"
+              data-testid="payroll-summary-diagnostics"
+            >
+              Showing {displayRows.length} row
+              {displayRows.length === 1 ? '' : 's'} (one per pay week, commission
+              combined across locations; newest week first).
             </p>
           )}
           {filteredRows.length === 0 ? (
@@ -138,9 +156,9 @@ export function PayrollSummaryPage() {
             />
           ) : (
             <>
-              <WeeklySummaryStats rows={filteredRows} />
+              <WeeklySummaryStats rows={displayRows} />
               <div className="mt-4">
-                <WeeklySummaryTable rows={filteredRows} />
+                <WeeklySummaryTable rows={displayRows} />
               </div>
             </>
           )}

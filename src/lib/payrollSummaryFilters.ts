@@ -1,4 +1,4 @@
-import type { AdminPayrollSummaryRow } from '@/features/admin/types'
+import type { AdminPayrollLineRow, AdminPayrollSummaryRow } from '@/features/admin/types'
 import { locationLabelFromRow, type LocationFilterOption } from '@/lib/locationDisplay'
 import type {
   WeeklyCommissionLineRow,
@@ -101,7 +101,9 @@ export function filterCommissionLinesForSummaryRow(
 
   return lines.filter((l) => {
     if (String(l.pay_week_start ?? '').trim() !== pw) return false
-    if (String(l.location_id ?? '').trim() !== loc) return false
+    if (loc !== '') {
+      if (String(l.location_id ?? '').trim() !== loc) return false
+    }
 
     if (staffId !== '') {
       const lid = String(l.derived_staff_paid_id ?? '').trim()
@@ -183,7 +185,13 @@ export function filterStylistSummaryRows(
 
 export function filterAdminSummaryRows(
   rows: AdminPayrollSummaryRow[],
-  opts: { locationId: string; search: string; payWeekStart?: string },
+  opts: {
+    locationId: string
+    search: string
+    payWeekStart?: string
+    /** When true, keep only rows flagged with unconfigured paid staff lines (admin summary). */
+    unconfiguredPaidStaffOnly?: boolean
+  },
 ): AdminPayrollSummaryRow[] {
   let out = rows
   if (opts.payWeekStart?.trim()) {
@@ -204,6 +212,41 @@ export function filterAdminSummaryRows(
           String(p).toLowerCase().includes(q),
       )
     })
+  }
+  if (opts.unconfiguredPaidStaffOnly) {
+    out = out.filter((r) => r.has_unconfigured_paid_staff_rows === true)
+  }
+  return out
+}
+
+/**
+ * Admin line detail: optional narrowing from summary "View lines" link query params.
+ * `locationId` omitted = all locations for that staff in the pay week.
+ */
+export function filterAdminPayrollLinesForDetailRoute(
+  lines: AdminPayrollLineRow[],
+  params: {
+    staffId: string | null
+    locationId: string | null
+    staffDisplay: string | null
+  },
+): AdminPayrollLineRow[] {
+  let out = lines
+  const sid = params.staffId?.trim() ?? ''
+  const lid = params.locationId?.trim() ?? ''
+  const disp = params.staffDisplay?.trim() ?? ''
+  if (sid !== '') {
+    out = out.filter((l) => String(l.derived_staff_paid_id ?? '').trim() === sid)
+  } else if (disp !== '') {
+    const d = disp.toLowerCase()
+    out = out.filter((l) => {
+      const a = String(l.derived_staff_paid_display_name ?? '').trim().toLowerCase()
+      const b = String(l.derived_staff_paid_full_name ?? '').trim().toLowerCase()
+      return a === d || b === d
+    })
+  }
+  if (lid !== '') {
+    out = out.filter((l) => String(l.location_id ?? '').trim() === lid)
   }
   return out
 }

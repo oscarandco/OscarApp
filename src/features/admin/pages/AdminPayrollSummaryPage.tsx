@@ -6,6 +6,7 @@ import { LoadingState } from '@/components/feedback/LoadingState'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { AdminSummaryTable } from '@/features/admin/components/AdminSummaryTable'
 import { useAdminPayrollSummaryWeekly } from '@/features/admin/hooks/useAdminPayrollSummaryWeekly'
+import { aggregateWeeklyCommissionSummaryByStaffWeek } from '@/lib/aggregateWeeklyCommissionSummaryByStaffWeek'
 import { SummaryFiltersBar } from '@/features/payroll/components/SummaryFiltersBar'
 import { WeeklySummaryStats } from '@/features/payroll/components/WeeklySummaryStats'
 import {
@@ -23,6 +24,8 @@ export function AdminPayrollSummaryPage() {
   const [locationId, setLocationId] = useState('')
   const [payWeekStart, setPayWeekStart] = useState('')
   const [search, setSearch] = useState('')
+  const [unconfiguredOnly, setUnconfiguredOnly] = useState(false)
+  const [splitByLocation, setSplitByLocation] = useState(false)
 
   const sourceRows = useMemo(() => {
     const raw = data ?? []
@@ -45,17 +48,26 @@ export function AdminPayrollSummaryPage() {
         locationId,
         search,
         payWeekStart,
+        unconfiguredPaidStaffOnly: unconfiguredOnly,
       }),
-    [sourceRows, locationId, search, payWeekStart],
+    [sourceRows, locationId, search, payWeekStart, unconfiguredOnly],
   )
 
-  const hasFilters = Boolean(locationId || payWeekStart || search.trim())
+  const displayRows = useMemo(() => {
+    if (splitByLocation) return filteredRows
+    return aggregateWeeklyCommissionSummaryByStaffWeek(filteredRows)
+  }, [filteredRows, splitByLocation])
+
+  const hasFilters = Boolean(
+    locationId || payWeekStart || search.trim() || unconfiguredOnly,
+  )
   const showReset = hasFilters
 
   function resetFilters() {
     setLocationId('')
     setPayWeekStart('')
     setSearch('')
+    setUnconfiguredOnly(false)
   }
 
   if (isLoading) {
@@ -88,7 +100,7 @@ export function AdminPayrollSummaryPage() {
     <div data-testid="admin-summary-page">
       <PageHeader
         title="Admin — weekly payroll"
-        description="All-scope weekly summary (server permission checks apply). Newest pay weeks first; each row is one split from the reporting function. Filter by location or staff name below."
+        description="All-scope weekly summary (server permission checks apply). By default, rows combine commission across locations for each staff member and pay week; use Summary rows to split by site. Filter by location or staff name below."
       />
       {sourceRows.length === 0 ? (
         <EmptyState
@@ -111,16 +123,18 @@ export function AdminPayrollSummaryPage() {
             searchPlaceholder="Search staff name…"
             onReset={resetFilters}
             showReset={showReset}
+            splitByLocation={splitByLocation}
+            onSplitByLocationChange={setSplitByLocation}
           />
           {hasFilters ? (
             <p
               className="mb-4 text-xs text-slate-500"
               data-testid="admin-summary-diagnostics"
             >
-              Showing {filteredRows.length} of {sourceRows.length} row
-              {sourceRows.length === 1 ? '' : 's'} (filters on).
+              Showing {displayRows.length} of {filteredRows.length} row
+              {filteredRows.length === 1 ? '' : 's'} (filters on).
             </p>
-          ) : (
+          ) : splitByLocation ? (
             <p
               className="mb-4 text-xs text-slate-500"
               data-testid="admin-summary-diagnostics"
@@ -128,6 +142,15 @@ export function AdminPayrollSummaryPage() {
               Showing {sourceRows.length} row
               {sourceRows.length === 1 ? '' : 's'} from the admin reporting
               function.
+            </p>
+          ) : (
+            <p
+              className="mb-4 text-xs text-slate-500"
+              data-testid="admin-summary-diagnostics"
+            >
+              Showing {displayRows.length} row
+              {displayRows.length === 1 ? '' : 's'} (one per staff member and pay
+              week, commission combined across locations).
             </p>
           )}
           {filteredRows.length === 0 ? (
@@ -138,9 +161,18 @@ export function AdminPayrollSummaryPage() {
             />
           ) : (
             <>
-              <WeeklySummaryStats rows={filteredRows} />
+              <WeeklySummaryStats
+                rows={displayRows}
+                unconfiguredFilterProps={{
+                  active: unconfiguredOnly,
+                  onToggle: () => setUnconfiguredOnly((v) => !v),
+                }}
+              />
               <div className="mt-4">
-                <AdminSummaryTable rows={filteredRows} />
+                <AdminSummaryTable
+                  rows={displayRows}
+                  splitByLocation={splitByLocation}
+                />
               </div>
             </>
           )}

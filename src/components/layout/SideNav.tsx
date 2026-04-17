@@ -43,6 +43,9 @@ export function SideNav() {
             <NavLink to="/app/admin/products" className={linkClass}>
               Product configuration
             </NavLink>
+            <NavLink to="/app/admin/quotes" className={linkClass}>
+              Quote Configuration
+            </NavLink>
             <NavLink to="/app/admin/access" className={linkClass}>
               Access management
             </NavLink>

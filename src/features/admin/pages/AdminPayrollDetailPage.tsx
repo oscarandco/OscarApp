@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router-dom'
 
 import { EmptyState } from '@/components/feedback/EmptyState'
 import { ErrorState } from '@/components/feedback/ErrorState'
@@ -9,10 +9,12 @@ import { AdminPayrollLineTable } from '@/features/admin/components/AdminPayrollL
 import { PayrollWeekHeader } from '@/features/payroll/components/PayrollWeekHeader'
 import { useAdminPayrollLinesWeekly } from '@/features/admin/hooks/useAdminPayrollLinesWeekly'
 import { formatShortDate } from '@/lib/formatters'
+import { filterAdminPayrollLinesForDetailRoute } from '@/lib/payrollSummaryFilters'
 import { queryErrorDetail } from '@/lib/queryError'
 import { parsePayWeekRouteParam } from '@/lib/routeParams'
 
 export function AdminPayrollDetailPage() {
+  const [searchParams] = useSearchParams()
   const { payWeekStart: rawParam } = useParams<{ payWeekStart: string }>()
   const parsed = parsePayWeekRouteParam(rawParam)
   const payWeekForQuery = parsed.kind === 'ok' ? parsed.value : undefined
@@ -20,14 +22,32 @@ export function AdminPayrollDetailPage() {
   const { data, isLoading, isError, error, refetch } =
     useAdminPayrollLinesWeekly(payWeekForQuery)
 
+  const lines = data ?? []
+
   const context = useMemo(() => {
-    const lines = data ?? []
     const first = lines[0]
     return {
       payWeekEnd: first?.pay_week_end ?? null,
       payDate: first?.pay_date ?? null,
     }
-  }, [data])
+  }, [lines])
+
+  const filteredLines = useMemo(() => {
+    const staffId = searchParams.get('staffId')
+    const locationId = searchParams.get('locationId')
+    const staffDisplay = searchParams.get('staffDisplay')
+    if (!staffId && !locationId && !staffDisplay) return lines
+    return filterAdminPayrollLinesForDetailRoute(lines, {
+      staffId,
+      locationId,
+      staffDisplay,
+    })
+  }, [lines, searchParams])
+
+  const detailFiltered =
+    (searchParams.get('staffId') ?? '') !== '' ||
+    (searchParams.get('locationId') ?? '') !== '' ||
+    (searchParams.get('staffDisplay') ?? '') !== ''
 
   if (parsed.kind === 'missing') {
     return (
@@ -91,7 +111,6 @@ export function AdminPayrollDetailPage() {
     )
   }
 
-  const lines = data ?? []
   const weekLabel = formatShortDate(payWeekStart)
 
   return (
@@ -112,10 +131,21 @@ export function AdminPayrollDetailPage() {
           className="mb-4 text-xs text-slate-500"
           data-testid="admin-detail-diagnostics"
         >
-          {lines.length} admin line{lines.length === 1 ? '' : 's'} for week
-          starting{' '}
-          <span className="font-mono text-slate-700">{payWeekStart}</span>
-          {weekLabel !== '—' ? ` (${weekLabel})` : null}.
+          {detailFiltered ? (
+            <>
+              {filteredLines.length} of {lines.length} admin line
+              {lines.length === 1 ? '' : 's'} for week starting{' '}
+              <span className="font-mono text-slate-700">{payWeekStart}</span>
+              {weekLabel !== '—' ? ` (${weekLabel})` : null} (narrowed from summary).
+            </>
+          ) : (
+            <>
+              {lines.length} admin line{lines.length === 1 ? '' : 's'} for week
+              starting{' '}
+              <span className="font-mono text-slate-700">{payWeekStart}</span>
+              {weekLabel !== '—' ? ` (${weekLabel})` : null}.
+            </>
+          )}
         </p>
       ) : null}
       {lines.length === 0 ? (
@@ -124,8 +154,14 @@ export function AdminPayrollDetailPage() {
           description={`The admin reporting function returned no lines for week starting ${payWeekStart}. Confirm the week and scope, or check backend logs if this is unexpected.`}
           testId="admin-detail-empty"
         />
+      ) : detailFiltered && filteredLines.length === 0 ? (
+        <EmptyState
+          title="No lines match this view"
+          description="No line items matched the staff or location from your summary link. Return to the weekly payroll table and try again."
+          testId="admin-detail-filtered-empty"
+        />
       ) : (
-        <AdminPayrollLineTable rows={lines} />
+        <AdminPayrollLineTable rows={filteredLines} />
       )}
     </div>
   )

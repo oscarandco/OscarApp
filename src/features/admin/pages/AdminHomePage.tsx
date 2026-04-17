@@ -115,6 +115,17 @@ export function AdminHomePage() {
         </li>
         <li>
           <Link
+            to="/app/admin/quotes"
+            className="block rounded-lg border border-slate-200 bg-white px-4 py-4 text-left shadow-sm transition hover:border-violet-200 hover:bg-violet-50/50"
+          >
+            <span className="font-semibold text-slate-900">Quote Configuration</span>
+            <p className="mt-1 text-sm text-slate-600">
+              Manage the Guest Quote page — global settings, sections, and services.
+            </p>
+          </Link>
+        </li>
+        <li>
+          <Link
             to="/app/payroll"
             className="block rounded-lg border border-slate-200 bg-white px-4 py-4 text-left shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
           >

@@ -15,6 +15,9 @@ type SummaryFiltersBarProps = {
   weekBeginningFilter?: string
   onWeekBeginningFilter?: (value: string) => void
   weekBeginningOptions?: { value: string; label: string }[]
+  /** Combined = one row per staff + week across sites; split = per location. */
+  splitByLocation?: boolean
+  onSplitByLocationChange?: (splitByLocation: boolean) => void
 }
 
 /**
@@ -33,6 +36,8 @@ export function SummaryFiltersBar({
   weekBeginningFilter = '',
   onWeekBeginningFilter,
   weekBeginningOptions,
+  splitByLocation = false,
+  onSplitByLocationChange,
 }: SummaryFiltersBarProps) {
   const testId =
     variant === 'admin' ? 'admin-summary-filters' : 'payroll-summary-filters'
@@ -108,6 +113,43 @@ export function SummaryFiltersBar({
           className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-2 text-sm text-slate-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
         />
       </div>
+      {onSplitByLocationChange != null ? (
+        <div className="shrink-0">
+          <span className="block text-xs font-medium text-slate-600">Summary rows</span>
+          <div
+            className="mt-1 inline-flex rounded-lg border border-slate-300 bg-slate-100/90 p-0.5 shadow-sm"
+            role="group"
+            aria-label="Combine or split summary rows by location"
+          >
+            <button
+              type="button"
+              className={`rounded-md px-3 py-2 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-1 ${
+                !splitByLocation
+                  ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200/90'
+                  : 'text-slate-600 hover:bg-white/70 hover:text-slate-900'
+              }`}
+              onClick={() => onSplitByLocationChange(false)}
+              data-testid={`${testId}-summary-rows-combined`}
+              aria-pressed={!splitByLocation}
+            >
+              Combined
+            </button>
+            <button
+              type="button"
+              className={`rounded-md px-3 py-2 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-1 ${
+                splitByLocation
+                  ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200/90'
+                  : 'text-slate-600 hover:bg-white/70 hover:text-slate-900'
+              }`}
+              onClick={() => onSplitByLocationChange(true)}
+              data-testid={`${testId}-summary-rows-split`}
+              aria-pressed={splitByLocation}
+            >
+              Split by location
+            </button>
+          </div>
+        </div>
+      ) : null}
       {showReset ? (
         <div className="flex sm:pb-0.5">
           <button

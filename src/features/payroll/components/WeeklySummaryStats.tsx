@@ -4,6 +4,11 @@ import { formatNzd } from '@/lib/formatters'
 type WeeklySummaryStatsProps = {
   /** Rows currently shown in the table (after client-side filters). */
   rows: WeeklyCommissionSummaryRow[]
+  /** Admin weekly payroll: toggle “unconfigured paid staff” table filter from the warning banner. */
+  unconfiguredFilterProps?: {
+    active: boolean
+    onToggle: () => void
+  }
 }
 
 function sumActualCommission(rows: WeeklyCommissionSummaryRow[]): number | null {
@@ -53,7 +58,10 @@ function anyUnconfigured(rows: WeeklyCommissionSummaryRow[]): boolean {
   return rows.some((r) => r.has_unconfigured_paid_staff_rows === true)
 }
 
-export function WeeklySummaryStats({ rows }: WeeklySummaryStatsProps) {
+export function WeeklySummaryStats({
+  rows,
+  unconfiguredFilterProps,
+}: WeeklySummaryStatsProps) {
   const weeks = distinctPayWeeks(rows)
   const commission = sumActualCommission(rows)
   const sales = sumSalesExGst(rows)
@@ -97,14 +105,31 @@ export function WeeklySummaryStats({ rows }: WeeklySummaryStatsProps) {
       </div>
       {warnUnconfigured ? (
         <div
-          className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950"
+          className="flex flex-wrap items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950"
           data-testid="weekly-summary-unconfigured-warning"
           role="status"
         >
-          <span className="font-medium">Unconfigured staff: </span>
-          At least one displayed row includes unconfigured paid staff lines. Confirm
-          setup in the salon admin process; excluded rows may not appear in stylist
-          views.
+          <p className="min-w-0 flex-1">
+            <span className="font-medium">Unconfigured staff: </span>
+            At least one displayed row includes unconfigured paid staff lines. Confirm
+            setup in the salon admin process; excluded rows may not appear in stylist
+            views.
+          </p>
+          {unconfiguredFilterProps ? (
+            <button
+              type="button"
+              className={`shrink-0 rounded-md border px-3 py-1 text-xs font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 ${
+                unconfiguredFilterProps.active
+                  ? 'border-amber-600 bg-amber-200 text-amber-950'
+                  : 'border-amber-300 bg-white text-amber-900 hover:bg-amber-100/90'
+              }`}
+              aria-pressed={unconfiguredFilterProps.active}
+              onClick={unconfiguredFilterProps.onToggle}
+              data-testid="weekly-summary-unconfigured-filter-toggle"
+            >
+              Filter
+            </button>
+          ) : null}
         </div>
       ) : null}
     </div>

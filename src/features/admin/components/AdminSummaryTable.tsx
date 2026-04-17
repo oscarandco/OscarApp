@@ -22,6 +22,30 @@ import {
 
 type AdminSummaryTableProps = {
   rows: AdminPayrollSummaryRow[]
+  /** When true, line detail links scope to one location; when false, staff across all locations. */
+  splitByLocation: boolean
+}
+
+function adminDetailLinesHref(
+  row: AdminPayrollSummaryRow,
+  weekStart: string,
+  splitByLocation: boolean,
+): string {
+  const base = `/app/admin/payroll/${encodeURIComponent(weekStart)}`
+  const q = new URLSearchParams()
+  const sid = String(row.derived_staff_paid_id ?? '').trim()
+  if (sid !== '') {
+    q.set('staffId', sid)
+  } else {
+    const dn = String(row.derived_staff_paid_display_name ?? '').trim()
+    if (dn !== '') q.set('staffDisplay', dn)
+  }
+  if (splitByLocation) {
+    const lid = String(row.location_id ?? '').trim()
+    if (lid !== '') q.set('locationId', lid)
+  }
+  const qs = q.toString()
+  return qs === '' ? base : `${base}?${qs}`
 }
 
 const thBase =
@@ -97,7 +121,10 @@ function stableAdminSummaryRowKey(row: AdminPayrollSummaryRow, index: number): s
 
 const DND_TYPE = 'application/x-admin-payroll-middle-column'
 
-export function AdminSummaryTable({ rows }: AdminSummaryTableProps) {
+export function AdminSummaryTable({
+  rows,
+  splitByLocation,
+}: AdminSummaryTableProps) {
   const { prefs, setPrefs, reset } = useAdminPayrollSummaryColumnPreferences()
   const [draggingId, setDraggingId] = useState<AdminMiddleColumnId | null>(null)
   const [dropTargetId, setDropTargetId] = useState<AdminMiddleColumnId | null>(
@@ -242,7 +269,7 @@ export function AdminSummaryTable({ rows }: AdminSummaryTableProps) {
                   <td className={`${tdBase} min-w-[5.5rem]`}>
                     {weekStart ? (
                       <Link
-                        to={`/app/admin/payroll/${encodeURIComponent(weekStart)}`}
+                        to={adminDetailLinesHref(row, weekStart, splitByLocation)}
                         className="font-medium text-violet-700 hover:text-violet-900"
                         data-testid="admin-summary-view-lines"
                       >
