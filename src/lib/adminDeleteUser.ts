@@ -1,3 +1,4 @@
+import { getSupabaseEnvOrNull } from '@/lib/env'
 import { requireSupabaseClient } from '@/lib/supabase'
 
 /**
@@ -46,6 +47,12 @@ type DeleteUserResponse = {
  * Function. The function enforces admin access and the safety checks
  * (no active staff mapping, not the caller themselves, user exists).
  *
+ * The Edge Function is configured with `verify_jwt = false` and performs
+ * its own bearer-token validation, so we MUST send the current session's
+ * `Authorization: Bearer <access_token>` explicitly. We bypass
+ * `supabase.functions.invoke()` and call the function with `fetch`
+ * directly to guarantee the header lands on the request exactly as set.
+ *
  * On any non-success outcome throws an {@link AdminDeleteUserError}
  * whose `.message` is the server-provided text and `.code` is the
  * structured error code — the UI should render `.message` in a toast
@@ -54,6 +61,10 @@ type DeleteUserResponse = {
  */
 export async function invokeAdminDeleteUser(userId: string): Promise<void> {
   const client = requireSupabaseClient()
+  const env = getSupabaseEnvOrNull()
+  if (!env) {
+    throw new AdminDeleteUserError('Supabase is not configured.', null)
+  }
   const trimmed = userId.trim()
 
   const { data: sessionData, error: sessionError } =
@@ -69,39 +80,49 @@ export async function invokeAdminDeleteUser(userId: string): Promise<void> {
     )
   }
 
-  const { data, error } = await client.functions.invoke<DeleteUserResponse>(
-    'admin-delete-user',
-    {
-      body: { user_id: trimmed },
-      headers: { Authorization: `Bearer ${accessToken}` },
-    },
-  )
+  const url = `${env.url.replace(/\/+$/, '')}/functions/v1/admin-delete-user`
 
-  if (error) {
-    // `functions.invoke` returns the response body on `data` for
-    // non-2xx as well, so prefer the structured message when present.
+  let response: Response
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        apikey: env.anonKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ user_id: trimmed }),
+    })
+  } catch (err) {
+    throw new AdminDeleteUserError(
+      err instanceof Error ? err.message : 'Network error deleting user',
+      null,
+    )
+  }
+
+  let payload: DeleteUserResponse | null = null
+  try {
+    payload = (await response.json()) as DeleteUserResponse
+  } catch {
+    payload = null
+  }
+
+  if (!response.ok) {
     const code =
-      (data && typeof data === 'object' && typeof data.code === 'string'
-        ? (data.code as AdminDeleteUserErrorCode)
-        : null) ?? null
+      payload && typeof payload.code === 'string'
+        ? (payload.code as AdminDeleteUserErrorCode)
+        : null
     const msg =
-      (data && typeof data === 'object' && typeof data.error === 'string'
-        ? data.error
-        : null) ??
-      (typeof error === 'object' &&
-      error !== null &&
-      'message' in error &&
-      typeof (error as { message: unknown }).message === 'string'
-        ? (error as { message: string }).message
-        : String(error))
+      (payload && typeof payload.error === 'string' ? payload.error : null) ??
+      `Delete user failed (HTTP ${response.status})`
     throw new AdminDeleteUserError(msg, code)
   }
 
-  if (data && typeof data === 'object' && data.error != null) {
+  if (payload && payload.error != null) {
     const code =
-      typeof data.code === 'string'
-        ? (data.code as AdminDeleteUserErrorCode)
+      typeof payload.code === 'string'
+        ? (payload.code as AdminDeleteUserErrorCode)
         : null
-    throw new AdminDeleteUserError(String(data.error), code)
+    throw new AdminDeleteUserError(String(payload.error), code)
   }
 }
