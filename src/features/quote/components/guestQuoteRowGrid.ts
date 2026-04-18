@@ -5,7 +5,7 @@
  *
  *   col 1 — leading actions      (20px normal / 44px for admin edit mode)
  *   col 2 — green price          (56px, fits "$1,000.00")
- *   col 3 — service label        (240px, fits longest live label)
+ *   col 3 — service label        (mobile: 136px, sm+: 240px)
  *   col 4 — control group        (remaining width)
  *
  * Admin users see a second per-row button (a red "E") alongside the
@@ -14,11 +14,17 @@
  *
  * Gap tightened to 6px to remove the wide dead-space between price,
  * label, and controls that earlier iterations suffered from.
+ *
+ * Mobile (< sm) narrows the label column from 240px to 136px so the
+ * controls (role radios, numeric input, etc.) have enough room on
+ * phone widths without the page overflowing horizontally. Every row
+ * on the page uses the same template string, so column starts stay
+ * identical within each breakpoint.
  */
 const ROW_GRID_CLASSES_DEFAULT =
-  'grid grid-cols-[20px_56px_240px_minmax(0,1fr)] items-center gap-x-1.5 py-1 text-[13px]'
+  'grid grid-cols-[20px_56px_136px_minmax(0,1fr)] sm:grid-cols-[20px_56px_240px_minmax(0,1fr)] items-center gap-x-1.5 py-1 text-[13px]'
 const ROW_GRID_CLASSES_ADMIN =
-  'grid grid-cols-[44px_56px_240px_minmax(0,1fr)] items-center gap-x-1.5 py-1 text-[13px]'
+  'grid grid-cols-[44px_56px_136px_minmax(0,1fr)] sm:grid-cols-[44px_56px_240px_minmax(0,1fr)] items-center gap-x-1.5 py-1 text-[13px]'
 
 /**
  * Returns the grid-template string for a Guest Quote worksheet row.

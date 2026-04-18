@@ -376,10 +376,101 @@ function SavedQuotesTable({
   // mutations (delete) / async navigations (requote) can't race.
   const anyActionPending = deletingId != null || requotingId != null
   return (
-    <div
-      className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm"
-      data-testid="saved-quotes-table"
-    >
+    <div data-testid="saved-quotes-table">
+      {/* Mobile: stacked card list (< md). Keeps the primary fields
+          (date, guest, total) on one line, with notes/lines/stylist
+          underneath, and puts Requote/Delete on their own row so the
+          touch targets don't get squeezed. Desktop table below is
+          hidden on the same breakpoint. */}
+      <ul
+        className="divide-y divide-slate-200 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm md:hidden"
+        data-testid="saved-quotes-card-list"
+      >
+        {rows.map((row) => (
+          <li key={row.id}>
+            <button
+              type="button"
+              onClick={(e) => {
+                const target = e.target as HTMLElement
+                if (target.closest('[data-row-action]')) return
+                open(row.id)
+              }}
+              className="w-full px-3 py-3 text-left transition hover:bg-slate-50 focus:outline-none focus-visible:bg-slate-50 focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-1"
+              aria-label={`Open quote for ${row.guestName?.trim() || 'guest without name'}`}
+              data-testid={`saved-quotes-card-${row.id}`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-slate-900">
+                    {row.guestName?.trim() || (
+                      <span className="italic text-slate-400">No name</span>
+                    )}
+                  </p>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    {formatDateTimeCompact(row.createdAt)}
+                  </p>
+                </div>
+                <p className="shrink-0 text-sm font-semibold tabular-nums text-slate-900">
+                  {formatNzd(row.grandTotal)}
+                </p>
+              </div>
+              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-slate-600">
+                <span className="tabular-nums">
+                  {row.lineCount} line{row.lineCount === 1 ? '' : 's'}
+                </span>
+                {elevated ? (
+                  <span className="truncate">
+                    Stylist: {row.stylistDisplayName}
+                  </span>
+                ) : null}
+              </div>
+              {row.notesPreview ? (
+                <p className="mt-1 line-clamp-2 break-words text-xs text-slate-600">
+                  {row.notesPreview}
+                </p>
+              ) : null}
+              <div
+                className="mt-2 flex items-center gap-2"
+                data-row-action
+              >
+                <button
+                  type="button"
+                  data-row-action
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    void onRequote(row)
+                  }}
+                  disabled={anyActionPending}
+                  aria-busy={requotingId === row.id}
+                  className="inline-flex items-center rounded-md border border-violet-200 bg-white px-2.5 py-1 text-xs font-medium text-violet-700 shadow-sm hover:bg-violet-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-1 disabled:cursor-wait disabled:opacity-50"
+                  data-testid={`saved-quotes-card-requote-${row.id}`}
+                >
+                  {requotingId === row.id ? 'Loading…' : 'Requote'}
+                </button>
+                <button
+                  type="button"
+                  data-row-action
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onDelete(row)
+                  }}
+                  disabled={anyActionPending}
+                  aria-busy={deletingId === row.id}
+                  className="inline-flex items-center rounded-md border border-rose-200 bg-white px-2.5 py-1 text-xs font-medium text-rose-700 shadow-sm hover:bg-rose-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-1 disabled:cursor-wait disabled:opacity-50"
+                  data-testid={`saved-quotes-card-delete-${row.id}`}
+                >
+                  {deletingId === row.id ? 'Deleting…' : 'Delete'}
+                </button>
+              </div>
+            </button>
+          </li>
+        ))}
+      </ul>
+
+      {/* Desktop: wide table retained as-is. Horizontal scroll is kept
+          as a last-resort for awkward widths between tablet and
+          desktop where 6 columns briefly don't fit. */}
+      <div className="hidden overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm md:block">
       <table className="min-w-full divide-y divide-slate-200">
         <thead className="bg-slate-50">
           <tr>
@@ -505,6 +596,7 @@ function SavedQuotesTable({
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   )
 }

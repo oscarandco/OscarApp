@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Outlet } from 'react-router-dom'
 
 import { SideNav } from '@/components/layout/SideNav'
@@ -11,10 +12,10 @@ import { TopNav } from '@/components/layout/TopNav'
  * scrolls. Inside it we lay out three regions:
  *
  *   1. `TopNav` — stays pinned at the top (first item in the column).
- *   2. `SideNav` — sits in the middle row and stretches the full
- *      remaining height. It can scroll internally via
- *      `overflow-y-auto` if the menu ever grows beyond the viewport
- *      (e.g. a long admin list), but never pushes the shell.
+ *      On small screens it also hosts a hamburger button that toggles
+ *      the mobile nav drawer.
+ *   2. `SideNav` — desktop: persistent left rail. Mobile: a slide-over
+ *      drawer driven by `mobileNavOpen`, closed by default.
  *   3. `<main>` — the ONLY vertical scroll container in the shell.
  *      Long pages (Guest Quote, Previous Quotes, admin tables) scroll
  *      inside here, so the top bar and side nav stay visible.
@@ -26,11 +27,19 @@ import { TopNav } from '@/components/layout/TopNav'
  * scroll already do so inside their own scroll containers.
  */
 export function AppShell() {
+  // Drawer only shows below `lg`; every drawer NavLink closes it via
+  // its own `onClick`, and the backdrop/Escape close explicitly, so we
+  // don't also need an effect listening on `location.pathname`.
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
+
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-slate-50">
-      <TopNav />
+      <TopNav onOpenMobileNav={() => setMobileNavOpen(true)} />
       <div className="flex min-h-0 flex-1">
-        <SideNav />
+        <SideNav
+          mobileOpen={mobileNavOpen}
+          onMobileClose={() => setMobileNavOpen(false)}
+        />
         <main
           className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-6 lg:px-8"
           data-testid="app-shell-main"
