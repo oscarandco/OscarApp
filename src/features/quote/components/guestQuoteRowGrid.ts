@@ -3,28 +3,24 @@
  * keeps the controls column perfectly aligned across all sections, so
  * the control start-x is identical on every row on the page.
  *
- *   col 1 — leading actions      (20px normal / 44px for admin edit mode)
- *   col 2 — green price          (56px, fits "$1,000.00")
- *   col 3 — service label        (mobile: 136px, sm+: 240px)
+ *   col 1 — leading actions      (mobile: 18px, sm+: 20px, admin: 40/44px)
+ *   col 2 — green price          (mobile: 48px, sm+: 56px)
+ *   col 3 — service label        (mobile: 120px, sm+: 240px)
  *   col 4 — control group        (remaining width)
  *
  * Admin users see a second per-row button (a red "E") alongside the
- * clear "x", so col 1 widens to fit both circles + a gap. Non-admin
- * users get the original 20px column and the layout is unchanged.
+ * clear "x", so col 1 widens to fit both circles + a gap.
  *
- * Gap tightened to 6px to remove the wide dead-space between price,
- * label, and controls that earlier iterations suffered from.
+ * Gap tightened to 4px on mobile and 6px on sm+ to free up as much
+ * horizontal room as possible for controls on phone widths.
  *
- * Mobile (< sm) narrows the label column from 240px to 136px so the
- * controls (role radios, numeric input, etc.) have enough room on
- * phone widths without the page overflowing horizontally. Every row
- * on the page uses the same template string, so column starts stay
- * identical within each breakpoint.
+ * Every row on the page uses the same template string, so column
+ * starts stay identical within each breakpoint — alignment holds.
  */
 const ROW_GRID_CLASSES_DEFAULT =
-  'grid grid-cols-[20px_56px_136px_minmax(0,1fr)] sm:grid-cols-[20px_56px_240px_minmax(0,1fr)] items-center gap-x-1.5 py-1 text-[13px]'
+  'grid grid-cols-[18px_48px_120px_minmax(0,1fr)] gap-x-1 sm:grid-cols-[20px_56px_240px_minmax(0,1fr)] sm:gap-x-1.5 items-center py-1 text-[13px]'
 const ROW_GRID_CLASSES_ADMIN =
-  'grid grid-cols-[44px_56px_136px_minmax(0,1fr)] sm:grid-cols-[44px_56px_240px_minmax(0,1fr)] items-center gap-x-1.5 py-1 text-[13px]'
+  'grid grid-cols-[40px_48px_120px_minmax(0,1fr)] gap-x-1 sm:grid-cols-[44px_56px_240px_minmax(0,1fr)] sm:gap-x-1.5 items-center py-1 text-[13px]'
 
 /**
  * Returns the grid-template string for a Guest Quote worksheet row.

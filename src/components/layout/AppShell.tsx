@@ -41,7 +41,7 @@ export function AppShell() {
           onMobileClose={() => setMobileNavOpen(false)}
         />
         <main
-          className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-6 lg:px-8"
+          className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-4 sm:px-4 sm:py-6 lg:px-8"
           data-testid="app-shell-main"
         >
           <div className="w-full max-w-[85rem]">

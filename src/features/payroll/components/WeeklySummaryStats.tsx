@@ -69,8 +69,14 @@ export function WeeklySummaryStats({
 
   return (
     <div className="space-y-3" data-testid="weekly-summary-stats">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm">
+      {/* On mobile, the two meta stats (Pay weeks, Rows shown) are hidden
+          because the same figures are already visible in the diagnostics
+          line above the table. The two money cards get a denser
+          2-up layout with tighter padding and smaller type so they fit
+          one row on phone width. Desktop stays on the original 4-up
+          layout at `xl`. */}
+      <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4">
+        <div className="hidden rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm sm:block">
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
             Pay weeks
           </p>
@@ -78,7 +84,7 @@ export function WeeklySummaryStats({
             {weeks}
           </p>
         </div>
-        <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm">
+        <div className="hidden rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm sm:block">
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
             Rows shown
           </p>
@@ -86,19 +92,19 @@ export function WeeklySummaryStats({
             {rows.length}
           </p>
         </div>
-        <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-            Total actual commission
+        <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm sm:px-4 sm:py-3">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500 sm:text-xs">
+            Commission
           </p>
-          <p className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">
+          <p className="mt-0.5 text-lg font-semibold tabular-nums text-slate-900 sm:mt-1 sm:text-2xl">
             {commission != null ? formatNzd(commission) : '—'}
           </p>
         </div>
-        <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-            Total sales (ex GST)
+        <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm sm:px-4 sm:py-3">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500 sm:text-xs">
+            Sales (ex GST)
           </p>
-          <p className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">
+          <p className="mt-0.5 text-lg font-semibold tabular-nums text-slate-900 sm:mt-1 sm:text-2xl">
             {sales != null ? formatNzd(sales) : '—'}
           </p>
         </div>

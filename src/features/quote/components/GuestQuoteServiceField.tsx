@@ -160,7 +160,7 @@ export function GuestQuoteServiceField({
       >
         {leadingActions}
         <LinePriceLabel displayedTotal={displayedTotal} />
-        <div className="min-w-0 truncate" title={title}>
+        <div className="min-w-0 break-words sm:truncate" title={title}>
           {name ? <span className="text-slate-800">{name}</span> : null}
           {name && metaText ? <span className="text-slate-800">: </span> : null}
           {metaText ? <span className="text-sky-600">{metaText}</span> : null}
@@ -198,7 +198,10 @@ export function GuestQuoteServiceField({
     >
       {leadingActions}
       <LinePriceLabel displayedTotal={displayedTotal} />
-      <div className="min-w-0 truncate text-slate-800" title={service.name}>
+      <div
+        className="min-w-0 break-words text-slate-800 sm:truncate"
+        title={service.name}
+      >
         {service.name}
       </div>
       <div className="flex min-w-0 items-center justify-start">
@@ -348,7 +351,7 @@ function ExtraRowLabel({
   const alignClass = centered ? 'text-center' : ''
   return (
     <div
-      className={`min-w-0 truncate ${alignClass}`.trim()}
+      className={`min-w-0 break-words sm:truncate ${alignClass}`.trim()}
       title={name ? `${name} — ${meta}` : meta}
     >
       {name ? (

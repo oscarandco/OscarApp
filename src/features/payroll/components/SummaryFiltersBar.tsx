@@ -48,7 +48,7 @@ export function SummaryFiltersBar({
 
   return (
     <div
-      className="mb-5 flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-3 sm:flex-row sm:flex-wrap sm:items-end sm:gap-4"
+      className="mb-4 flex flex-col gap-2 rounded-lg border border-slate-200 bg-slate-50/80 px-2.5 py-2.5 sm:mb-5 sm:flex-row sm:flex-wrap sm:items-end sm:gap-4 sm:px-3 sm:py-3"
       data-testid={testId}
     >
       <div className="min-w-0 flex-1 sm:max-w-xs">
