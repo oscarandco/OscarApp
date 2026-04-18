@@ -17,6 +17,7 @@ import { StaffConfigurationPage } from '@/features/admin/pages/StaffConfiguratio
 import { LoginPage } from '@/features/auth/pages/LoginPage'
 import { PayrollSummaryPage } from '@/features/payroll/pages/PayrollSummaryPage'
 import { PayrollWeekDetailPage } from '@/features/payroll/pages/PayrollWeekDetailPage'
+import { GuestQuotePage } from '@/features/quote/pages/GuestQuotePage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 
 export function AppRouter() {
@@ -31,6 +32,7 @@ export function AppRouter() {
             path="payroll/:payWeekStart"
             element={<PayrollWeekDetailPage />}
           />
+          <Route path="quote" element={<GuestQuotePage />} />
           <Route element={<RequireAdminAccess />}>
             <Route path="admin" element={<AdminHomePage />} />
             <Route
