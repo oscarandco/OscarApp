@@ -1,5 +1,5 @@
 /**
- * Column prefs for the weekly **line detail** table (`/app/payroll/:week`, PayrollLineTable).
+ * Column prefs for the weekly **line detail** table (`/app/my-sales/:week`, PayrollLineTable).
  * Storage: `payroll-line-columns`. Summary table uses `weeklySummaryTableColumns` separately.
  */
 import type { WeeklyCommissionLineRow } from '@/features/payroll/types'

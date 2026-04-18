@@ -23,7 +23,7 @@ export type RoleKey = 'assistant' | 'stylist' | 'manager' | 'admin'
 /**
  * One `PageId` per navigable page in the app. The three "Main" pages
  * intentionally use a single id even when the page has detail routes
- * (e.g. `/app/payroll/:payWeekStart` shares `my_payroll`) because the
+ * (e.g. `/app/my-sales/:payWeekStart` shares `my_payroll`) because the
  * matrix rule is identical for both.
  */
 export type PageId =

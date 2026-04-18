@@ -51,7 +51,7 @@ export function AdminPayrollLinesPreviewModal({
   }
 
   const pw = String(payWeekStart).trim()
-  const adminWeekHref = `/app/admin/payroll/${encodeURIComponent(pw)}`
+  const adminWeekHref = `/app/admin/sales-summary/${encodeURIComponent(pw)}`
 
   return (
     <div

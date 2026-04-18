@@ -140,7 +140,7 @@ export function SavedQuotesPage() {
   /**
    * Reuses the existing Quote Detail → Guest Quote requote flow:
    * fetch the same detail payload (via React Query's shared cache, so
-   * we reuse any prior fetch) and hand it to `/app/quote` using the
+   * we reuse any prior fetch) and hand it to `/app/guest-quote` using the
    * same `RequoteNavState` shape as the detail page. The list page
    * itself is deliberately free of any mapping logic.
    */
@@ -159,7 +159,7 @@ export function SavedQuotesPage() {
         sourceSavedQuoteId: row.id,
         detail,
       }
-      navigate('/app/quote', { state })
+      navigate('/app/guest-quote', { state })
     } catch (err) {
       const { message, err: e } = queryErrorDetail(err)
       setRequoteError(
@@ -371,7 +371,7 @@ function SavedQuotesTable({
   requotingId: string | null
 }) {
   const navigate = useNavigate()
-  const open = (id: string) => navigate(`/app/quotes/${id}`)
+  const open = (id: string) => navigate(`/app/previous-quotes/${id}`)
   // Hold off both row actions while the other is in flight so the two
   // mutations (delete) / async navigations (requote) can't race.
   const anyActionPending = deletingId != null || requotingId != null

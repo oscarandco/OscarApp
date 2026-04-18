@@ -43,7 +43,7 @@ export function AdminHomePage() {
         </li>
         <li>
           <Link
-            to="/app/admin/imports"
+            to="/app/admin/import-sales-data"
             className="block rounded-lg border border-slate-200 bg-white px-4 py-4 text-left shadow-sm transition hover:border-violet-200 hover:bg-violet-50/50"
           >
             <span className="font-semibold text-slate-900">Imports</span>
@@ -54,7 +54,7 @@ export function AdminHomePage() {
         </li>
         <li>
           <Link
-            to="/app/admin/payroll"
+            to="/app/admin/sales-summary"
             className="block rounded-lg border border-slate-200 bg-white px-4 py-4 text-left shadow-sm transition hover:border-violet-200 hover:bg-violet-50/50"
           >
             <span className="font-semibold text-slate-900">
@@ -67,7 +67,7 @@ export function AdminHomePage() {
         </li>
         <li>
           <Link
-            to="/app/admin/weekly-commission"
+            to="/app/admin/weekly-payroll"
             className="block rounded-lg border border-slate-200 bg-white px-4 py-4 text-left shadow-sm transition hover:border-violet-200 hover:bg-violet-50/50"
           >
             <span className="font-semibold text-slate-900">
@@ -126,10 +126,10 @@ export function AdminHomePage() {
         </li>
         <li>
           <Link
-            to="/app/payroll"
+            to="/app/my-sales"
             className="block rounded-lg border border-slate-200 bg-white px-4 py-4 text-left shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
           >
-            <span className="font-semibold text-slate-900">My payroll</span>
+            <span className="font-semibold text-slate-900">My sales</span>
             <p className="mt-1 text-sm text-slate-600">
               Your own weekly commission summary and lines (stylist view).
             </p>

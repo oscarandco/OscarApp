@@ -94,13 +94,14 @@ export function PayrollSummaryPage() {
   return (
     <div data-testid="payroll-summary-page">
       <PageHeader
-        title="Weekly payroll"
-        description="Pay weeks run Monday–Sunday. Commission is finalized after Sunday; pay is the following Thursday. By default, rows combine commission across locations for each pay week; use Summary rows to split by site. Filter to narrow the list."
+        title="My Sales"
+        description="Pay weeks run Monday - Sunday. Commission is finalized after Sunday; pay is the following Thursday. 
+        By default, rows combine sales and commission across locations for each pay week; use the Summary rows button to split by site. Filter to narrow the list."
       />
       {sourceRows.length === 0 ? (
         <EmptyState
-          title="No commission or payroll rows found"
-          description="The reporting service returned no summary lines for your account. If you expect payroll here, confirm your access is active or try again after data is posted."
+          title="No sales or commission rows found"
+          description="The reporting service returned no summary lines for your account. If you expect sales or commission data, confirm your access is active or try again after data is posted."
           testId="payroll-summary-empty"
         />
       ) : (

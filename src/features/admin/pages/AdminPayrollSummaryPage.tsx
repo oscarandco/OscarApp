@@ -99,9 +99,9 @@ export function AdminPayrollSummaryPage() {
   return (
     <div data-testid="admin-summary-page">
       <PageHeader
-        title="Admin — weekly payroll"
-        description="All-scope weekly summary (server permission checks apply). By default, rows combine commission across locations for each staff member and pay week; use Summary rows to split by site. Filter by location or staff name below."
-      />
+        title="Sales summary"
+        description="Pay weeks run Monday - Sunday. Commission is finalized after Sunday; pay is the following Thursday. 
+        By default, rows combine sales and commission across locations for each pay week; use the Summary rows button to split by site. Filter to narrow the list."      />
       {sourceRows.length === 0 ? (
         <EmptyState
           title="No admin payroll rows"

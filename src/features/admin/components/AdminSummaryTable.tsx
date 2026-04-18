@@ -31,7 +31,7 @@ function adminDetailLinesHref(
   weekStart: string,
   splitByLocation: boolean,
 ): string {
-  const base = `/app/admin/payroll/${encodeURIComponent(weekStart)}`
+  const base = `/app/admin/sales-summary/${encodeURIComponent(weekStart)}`
   const q = new URLSearchParams()
   const sid = String(row.derived_staff_paid_id ?? '').trim()
   if (sid !== '') {

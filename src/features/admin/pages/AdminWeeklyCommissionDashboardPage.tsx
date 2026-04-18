@@ -165,7 +165,7 @@ export function AdminWeeklyCommissionDashboardPage() {
   return (
     <div data-testid="admin-weekly-commission-page">
       <PageHeader
-        title="Weekly commission dashboard"
+        title="Weekly payroll summary"
         description="Totals for a selected pay week. Choose the week below; figures refresh from line-level payroll data."
       />
 

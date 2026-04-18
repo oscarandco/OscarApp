@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes, useParams } from 'react-router-dom'
 
 import { AuthenticatedLayout } from '@/app/AuthenticatedLayout'
 import { RequireAdminAccess } from '@/components/auth/RequireAdminAccess'
@@ -24,6 +24,26 @@ import { SavedQuoteDetailPage } from '@/features/quote/pages/SavedQuoteDetailPag
 import { SavedQuotesPage } from '@/features/quote/pages/SavedQuotesPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 
+/**
+ * Redirects a legacy detail URL (e.g. `/app/payroll/:payWeekStart`) to
+ * its new location while preserving the dynamic segment. Keeps old
+ * bookmarks and shared links working without flashing a 404.
+ */
+function LegacyParamRedirect({
+  to,
+  paramName,
+}: {
+  to: (value: string) => string
+  paramName: string
+}) {
+  const params = useParams()
+  const value = params[paramName]
+  if (!value) {
+    return <Navigate to="/app/my-sales" replace />
+  }
+  return <Navigate to={to(value)} replace />
+}
+
 export function AppRouter() {
   return (
     <Routes>
@@ -31,17 +51,20 @@ export function AppRouter() {
       <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route element={<RequireAuth />}>
         <Route path="/app" element={<AuthenticatedLayout />}>
-          <Route index element={<Navigate to="/app/payroll" replace />} />
+          <Route index element={<Navigate to="/app/my-sales" replace />} />
 
           {/* Shared pages — every authenticated role may view. */}
-          <Route path="payroll" element={<PayrollSummaryPage />} />
+          <Route path="my-sales" element={<PayrollSummaryPage />} />
           <Route
-            path="payroll/:payWeekStart"
+            path="my-sales/:payWeekStart"
             element={<PayrollWeekDetailPage />}
           />
-          <Route path="quote" element={<GuestQuotePage />} />
-          <Route path="quotes" element={<SavedQuotesPage />} />
-          <Route path="quotes/:quoteId" element={<SavedQuoteDetailPage />} />
+          <Route path="guest-quote" element={<GuestQuotePage />} />
+          <Route path="previous-quotes" element={<SavedQuotesPage />} />
+          <Route
+            path="previous-quotes/:quoteId"
+            element={<SavedQuoteDetailPage />}
+          />
 
           {/*
             Admin index / home. Kept under the legacy elevated gate
@@ -55,7 +78,7 @@ export function AppRouter() {
 
           {/* Admin-only pages. */}
           <Route
-            path="admin/payroll"
+            path="admin/sales-summary"
             element={
               <RequirePageAccess pageId="commission_breakdown">
                 <AdminPayrollSummaryPage />
@@ -63,7 +86,7 @@ export function AppRouter() {
             }
           />
           <Route
-            path="admin/payroll/:payWeekStart"
+            path="admin/sales-summary/:payWeekStart"
             element={
               <RequirePageAccess pageId="commission_breakdown">
                 <AdminPayrollDetailPage />
@@ -71,7 +94,7 @@ export function AppRouter() {
             }
           />
           <Route
-            path="admin/weekly-commission"
+            path="admin/weekly-payroll"
             element={
               <RequirePageAccess pageId="weekly_payroll">
                 <AdminWeeklyCommissionDashboardPage />
@@ -121,7 +144,7 @@ export function AppRouter() {
 
           {/* Manager + admin. */}
           <Route
-            path="admin/imports"
+            path="admin/import-sales-data"
             element={
               <RequirePageAccess pageId="imports">
                 <AdminImportsPage />
@@ -142,9 +165,66 @@ export function AppRouter() {
               </RequirePageAccess>
             }
           />
+
+          {/*
+            Legacy URL redirects. Keeps existing bookmarks, shared
+            links, and any email deep-links working against the new
+            paths. These sit inside `/app` so they still require auth.
+          */}
+          <Route
+            path="payroll"
+            element={<Navigate to="/app/my-sales" replace />}
+          />
+          <Route
+            path="payroll/:payWeekStart"
+            element={
+              <LegacyParamRedirect
+                paramName="payWeekStart"
+                to={(v) => `/app/my-sales/${v}`}
+              />
+            }
+          />
+          <Route
+            path="quote"
+            element={<Navigate to="/app/guest-quote" replace />}
+          />
+          <Route
+            path="quotes"
+            element={<Navigate to="/app/previous-quotes" replace />}
+          />
+          <Route
+            path="quotes/:quoteId"
+            element={
+              <LegacyParamRedirect
+                paramName="quoteId"
+                to={(v) => `/app/previous-quotes/${v}`}
+              />
+            }
+          />
+          <Route
+            path="admin/payroll"
+            element={<Navigate to="/app/admin/sales-summary" replace />}
+          />
+          <Route
+            path="admin/payroll/:payWeekStart"
+            element={
+              <LegacyParamRedirect
+                paramName="payWeekStart"
+                to={(v) => `/app/admin/sales-summary/${v}`}
+              />
+            }
+          />
+          <Route
+            path="admin/weekly-commission"
+            element={<Navigate to="/app/admin/weekly-payroll" replace />}
+          />
+          <Route
+            path="admin/imports"
+            element={<Navigate to="/app/admin/import-sales-data" replace />}
+          />
         </Route>
       </Route>
-      <Route path="/" element={<Navigate to="/app/payroll" replace />} />
+      <Route path="/" element={<Navigate to="/app/my-sales" replace />} />
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
   )

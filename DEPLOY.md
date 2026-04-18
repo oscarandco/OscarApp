@@ -29,7 +29,7 @@ If either variable is missing or empty, the app shows a configuration screen ins
 
 Database RPCs used by the app (including admin access management) must exist in your Supabase project. Apply the SQL files under `supabase/migrations/` using the Supabase SQL editor or the Supabase CLI (`supabase db push` / linked project), then verify in **Database → Functions** (or run a quick RPC from the API docs page).
 
-### Sales Daily Sheets import (`/app/admin/imports`)
+### Sales Daily Sheets import (`/app/admin/import-sales-data`)
 
 There is no separate app server: the browser uploads the CSV to Storage, then calls RPC `trigger_sales_daily_sheets_import(p_storage_path text)` (elevated users only). That RPC validates the object and runs one of:
 
@@ -81,7 +81,7 @@ Serve the app over **HTTPS** in production. Supabase auth and modern browser API
 
 Any static host that can:
 
-- Serve `index.html` for unknown paths (**SPA fallback**), so client routes like `/app/payroll` load the app instead of 404.
+- Serve `index.html` for unknown paths (**SPA fallback**), so client routes like `/app/my-sales` load the app instead of 404.
 - Inject or configure the env vars above at **build time** (Vite bakes `VITE_*` into the bundle).
 
 Examples: Netlify, Vercel, Cloudflare Pages, AWS S3 + CloudFront, Azure Static Web Apps. Configure each platform’s “redirects” or “rewrites” so all routes fall back to `/index.html`.

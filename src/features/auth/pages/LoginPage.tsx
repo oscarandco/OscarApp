@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 
+import logoUrl from '@/assets/logo.png'
 import { ErrorState } from '@/components/feedback/ErrorState'
 import { useAuth } from '@/features/auth/authContext'
+import { requireSupabaseClient } from '@/lib/supabase'
 
 export function LoginPage() {
   const navigate = useNavigate()
@@ -13,9 +15,16 @@ export function LoginPage() {
   const [error, setError] = useState<Error | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
+  // Self-service password reset (Forgot password?) state. Kept separate
+  // from the sign-in error so either flow's feedback stays on-screen
+  // without clobbering the other.
+  const [forgotPending, setForgotPending] = useState(false)
+  const [forgotMessage, setForgotMessage] = useState<string | null>(null)
+  const [forgotError, setForgotError] = useState<string | null>(null)
+
   const from =
     (location.state as { from?: { pathname?: string } } | null)?.from
-      ?.pathname ?? '/app/payroll'
+      ?.pathname ?? '/app/my-sales'
 
   if (!loading && user) {
     return <Navigate to={from} replace />
@@ -24,6 +33,8 @@ export function LoginPage() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
+    setForgotMessage(null)
+    setForgotError(null)
     setSubmitting(true)
     const { error: signError } = await signInWithPassword(
       email.trim(),
@@ -37,6 +48,48 @@ export function LoginPage() {
     navigate(from, { replace: true })
   }
 
+  async function onForgotPassword() {
+    setError(null)
+    setForgotMessage(null)
+    setForgotError(null)
+    const trimmed = email.trim()
+    if (!trimmed) {
+      setForgotError('Enter your email above first.')
+      return
+    }
+    setForgotPending(true)
+    try {
+      const client = requireSupabaseClient()
+      // Sending the user back to `/reset-password` on the current origin
+      // means this works in local dev, Vercel preview, and production
+      // without hardcoding a URL. In production this resolves to the
+      // live domain (e.g. `https://oscar-app-wine.vercel.app/reset-password`).
+      const redirectTo = `${window.location.origin}/reset-password`
+      const { error: resetError } = await client.auth.resetPasswordForEmail(
+        trimmed,
+        { redirectTo },
+      )
+      if (resetError) {
+        setForgotError(
+          resetError.message ||
+            'Could not send a reset link. Please try again.',
+        )
+        return
+      }
+      setForgotMessage(
+        'If that email exists, we’ve sent a password reset link.',
+      )
+    } catch (err) {
+      setForgotError(
+        err instanceof Error
+          ? err.message
+          : 'Could not send a reset link. Please try again.',
+      )
+    } finally {
+      setForgotPending(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-slate-50 px-4">
@@ -48,16 +101,43 @@ export function LoginPage() {
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center bg-slate-50 px-4 py-12">
       <div className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
-        <h1 className="text-center text-xl font-semibold text-slate-900">
+        <div className="flex justify-center">
+          <img
+            src={logoUrl}
+            alt="Oscar & Co."
+            className="h-9 w-auto select-none"
+          />
+        </div>
+        <h1 className="mt-5 text-center text-xl font-semibold text-slate-900">
           Sign in
         </h1>
         <p className="mt-1 text-center text-sm text-slate-600">
-          Salon payroll & commission
+          Staff App
         </p>
 
         {error ? (
           <div className="mt-4">
             <ErrorState title="Sign-in failed" error={error} />
+          </div>
+        ) : null}
+
+        {forgotMessage ? (
+          <div
+            className="mt-4 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800"
+            role="status"
+            data-testid="login-forgot-success"
+          >
+            {forgotMessage}
+          </div>
+        ) : null}
+
+        {forgotError ? (
+          <div
+            className="mt-4 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800"
+            role="alert"
+            data-testid="login-forgot-error"
+          >
+            {forgotError}
           </div>
         ) : null}
 
@@ -81,12 +161,23 @@ export function LoginPage() {
             />
           </div>
           <div>
-            <label
-              htmlFor="password"
-              className="block text-sm font-medium text-slate-700"
-            >
-              Password
-            </label>
+            <div className="flex items-center justify-between">
+              <label
+                htmlFor="password"
+                className="block text-sm font-medium text-slate-700"
+              >
+                Password
+              </label>
+              <button
+                type="button"
+                onClick={() => void onForgotPassword()}
+                disabled={forgotPending}
+                className="text-xs font-medium text-violet-700 hover:text-violet-900 disabled:opacity-60"
+                data-testid="login-forgot-password-link"
+              >
+                {forgotPending ? 'Sending…' : 'Forgot password?'}
+              </button>
+            </div>
             <input
               id="password"
               name="password"
@@ -108,7 +199,7 @@ export function LoginPage() {
         </form>
       </div>
       <p className="mt-8 text-center text-xs text-slate-500">
-        Salon commission & payroll reporting.
+        Oscar &amp; Co. Staff App
       </p>
     </div>
   )

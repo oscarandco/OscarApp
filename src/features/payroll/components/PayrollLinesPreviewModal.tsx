@@ -76,7 +76,7 @@ export function PayrollLinesPreviewModal({
         ? String(summaryRow.derived_staff_paid_full_name).trim()
         : '—'
 
-  const fullReportHref = `/app/payroll/${encodeURIComponent(payWeek)}`
+  const fullReportHref = `/app/my-sales/${encodeURIComponent(payWeek)}`
 
   return (
     <div

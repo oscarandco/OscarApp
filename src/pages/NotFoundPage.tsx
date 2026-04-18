@@ -8,10 +8,10 @@ export function NotFoundPage() {
         That route does not exist in this app.
       </p>
       <Link
-        to="/app/payroll"
+        to="/app/my-sales"
         className="mt-6 text-sm font-medium text-violet-700 hover:text-violet-900"
       >
-        Go to payroll home
+        Go to My sales
       </Link>
     </div>
   )

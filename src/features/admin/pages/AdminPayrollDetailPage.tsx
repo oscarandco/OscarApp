@@ -80,7 +80,7 @@ export function AdminPayrollDetailPage() {
       <div data-testid="admin-detail-page">
         <PayrollWeekHeader
           payWeekStart={payWeekStart}
-          backTo="/app/admin/payroll"
+          backTo="/app/admin/sales-summary"
           backLabel="← Back to admin weekly summary"
         />
         <LoadingState
@@ -97,7 +97,7 @@ export function AdminPayrollDetailPage() {
       <div data-testid="admin-detail-page">
         <PayrollWeekHeader
           payWeekStart={payWeekStart}
-          backTo="/app/admin/payroll"
+          backTo="/app/admin/sales-summary"
           backLabel="← Back to admin weekly summary"
         />
         <ErrorState
@@ -119,7 +119,7 @@ export function AdminPayrollDetailPage() {
         payWeekStart={payWeekStart}
         payWeekEnd={context.payWeekEnd}
         payDate={context.payDate}
-        backTo="/app/admin/payroll"
+        backTo="/app/admin/sales-summary"
         backLabel="← Back to admin weekly summary"
       />
       <PageHeader

@@ -62,17 +62,17 @@ export function SideNav() {
           <>
             <NavSectionHeading>Main</NavSectionHeading>
             {canMyPayroll ? (
-              <NavLink to="/app/payroll" className={linkClass} end>
-                My payroll
+              <NavLink to="/app/my-sales" className={linkClass} end>
+                My sales
               </NavLink>
             ) : null}
             {canGuestQuote ? (
-              <NavLink to="/app/quote" className={linkClass}>
+              <NavLink to="/app/guest-quote" className={linkClass}>
                 Guest quote
               </NavLink>
             ) : null}
             {canPreviousQuotes ? (
-              <NavLink to="/app/quotes" className={linkClass}>
+              <NavLink to="/app/previous-quotes" className={linkClass}>
                 Previous quotes
               </NavLink>
             ) : null}
@@ -83,18 +83,21 @@ export function SideNav() {
           <>
             <NavSectionHeading>Admin</NavSectionHeading>
             {canWeeklyPayroll ? (
-              <NavLink to="/app/admin/weekly-commission" className={linkClass}>
-                Weekly Payroll
+              <NavLink to="/app/admin/weekly-payroll" className={linkClass}>
+                Weekly payroll
               </NavLink>
             ) : null}
             {canCommissionBreakdown ? (
-              <NavLink to="/app/admin/payroll" className={linkClass}>
-                Commission Breakdown
+              <NavLink to="/app/admin/sales-summary" className={linkClass}>
+                Sales summary
               </NavLink>
             ) : null}
             {canImports ? (
-              <NavLink to="/app/admin/imports" className={linkClass}>
-                Imports
+              <NavLink
+                to="/app/admin/import-sales-data"
+                className={linkClass}
+              >
+                Import sales data
               </NavLink>
             ) : null}
           </>

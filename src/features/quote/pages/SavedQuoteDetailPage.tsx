@@ -48,7 +48,7 @@ export function SavedQuoteDetailPage() {
     }
     deleteMutation.mutate(data.header.id, {
       onSuccess: () => {
-        navigate('/app/quotes', {
+        navigate('/app/previous-quotes', {
           replace: true,
           state: { deletedGuest: label },
         })
@@ -73,12 +73,12 @@ export function SavedQuoteDetailPage() {
       sourceSavedQuoteId: data.header.id,
       detail: data,
     }
-    navigate('/app/quote', { state })
+    navigate('/app/guest-quote', { state })
   }
 
   const backLink = (
     <Link
-      to="/app/quotes"
+      to="/app/previous-quotes"
       className="inline-flex items-center rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
       data-testid="saved-quote-detail-back"
     >

@@ -16,7 +16,7 @@ type RequirePageAccessProps = {
  * lockstep with the same matrix.
  *
  * Redirect target mirrors `RequireAdminAccess` — blocked users land on
- * `/app/payroll`, which every authenticated role is allowed to view.
+ * `/app/my-sales`, which every authenticated role is allowed to view.
  *
  * This intentionally treats `'view'` and `'full'` the same way:
  * manager "view only" pages (currently just Access) render the page,
@@ -30,7 +30,7 @@ type RequirePageAccessProps = {
 export function RequirePageAccess({ pageId, children }: RequirePageAccessProps) {
   const canView = useCanViewPage(pageId)
   if (!canView) {
-    return <Navigate to="/app/payroll" replace />
+    return <Navigate to="/app/my-sales" replace />
   }
   return <>{children}</>
 }

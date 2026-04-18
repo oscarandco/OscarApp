@@ -14,7 +14,7 @@ Run through this after deploy or before external testers. Use a **non-production
 - [ ] **Sign out** works and returns to login or clears session as expected.
 - [ ] User with **no access row** sees the **no access** screen (not the main shell).
 - [ ] User with **inactive access** sees the **access inactive** screen.
-- [ ] User with active access reaches **Weekly payroll** (`/app/payroll`).
+- [ ] User with active access reaches **My sales** (`/app/my-sales`).
 
 ## Stylist (standard user)
 

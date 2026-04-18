@@ -16,7 +16,7 @@ export function PayrollWeekHeader({
   payWeekStart,
   payWeekEnd,
   payDate,
-  backTo = '/app/payroll',
+  backTo = '/app/my-sales',
   backLabel = '← Back to weekly summary',
 }: PayrollWeekHeaderProps) {
   const startTrim = payWeekStart.trim()

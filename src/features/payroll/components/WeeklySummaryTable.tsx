@@ -251,7 +251,7 @@ export function WeeklySummaryTable({ rows }: WeeklySummaryTableProps) {
                   <td className={`${tdBase} min-w-[5.5rem]`}>
                     {weekStart ? (
                       <Link
-                        to={`/app/payroll/${encodeURIComponent(weekStart)}`}
+                        to={`/app/my-sales/${encodeURIComponent(weekStart)}`}
                         onClick={(e) => {
                           if (
                             e.ctrlKey ||

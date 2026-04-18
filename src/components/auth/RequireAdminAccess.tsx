@@ -7,7 +7,7 @@ export function RequireAdminAccess() {
   const elevated = useHasElevatedAccess()
 
   if (!elevated) {
-    return <Navigate to="/app/payroll" replace />
+    return <Navigate to="/app/my-sales" replace />
   }
 
   return <Outlet />
