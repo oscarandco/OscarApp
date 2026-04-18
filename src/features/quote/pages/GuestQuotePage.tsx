@@ -447,7 +447,7 @@ function GuestQuoteForm({ config }: { config: StylistQuoteConfig }) {
           <div className="flex items-center gap-2">
             <label
               htmlFor="guest-name"
-              className="w-16 shrink-0 text-slate-700"
+              className="w-16 shrink-0 text-[12px] text-slate-700 sm:text-[13px]"
             >
               Guest
             </label>
@@ -583,12 +583,24 @@ function GuestQuoteForm({ config }: { config: StylistQuoteConfig }) {
         </div>
       ) : null}
 
-      {/* Notes — only rendered when settings.notes_enabled is true. */}
+      {/* Notes — only rendered when settings.notes_enabled is true.
+
+          Mobile (< lg): the textarea is capped at a single-row height
+          (`h-8`) by default to save vertical space and auto-expands
+          to roughly 3 lines (`focus:h-20`) while focused, returning
+          when the stylist taps elsewhere. The `value` is controlled
+          state so nothing is ever truncated or lost — only the
+          displayed height changes. The vertical gap below Guest is
+          also tightened on mobile (`mt-2`) so the Notes row sits
+          closer to the top form.
+          Desktop (≥ lg) falls back to `lg:h-auto lg:focus:h-auto`,
+          letting the `rows={2}` attribute drive height exactly like
+          before. */}
       {config.settings.notesEnabled ? (
-        <div className="mt-3 flex items-start gap-2 sm:px-3 lg:px-0">
+        <div className="mt-2 flex items-start gap-2 sm:px-3 lg:mt-3 lg:px-0">
           <label
             htmlFor="guest-notes"
-            className="w-16 shrink-0 pt-1 text-slate-700"
+            className="w-16 shrink-0 pt-1 text-[12px] text-slate-700 sm:text-[13px]"
           >
             Notes
           </label>
@@ -599,7 +611,7 @@ function GuestQuoteForm({ config }: { config: StylistQuoteConfig }) {
             onChange={(e) =>
               setDraft((prev) => ({ ...prev, notes: e.target.value }))
             }
-            className="flex-1 rounded border border-slate-300 bg-white px-2 py-1 text-[13px] focus:border-emerald-400 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+            className="h-8 flex-1 rounded border border-slate-300 bg-white px-2 py-1 text-[13px] transition-[height] duration-150 focus:h-20 focus:border-emerald-400 focus:outline-none focus:ring-1 focus:ring-emerald-400 lg:h-auto lg:focus:h-auto"
           />
         </div>
       ) : null}
@@ -616,7 +628,7 @@ function GuestQuoteForm({ config }: { config: StylistQuoteConfig }) {
         <button
           type="button"
           onClick={onResetForm}
-          className="flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          className="flex h-8 flex-1 items-center justify-center rounded-md border border-slate-300 bg-white px-3 text-[13px] font-medium leading-none text-slate-700 hover:bg-slate-50"
           data-testid="guest-quote-reset-form-mobile"
         >
           Reset Form
@@ -626,7 +638,7 @@ function GuestQuoteForm({ config }: { config: StylistQuoteConfig }) {
           onClick={onSubmit}
           disabled={saveMutation.isPending}
           aria-busy={saveMutation.isPending}
-          className="flex-1 rounded-md border border-emerald-600 bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-wait disabled:bg-emerald-500"
+          className="flex h-8 flex-1 items-center justify-center rounded-md border border-emerald-600 bg-emerald-600 px-3 text-[13px] font-medium leading-none text-white hover:bg-emerald-700 disabled:cursor-wait disabled:bg-emerald-500"
           data-testid="guest-quote-submit-mobile"
         >
           {saveMutation.isPending ? 'Saving…' : 'Submit Quote'}

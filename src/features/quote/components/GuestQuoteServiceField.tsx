@@ -161,7 +161,7 @@ export function GuestQuoteServiceField({
         {leadingActions}
         <LinePriceLabel displayedTotal={displayedTotal} />
         <div
-          className="min-w-0 break-words text-[12px] sm:truncate sm:text-[13px]"
+          className="min-w-0 truncate text-[11px] sm:text-[13px]"
           title={title}
         >
           {name ? <span className="text-slate-800">{name}</span> : null}
@@ -202,7 +202,7 @@ export function GuestQuoteServiceField({
       {leadingActions}
       <LinePriceLabel displayedTotal={displayedTotal} />
       <div
-        className="min-w-0 break-words text-[12px] text-slate-800 sm:truncate sm:text-[13px]"
+        className="min-w-0 truncate text-[11px] text-slate-800 sm:text-[13px]"
         title={service.name}
       >
         {service.name}
@@ -354,7 +354,7 @@ function ExtraRowLabel({
   const alignClass = centered ? 'text-center' : ''
   return (
     <div
-      className={`min-w-0 break-words text-[12px] sm:truncate sm:text-[13px] ${alignClass}`.trim()}
+      className={`min-w-0 truncate text-[11px] sm:text-[13px] ${alignClass}`.trim()}
       title={name ? `${name} — ${meta}` : meta}
     >
       {name ? (
@@ -441,14 +441,14 @@ function RoleRadioControl({ service, line, onChange }: ControlProps) {
   )
   const active = line.selected ? line.selectedRole : null
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-1.5 sm:gap-3">
       {canonicalRoles.map((role) => {
         if (!supported.has(role)) {
           return (
             <span
               key={role}
               aria-hidden="true"
-              className="pointer-events-none invisible flex select-none items-center gap-1 text-[11px] text-slate-700 sm:text-[12px]"
+              className="pointer-events-none invisible flex select-none items-center gap-1 text-[10px] text-slate-700 sm:text-[12px]"
             >
               <input
                 type="radio"
@@ -465,7 +465,7 @@ function RoleRadioControl({ service, line, onChange }: ControlProps) {
         return (
           <label
             key={role}
-            className="flex cursor-pointer items-center gap-1 text-[11px] text-slate-700 sm:text-[12px]"
+            className="flex cursor-pointer items-center gap-1 text-[10px] text-slate-700 sm:text-[12px]"
           >
             <input
               type="radio"
@@ -497,13 +497,13 @@ function displayOptionLabel(label: string): string {
 function OptionRadioControl({ service, line, onChange }: ControlProps) {
   const activeId = line.selected ? line.selectedOptionIds[0] ?? null : null
   return (
-    <div className="flex min-w-0 items-center gap-3 whitespace-nowrap">
+    <div className="flex min-w-0 items-center gap-1.5 whitespace-nowrap sm:gap-3">
       {service.options.map((opt) => {
         const checked = activeId === opt.id
         return (
           <label
             key={opt.id}
-            className="flex cursor-pointer items-center gap-1 text-[11px] text-slate-700 sm:text-[12px]"
+            className="flex cursor-pointer items-center gap-1 text-[10px] text-slate-700 sm:text-[12px]"
           >
             <input
               type="radio"
@@ -583,13 +583,13 @@ function ExtraUnitsControl({ service, line, onChange }: ControlProps) {
   const choices: number[] = []
   for (let i = 1; i <= cfg.maxExtras; i += 1) choices.push(i)
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-1.5 sm:gap-3">
       {choices.map((n) => {
         const checked = line.selected && selected === n
         return (
           <label
             key={n}
-            className="flex cursor-pointer items-center gap-1 text-[11px] text-slate-700 sm:text-[12px]"
+            className="flex cursor-pointer items-center gap-1 text-[10px] text-slate-700 sm:text-[12px]"
           >
             <input
               type="radio"
