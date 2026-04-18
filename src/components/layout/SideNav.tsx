@@ -1,6 +1,7 @@
+import type { ReactNode } from 'react'
 import { NavLink } from 'react-router-dom'
 
-import { useHasElevatedAccess } from '@/features/access/accessContext'
+import { useCanViewPage } from '@/features/access/pageAccess'
 
 const linkClass = ({ isActive }: { isActive: boolean }) =>
   [
@@ -15,7 +16,7 @@ const linkClass = ({ isActive }: { isActive: boolean }) =>
  * visually quieter than the links themselves (smaller type, muted
  * colour, reduced tracking) so it doesn't compete with the items.
  */
-function NavSectionHeading({ children }: { children: React.ReactNode }) {
+function NavSectionHeading({ children }: { children: ReactNode }) {
   return (
     <p className="px-3 pb-0.5 pt-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 first:pt-0">
       {children}
@@ -23,52 +24,110 @@ function NavSectionHeading({ children }: { children: React.ReactNode }) {
   )
 }
 
+/**
+ * Sidebar navigation.
+ *
+ * Visibility is driven by `useCanViewPage(pageId)`, which reads the
+ * centralised `PAGE_ACCESS_MATRIX` in `src/features/access/pageAccess.ts`.
+ * The same matrix also backs `RequirePageAccess` on every admin/config
+ * route, so a hidden sidebar item can never be reached by URL either.
+ *
+ * Hooks are called at the top level (one per `PageId`) so the hook
+ * order is stable and obvious — no loops over dynamic arrays.
+ */
 export function SideNav() {
-  const elevated = useHasElevatedAccess()
+  const canMyPayroll = useCanViewPage('my_payroll')
+  const canGuestQuote = useCanViewPage('guest_quote')
+  const canPreviousQuotes = useCanViewPage('previous_quotes')
+
+  const canWeeklyPayroll = useCanViewPage('weekly_payroll')
+  const canCommissionBreakdown = useCanViewPage('commission_breakdown')
+  const canImports = useCanViewPage('imports')
+
+  const canStaff = useCanViewPage('staff')
+  const canProducts = useCanViewPage('products')
+  const canQuotes = useCanViewPage('quotes')
+  const canRemuneration = useCanViewPage('remuneration')
+  const canAccess = useCanViewPage('access')
+
+  const anyMain = canMyPayroll || canGuestQuote || canPreviousQuotes
+  const anyAdmin = canWeeklyPayroll || canCommissionBreakdown || canImports
+  const anyConfig =
+    canStaff || canProducts || canQuotes || canRemuneration || canAccess
 
   return (
     <aside className="hidden w-52 shrink-0 overflow-y-auto border-r border-slate-200 bg-white lg:block">
       <nav className="flex flex-col gap-0.5 p-3">
-        <NavSectionHeading>Main</NavSectionHeading>
-        <NavLink to="/app/payroll" className={linkClass} end>
-          My payroll
-        </NavLink>
-        <NavLink to="/app/quote" className={linkClass}>
-          Guest quote
-        </NavLink>
-        <NavLink to="/app/quotes" className={linkClass}>
-          Previous quotes
-        </NavLink>
+        {anyMain ? (
+          <>
+            <NavSectionHeading>Main</NavSectionHeading>
+            {canMyPayroll ? (
+              <NavLink to="/app/payroll" className={linkClass} end>
+                My payroll
+              </NavLink>
+            ) : null}
+            {canGuestQuote ? (
+              <NavLink to="/app/quote" className={linkClass}>
+                Guest quote
+              </NavLink>
+            ) : null}
+            {canPreviousQuotes ? (
+              <NavLink to="/app/quotes" className={linkClass}>
+                Previous quotes
+              </NavLink>
+            ) : null}
+          </>
+        ) : null}
 
-        {elevated ? (
+        {anyAdmin ? (
           <>
             <NavSectionHeading>Admin</NavSectionHeading>
-            <NavLink to="/app/admin/weekly-commission" className={linkClass}>
-              Weekly Payroll
-            </NavLink>
-            <NavLink to="/app/admin/payroll" className={linkClass}>
-              Commission Breakdown
-            </NavLink>
-            <NavLink to="/app/admin/imports" className={linkClass}>
-              Imports
-            </NavLink>
+            {canWeeklyPayroll ? (
+              <NavLink to="/app/admin/weekly-commission" className={linkClass}>
+                Weekly Payroll
+              </NavLink>
+            ) : null}
+            {canCommissionBreakdown ? (
+              <NavLink to="/app/admin/payroll" className={linkClass}>
+                Commission Breakdown
+              </NavLink>
+            ) : null}
+            {canImports ? (
+              <NavLink to="/app/admin/imports" className={linkClass}>
+                Imports
+              </NavLink>
+            ) : null}
+          </>
+        ) : null}
 
+        {anyConfig ? (
+          <>
             <NavSectionHeading>Configuration</NavSectionHeading>
-            <NavLink to="/app/admin/staff" className={linkClass}>
-              Staff
-            </NavLink>
-            <NavLink to="/app/admin/products" className={linkClass}>
-              Products
-            </NavLink>
-            <NavLink to="/app/admin/quotes" className={linkClass}>
-              Quotes
-            </NavLink>
-            <NavLink to="/app/admin/remuneration" className={linkClass}>
-              Remuneration
-            </NavLink>
-            <NavLink to="/app/admin/access" className={linkClass}>
-              Access
-            </NavLink>
+            {canStaff ? (
+              <NavLink to="/app/admin/staff" className={linkClass}>
+                Staff
+              </NavLink>
+            ) : null}
+            {canProducts ? (
+              <NavLink to="/app/admin/products" className={linkClass}>
+                Products
+              </NavLink>
+            ) : null}
+            {canQuotes ? (
+              <NavLink to="/app/admin/quotes" className={linkClass}>
+                Quotes
+              </NavLink>
+            ) : null}
+            {canRemuneration ? (
+              <NavLink to="/app/admin/remuneration" className={linkClass}>
+                Remuneration
+              </NavLink>
+            ) : null}
+            {canAccess ? (
+              <NavLink to="/app/admin/access" className={linkClass}>
+                Access
+              </NavLink>
+            ) : null}
           </>
         ) : null}
       </nav>

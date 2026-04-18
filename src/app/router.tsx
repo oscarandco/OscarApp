@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { AuthenticatedLayout } from '@/app/AuthenticatedLayout'
 import { RequireAdminAccess } from '@/components/auth/RequireAdminAccess'
 import { RequireAuth } from '@/components/auth/RequireAuth'
+import { RequirePageAccess } from '@/components/auth/RequirePageAccess'
 import { AdminAccessManagementPage } from '@/features/admin/pages/AdminAccessManagementPage'
 import { AdminHomePage } from '@/features/admin/pages/AdminHomePage'
 import { AdminImportsPage } from '@/features/admin/pages/AdminImportsPage'
@@ -31,6 +32,8 @@ export function AppRouter() {
       <Route element={<RequireAuth />}>
         <Route path="/app" element={<AuthenticatedLayout />}>
           <Route index element={<Navigate to="/app/payroll" replace />} />
+
+          {/* Shared pages — every authenticated role may view. */}
           <Route path="payroll" element={<PayrollSummaryPage />} />
           <Route
             path="payroll/:payWeekStart"
@@ -39,43 +42,106 @@ export function AppRouter() {
           <Route path="quote" element={<GuestQuotePage />} />
           <Route path="quotes" element={<SavedQuotesPage />} />
           <Route path="quotes/:quoteId" element={<SavedQuoteDetailPage />} />
+
+          {/*
+            Admin index / home. Kept under the legacy elevated gate
+            (manager + admin) because TopNav still links to `/app/admin`
+            as a dashboard shortcut and the page is not in the per-page
+            access matrix.
+          */}
           <Route element={<RequireAdminAccess />}>
             <Route path="admin" element={<AdminHomePage />} />
-            <Route
-              path="admin/access"
-              element={<AdminAccessManagementPage />}
-            />
-            <Route path="admin/imports" element={<AdminImportsPage />} />
-            <Route path="admin/payroll" element={<AdminPayrollSummaryPage />} />
-            <Route
-              path="admin/weekly-commission"
-              element={<AdminWeeklyCommissionDashboardPage />}
-            />
-            <Route
-              path="admin/remuneration"
-              element={<RemunerationConfigurationPage />}
-            />
-            <Route
-              path="admin/staff"
-              element={<StaffConfigurationPage />}
-            />
-            <Route
-              path="admin/products"
-              element={<ProductConfigurationPage />}
-            />
-            <Route
-              path="admin/payroll/:payWeekStart"
-              element={<AdminPayrollDetailPage />}
-            />
-            <Route
-              path="admin/quotes"
-              element={<AdminQuoteConfigurationPage />}
-            />
-            <Route
-              path="admin/quotes/sections/:sectionId"
-              element={<AdminQuoteSectionDetailPage />}
-            />
           </Route>
+
+          {/* Admin-only pages. */}
+          <Route
+            path="admin/payroll"
+            element={
+              <RequirePageAccess pageId="commission_breakdown">
+                <AdminPayrollSummaryPage />
+              </RequirePageAccess>
+            }
+          />
+          <Route
+            path="admin/payroll/:payWeekStart"
+            element={
+              <RequirePageAccess pageId="commission_breakdown">
+                <AdminPayrollDetailPage />
+              </RequirePageAccess>
+            }
+          />
+          <Route
+            path="admin/weekly-commission"
+            element={
+              <RequirePageAccess pageId="weekly_payroll">
+                <AdminWeeklyCommissionDashboardPage />
+              </RequirePageAccess>
+            }
+          />
+          <Route
+            path="admin/remuneration"
+            element={
+              <RequirePageAccess pageId="remuneration">
+                <RemunerationConfigurationPage />
+              </RequirePageAccess>
+            }
+          />
+          <Route
+            path="admin/staff"
+            element={
+              <RequirePageAccess pageId="staff">
+                <StaffConfigurationPage />
+              </RequirePageAccess>
+            }
+          />
+          <Route
+            path="admin/products"
+            element={
+              <RequirePageAccess pageId="products">
+                <ProductConfigurationPage />
+              </RequirePageAccess>
+            }
+          />
+          <Route
+            path="admin/quotes"
+            element={
+              <RequirePageAccess pageId="quotes">
+                <AdminQuoteConfigurationPage />
+              </RequirePageAccess>
+            }
+          />
+          <Route
+            path="admin/quotes/sections/:sectionId"
+            element={
+              <RequirePageAccess pageId="quotes">
+                <AdminQuoteSectionDetailPage />
+              </RequirePageAccess>
+            }
+          />
+
+          {/* Manager + admin. */}
+          <Route
+            path="admin/imports"
+            element={
+              <RequirePageAccess pageId="imports">
+                <AdminImportsPage />
+              </RequirePageAccess>
+            }
+          />
+
+          {/*
+            Access page — admin: full; manager: view-only (write actions
+            are already gated inside the page via
+            canManageStaffAccessMappings); everyone else: none.
+          */}
+          <Route
+            path="admin/access"
+            element={
+              <RequirePageAccess pageId="access">
+                <AdminAccessManagementPage />
+              </RequirePageAccess>
+            }
+          />
         </Route>
       </Route>
       <Route path="/" element={<Navigate to="/app/payroll" replace />} />
