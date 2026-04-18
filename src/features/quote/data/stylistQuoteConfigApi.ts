@@ -121,6 +121,10 @@ function mapExtraUnitConfig(v: unknown): ExtraUnitConfig | null {
 function mapSpecialExtraConfig(v: unknown): SpecialExtraProductConfig | null {
   const o = asObject(v)
   if (!o) return null
+  // `numberOfRows` / `maxUnitsPerRow` are deprecated multi-row calculator
+  // fields — kept here so existing saved config rows round-trip through
+  // the stylist read path unchanged, and so `save_guest_quote`'s
+  // server-side row/units validation continues to see them.
   return {
     numberOfRows: asNumber(o.numberOfRows),
     maxUnitsPerRow: asNumber(o.maxUnitsPerRow),

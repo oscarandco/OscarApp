@@ -14,10 +14,16 @@ export function SideNav() {
   const elevated = useHasElevatedAccess()
 
   return (
-    <aside className="hidden w-52 shrink-0 border-r border-slate-200 bg-white lg:block">
+    <aside className="hidden w-52 shrink-0 overflow-y-auto border-r border-slate-200 bg-white lg:block">
       <nav className="flex flex-col gap-1 p-3">
         <NavLink to="/app/payroll" className={linkClass} end>
           Weekly summary
+        </NavLink>
+        <NavLink to="/app/quote" className={linkClass}>
+          Guest Quote
+        </NavLink>
+        <NavLink to="/app/quotes" className={linkClass}>
+          Previous Quotes
         </NavLink>
         {elevated ? (
           <>

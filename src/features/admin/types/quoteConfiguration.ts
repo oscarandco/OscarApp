@@ -205,7 +205,23 @@ export type ExtraUnitConfig = {
 }
 
 export type SpecialExtraProductConfig = {
+  /**
+   * @deprecated Legacy field from the multi-row calculator design.
+   * Special Extra Product is now rendered as a single standalone row on
+   * the Guest Quote page (one numeric grams input), so this is always
+   * treated as `1` end-to-end. The field is still round-tripped through
+   * load/save so old config rows and the `save_guest_quote` RPC's
+   * row-count validation continue to work unchanged.
+   */
   numberOfRows: number
+  /**
+   * @deprecated Legacy per-row cap from the multi-row calculator.
+   * Retained for backward compatibility only: the Guest Quote sends a
+   * single row and the `save_guest_quote` RPC still validates each
+   * row's units against this value. Not exposed in the admin drawer
+   * anymore — existing values round-trip untouched; new services
+   * default to a large cap that never constrains realistic input.
+   */
   maxUnitsPerRow: number
   pricePerUnit: number
   gramsPerUnit: number
@@ -277,9 +293,15 @@ export function defaultExtraUnit(): ExtraUnitConfig {
 }
 
 export function defaultSpecialExtraProduct(): SpecialExtraProductConfig {
+  // Guest Quote sends a single row and validates only a single numeric
+  // grams input. `numberOfRows` is locked to 1; `maxUnitsPerRow` is set
+  // generously high so the `save_guest_quote` RPC's row-cap validation
+  // never rejects realistic input. These two fields are deprecated —
+  // retained for backward compatibility only, see
+  // `SpecialExtraProductConfig` above.
   return {
-    numberOfRows: 3,
-    maxUnitsPerRow: 3,
+    numberOfRows: 1,
+    maxUnitsPerRow: 999,
     pricePerUnit: 0,
     gramsPerUnit: 18,
     minutesPerUnit: 10,

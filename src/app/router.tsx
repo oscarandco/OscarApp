@@ -18,6 +18,8 @@ import { LoginPage } from '@/features/auth/pages/LoginPage'
 import { PayrollSummaryPage } from '@/features/payroll/pages/PayrollSummaryPage'
 import { PayrollWeekDetailPage } from '@/features/payroll/pages/PayrollWeekDetailPage'
 import { GuestQuotePage } from '@/features/quote/pages/GuestQuotePage'
+import { SavedQuoteDetailPage } from '@/features/quote/pages/SavedQuoteDetailPage'
+import { SavedQuotesPage } from '@/features/quote/pages/SavedQuotesPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 
 export function AppRouter() {
@@ -33,6 +35,8 @@ export function AppRouter() {
             element={<PayrollWeekDetailPage />}
           />
           <Route path="quote" element={<GuestQuotePage />} />
+          <Route path="quotes" element={<SavedQuotesPage />} />
+          <Route path="quotes/:quoteId" element={<SavedQuoteDetailPage />} />
           <Route element={<RequireAdminAccess />}>
             <Route path="admin" element={<AdminHomePage />} />
             <Route

@@ -1,12 +1,39 @@
-import { useMemo, useState } from 'react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 
 import { ErrorState } from '@/components/feedback/ErrorState'
 import { LoadingState } from '@/components/feedback/LoadingState'
-import { useAccessProfile } from '@/features/access/accessContext'
+import {
+  QuoteServiceDrawer,
+  type QuoteServiceDrawerMode,
+} from '@/features/admin/components/QuoteServiceDrawer'
+import { quoteConfigurationQueryKey } from '@/features/admin/hooks/useQuoteConfiguration'
+import type { QuoteService } from '@/features/admin/types/quoteConfiguration'
+import {
+  useAccessProfile,
+  useHasElevatedAccess,
+} from '@/features/access/accessContext'
 import { GuestQuoteServiceField } from '@/features/quote/components/GuestQuoteServiceField'
+import { guestQuoteRowGridClasses } from '@/features/quote/components/guestQuoteRowGrid'
 import { GuestQuoteSummary } from '@/features/quote/components/GuestQuoteSummary'
-import { useStylistQuoteConfig } from '@/features/quote/hooks/useStylistQuoteConfig'
-import { buildQuoteSummary } from '@/features/quote/lib/quoteCalculations'
+import {
+  buildSaveGuestQuotePayload,
+  SaveGuestQuoteValidationError,
+} from '@/features/quote/data/saveGuestQuoteApi'
+import { useSaveGuestQuote } from '@/features/quote/hooks/useSaveGuestQuote'
+import {
+  stylistQuoteConfigQueryKey,
+  useStylistQuoteConfig,
+} from '@/features/quote/hooks/useStylistQuoteConfig'
+import {
+  buildDisplayedRowTotals,
+  buildQuoteSummary,
+} from '@/features/quote/lib/quoteCalculations'
+import {
+  buildRequoteDraftFromSaved,
+  type RequoteNavState,
+} from '@/features/quote/lib/requoteFromSavedQuote'
 import {
   clearLine,
   emptyDraft,
@@ -22,6 +49,10 @@ import type {
   StylistQuoteSection,
 } from '@/features/quote/types/stylistQuoteConfig'
 import { formatNzd } from '@/lib/formatters'
+import {
+  fetchQuoteConfiguration,
+  saveQuoteService,
+} from '@/lib/quoteConfigurationApi'
 import { queryErrorDetail } from '@/lib/queryError'
 
 /**
@@ -32,6 +63,22 @@ import { queryErrorDetail } from '@/lib/queryError'
  * save is intentionally not wired yet (Submit Quote is shown but
  * disabled).
  */
+
+/**
+ * Narrow a react-router `location.state` into the requote payload if
+ * it's shaped like one. Anything else (unknown nav state, a plain
+ * object from another feature, null) returns null so the Guest Quote
+ * page starts blank as usual.
+ */
+function readRequoteState(raw: unknown): RequoteNavState | null {
+  if (!raw || typeof raw !== 'object') return null
+  const maybe = raw as { kind?: unknown }
+  if (maybe.kind !== 'requote-from-saved') return null
+  const state = raw as RequoteNavState
+  if (!state.detail || !state.detail.header) return null
+  return state
+}
+
 export function GuestQuotePage() {
   const { data, isLoading, isError, error, refetch } = useStylistQuoteConfig()
 
@@ -86,8 +133,52 @@ function GuestQuoteForm({ config }: { config: StylistQuoteConfig }) {
   const { normalized } = useAccessProfile()
   const stylistDisplayName =
     normalized?.staffDisplayName || normalized?.staffFullName || ''
+  const isElevated = useHasElevatedAccess()
+  const queryClient = useQueryClient()
 
-  const [draft, setDraft] = useState<GuestQuoteDraft>(() => emptyDraft())
+  // Requote prefill: consume `location.state.requote` exactly once on
+  // mount. We seed both the draft and the "loaded from previous quote"
+  // banner synchronously so the form never flickers from empty to
+  // prefilled. The history state is cleared right after read so a page
+  // refresh or a bounce back to this route won't silently re-seed on
+  // top of the stylist's in-progress edits.
+  const location = useLocation()
+  const navigate = useNavigate()
+  const requoteSeedRef = useRef<RequoteNavState | null>(
+    readRequoteState(location.state),
+  )
+
+  const initialMapping = useMemo(() => {
+    const seed = requoteSeedRef.current
+    if (!seed) return null
+    return buildRequoteDraftFromSaved(seed.detail, config)
+    // We intentionally only compute this once for the initial seed.
+    // Subsequent config refetches must not reset the stylist's edits.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const [draft, setDraft] = useState<GuestQuoteDraft>(
+    () => initialMapping?.draft ?? emptyDraft(),
+  )
+
+  // A per-mount snapshot of the skipped-services list that drove the
+  // initial prefill. Kept in local state so the stylist can dismiss the
+  // banner on reset/submit without losing the prefill itself.
+  const [requoteInfo, setRequoteInfo] = useState<
+    { skippedServiceNames: string[] } | null
+  >(() =>
+    initialMapping
+      ? { skippedServiceNames: initialMapping.skippedServiceNames }
+      : null,
+  )
+
+  // Strip the requote nav state after consuming it. Runs once.
+  useEffect(() => {
+    if (requoteSeedRef.current) {
+      navigate(location.pathname, { replace: true, state: null })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const reconciled = useMemo(
     () => reconcileDraftWithConfig(draft, config),
@@ -97,6 +188,16 @@ function GuestQuoteForm({ config }: { config: StylistQuoteConfig }) {
 
   const summary = useMemo(
     () => buildQuoteSummary(config, liveDraft),
+    [config, liveDraft],
+  )
+
+  // Per-row displayed totals: same id→amount map, computed once per
+  // render. Parent rows include linked-child contributions; linked
+  // child rows map to `null` so they render as "—" instead of a
+  // standalone green amount. Grand total / save payload stay on the
+  // raw per-line totals so this rollup is display-only.
+  const displayedTotalsById = useMemo(
+    () => buildDisplayedRowTotals(config, liveDraft),
     [config, liveDraft],
   )
 
@@ -158,7 +259,164 @@ function GuestQuoteForm({ config }: { config: StylistQuoteConfig }) {
       return next
     })
 
-  const onResetForm = () => setDraft(resetDraft())
+  const saveMutation = useSaveGuestQuote()
+
+  // Transient success banner + client-side validation error, kept in
+  // local state so they clear cleanly after the next edit.
+  const [validationError, setValidationError] = useState<string | null>(null)
+  const [lastSavedId, setLastSavedId] = useState<string | null>(null)
+
+  // ---------------------------------------------------------------
+  // Admin-only: per-service edit shortcut into the existing Quote
+  // Configuration service drawer. Everything below is inert for
+  // non-elevated users — the drawer state is never populated and
+  // the E button is never rendered.
+  // ---------------------------------------------------------------
+  const [adminDrawer, setAdminDrawer] = useState<
+    | {
+        mode: QuoteServiceDrawerMode
+        service: QuoteService
+        // Captured alongside the opened service so the drawer can
+        // render the "Link To Base Service" dropdown. Updated each
+        // time the drawer is opened; never mutated during editing.
+        allServices: readonly QuoteService[]
+      }
+    | null
+  >(null)
+  const [adminLoadingServiceId, setAdminLoadingServiceId] = useState<
+    string | null
+  >(null)
+  const [adminError, setAdminError] = useState<string | null>(null)
+  const [adminConfigRefreshed, setAdminConfigRefreshed] = useState(false)
+
+  const saveServiceMut = useMutation({
+    mutationFn: (args: {
+      id: string | null
+      service: Partial<QuoteService> & { name: string; sectionId: string }
+    }) => saveQuoteService(args),
+    onSuccess: () => {
+      // Keep the admin config cache (used by this page's drawer) and
+      // the stylist-facing config cache (used to render the Guest
+      // Quote worksheet) in sync. The stylist invalidation drives the
+      // reconcile step that flows through `reconcileDraftWithConfig`
+      // on the next render.
+      void queryClient.invalidateQueries({
+        queryKey: quoteConfigurationQueryKey,
+      })
+      void queryClient.invalidateQueries({
+        queryKey: stylistQuoteConfigQueryKey,
+      })
+      setAdminConfigRefreshed(true)
+    },
+  })
+
+  const onAdminEditService = async (serviceId: string) => {
+    if (!isElevated) return
+    if (adminLoadingServiceId != null) return
+    setAdminError(null)
+    setAdminLoadingServiceId(serviceId)
+    try {
+      // Reuse the admin config cache: if another admin page has
+      // already loaded it the drawer opens instantly; otherwise we
+      // fetch once and prime the cache for later edits.
+      const adminConfig = await queryClient.fetchQuery({
+        queryKey: quoteConfigurationQueryKey,
+        queryFn: fetchQuoteConfiguration,
+      })
+      const svc = adminConfig.services.find((s) => s.id === serviceId)
+      if (!svc) {
+        setAdminError(
+          'This service could not be found in the latest configuration. It may have been deleted.',
+        )
+        return
+      }
+      setAdminDrawer({
+        mode: 'edit',
+        service: svc,
+        allServices: adminConfig.services,
+      })
+    } catch (e) {
+      setAdminError(
+        queryErrorDetail(e).err?.message ??
+          'Unable to load service for editing.',
+      )
+    } finally {
+      setAdminLoadingServiceId(null)
+    }
+  }
+
+  const onAdminDrawerSubmit = (
+    payload: Partial<QuoteService> & { name: string; sectionId: string },
+    ctx: { mode: QuoteServiceDrawerMode; existingId: string | null },
+  ) => {
+    const id = ctx.mode === 'edit' ? ctx.existingId : null
+    setAdminError(null)
+    saveServiceMut.mutate(
+      { id, service: payload },
+      {
+        onError: (err) => {
+          setAdminError(
+            queryErrorDetail(err).err?.message ?? 'Unable to save service.',
+          )
+        },
+      },
+    )
+  }
+
+  const onResetForm = () => {
+    setDraft(resetDraft())
+    setValidationError(null)
+    setLastSavedId(null)
+    setRequoteInfo(null)
+    setAdminConfigRefreshed(false)
+    saveMutation.reset()
+  }
+
+  const onSubmit = () => {
+    // Belt-and-braces dedupe: the Submit button is already disabled while
+    // a save is in flight, but any other trigger path (keyboard, tests,
+    // future wiring) must not be able to fire a second mutate during the
+    // first one — that would race `onSuccess` callbacks and leave the
+    // draft in a confused state.
+    if (saveMutation.isPending) return
+
+    setValidationError(null)
+    setLastSavedId(null)
+    let payload
+    try {
+      payload = buildSaveGuestQuotePayload(config, liveDraft, {
+        stylistDisplayName: stylistDisplayName || null,
+      })
+    } catch (e) {
+      if (e instanceof SaveGuestQuoteValidationError) {
+        setValidationError(e.message)
+        return
+      }
+      throw e
+    }
+    saveMutation.mutate(payload, {
+      onSuccess: (newId) => {
+        // Only clear the draft once the server has confirmed the save —
+        // if the save fails, the stylist keeps their work.
+        setDraft(resetDraft())
+        setLastSavedId(newId)
+        // The submitted quote is now its own saved record; drop the
+        // "loaded from previous quote" banner so the next quote starts
+        // with a clean slate.
+        setRequoteInfo(null)
+        setAdminConfigRefreshed(false)
+      },
+    })
+  }
+
+  const saveError = saveMutation.isError
+    ? (queryErrorDetail(saveMutation.error).err?.message ??
+      queryErrorDetail(saveMutation.error).message ??
+      'Unable to save quote.')
+    : null
+
+  // Hide the success banner the moment the stylist starts a new quote.
+  const showSuccessBanner = lastSavedId != null && !saveMutation.isPending
 
   return (
     <div
@@ -218,17 +476,96 @@ function GuestQuoteForm({ config }: { config: StylistQuoteConfig }) {
           <div className="pl-[72px]">
             <button
               type="button"
-              disabled
-              aria-disabled="true"
-              title="Save coming soon"
-              className="cursor-not-allowed rounded-full border border-dashed border-slate-300 bg-slate-50 px-3 py-0.5 text-[12px] font-medium text-slate-500"
+              onClick={onSubmit}
+              disabled={saveMutation.isPending}
+              aria-busy={saveMutation.isPending}
+              className="rounded-full border border-emerald-600 bg-emerald-600 px-3 py-0.5 text-[12px] font-medium text-white hover:bg-emerald-700 disabled:cursor-wait disabled:bg-emerald-500"
               data-testid="guest-quote-submit"
             >
-              Submit Quote
+              {saveMutation.isPending ? 'Saving…' : 'Submit Quote'}
             </button>
           </div>
         </div>
       </div>
+
+      {/* Requote prefill notice — shown once after arriving via the
+          Quote Detail → Requote button. Clears on Reset Form or after
+          a successful submit. */}
+      {requoteInfo ? (
+        <div
+          role="status"
+          className="mt-3 rounded-md border border-violet-200 bg-violet-50 px-3 py-2 text-[12px] text-violet-900"
+          data-testid="guest-quote-requote-banner"
+        >
+          <p className="font-medium">
+            Loaded from previous quote. Review before submitting as a new
+            quote.
+          </p>
+          {requoteInfo.skippedServiceNames.length > 0 ? (
+            <p className="mt-1 text-violet-800">
+              Some items could not be loaded because the quote configuration
+              has changed:{' '}
+              <span className="font-medium">
+                {requoteInfo.skippedServiceNames.join(', ')}
+              </span>
+              .
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {/* Admin-only: soft notice after a service config save so the
+          stylist understands why some draft values may have changed
+          under them. Only shown to elevated users — non-admins never
+          trigger this path. Dismissed by Reset Form or a successful
+          submit. */}
+      {isElevated && adminConfigRefreshed ? (
+        <div
+          role="status"
+          className="mt-3 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-[12px] text-sky-900"
+          data-testid="guest-quote-admin-refreshed"
+        >
+          Quote configuration was updated. Some selections were refreshed.
+        </div>
+      ) : null}
+      {isElevated && adminError ? (
+        <div
+          role="alert"
+          className="mt-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] text-rose-800"
+          data-testid="guest-quote-admin-error"
+        >
+          {adminError}
+        </div>
+      ) : null}
+
+      {/* Save feedback — inline, not toasts, matching the admin pages. */}
+      {showSuccessBanner ? (
+        <div
+          role="status"
+          className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-[12px] text-emerald-800"
+          data-testid="guest-quote-save-success"
+        >
+          Quote saved.
+        </div>
+      ) : null}
+      {validationError ? (
+        <div
+          role="alert"
+          className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-900"
+          data-testid="guest-quote-validation-error"
+        >
+          {validationError}
+        </div>
+      ) : null}
+      {saveError ? (
+        <div
+          role="alert"
+          className="mt-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] text-rose-800"
+          data-testid="guest-quote-save-error"
+        >
+          {saveError}
+        </div>
+      ) : null}
 
       {/* Notes — only rendered when settings.notes_enabled is true. */}
       {config.settings.notesEnabled ? (
@@ -263,15 +600,21 @@ function GuestQuoteForm({ config }: { config: StylistQuoteConfig }) {
             shaded={idx % 2 === 1}
             onPatchLine={onPatchLine}
             onClearLine={onClearLine}
+            onAdminEditService={isElevated ? onAdminEditService : undefined}
+            adminLoadingServiceId={adminLoadingServiceId}
+            displayedTotalsById={displayedTotalsById}
           />
         ))}
       </div>
 
       {/* Green Fee shown as a worksheet-style line just above the
           summary table, matching the reference — purely informational,
-          always included in the total below. */}
+          always included in the total below. When an elevated user is
+          viewing the page, service rows gain a 24px-wider leading
+          column; keep the Green Fee row aligned by using the same
+          grid template. */}
       <div
-        className="mt-4 grid grid-cols-[20px_56px_240px_minmax(0,1fr)] items-center gap-x-1.5 px-3 py-1 text-[13px]"
+        className={`mt-4 ${guestQuoteRowGridClasses(isElevated)} px-3`}
         data-testid="guest-quote-green-fee-row"
       >
         <span aria-hidden="true" />
@@ -283,6 +626,26 @@ function GuestQuoteForm({ config }: { config: StylistQuoteConfig }) {
       </div>
 
       <GuestQuoteSummary summary={summary} />
+
+      {/* Admin-only service edit drawer — same component used by the
+          Quote Configuration pages, opened here for a single service
+          at a time. Non-elevated users never reach this render path
+          because `adminDrawer` stays null. */}
+      {isElevated && adminDrawer ? (
+        <QuoteServiceDrawer
+          open={true}
+          mode={adminDrawer.mode}
+          sectionId={adminDrawer.service.sectionId}
+          existingService={adminDrawer.service}
+          allServices={adminDrawer.allServices}
+          onClose={() => setAdminDrawer(null)}
+          onSubmit={(payload, ctx) => {
+            onAdminDrawerSubmit(payload, ctx)
+          }}
+          // Intentionally omit onArchive / onDelete so the Guest Quote
+          // path never exposes archive/delete controls, per scope.
+        />
+      ) : null}
     </div>
   )
 }
@@ -293,12 +656,18 @@ function SectionBlock({
   shaded,
   onPatchLine,
   onClearLine,
+  onAdminEditService,
+  adminLoadingServiceId,
+  displayedTotalsById,
 }: {
   section: StylistQuoteSection
   draft: GuestQuoteDraft
   shaded: boolean
   onPatchLine: (serviceId: string, patch: Partial<GuestQuoteLineDraft>) => void
   onClearLine: (serviceId: string) => void
+  onAdminEditService: ((serviceId: string) => void) | undefined
+  adminLoadingServiceId: string | null
+  displayedTotalsById: Map<string, number | null>
 }) {
   return (
     <section
@@ -318,6 +687,17 @@ function SectionBlock({
       <div>
         {section.services.map((svc) => {
           const line = lineFor(draft, svc.id)
+          const onAdminEdit = onAdminEditService
+            ? () => onAdminEditService(svc.id)
+            : undefined
+          // `buildDisplayedRowTotals` covers every service in the
+          // config. An `undefined` only shows up if the config and
+          // draft drift mid-render — treat that as 0 so the row
+          // never renders a stale amount. A deliberate `null` means
+          // "child row, rolled up into parent" and must survive.
+          const raw = displayedTotalsById.get(svc.id)
+          const displayedTotal: number | null =
+            raw === undefined ? 0 : raw
           return (
             <GuestQuoteServiceField
               key={svc.id}
@@ -325,6 +705,9 @@ function SectionBlock({
               line={line}
               onChange={(patch) => onPatchLine(svc.id, patch)}
               onClear={() => onClearLine(svc.id)}
+              onAdminEdit={onAdminEdit}
+              adminEditBusy={adminLoadingServiceId === svc.id}
+              displayedTotal={displayedTotal}
             />
           )
         })}

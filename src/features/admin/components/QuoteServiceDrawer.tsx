@@ -79,6 +79,16 @@ type QuoteServiceDrawerProps = {
   ) => void
   onArchive?: (service: QuoteService) => void
   onDelete?: (service: QuoteService) => void
+  /**
+   * Optional: the full flat list of services from the loaded quote
+   * configuration. When provided, the "Link To Base Service" field on
+   * `extra_unit_price` services renders as a dropdown of eligible base
+   * services instead of a raw GUID text input. The dropdown still
+   * stores `linkToBaseServiceId` as a service id — backend/storage
+   * shape is unchanged. When this prop is omitted the drawer falls
+   * back to the legacy text input, so older call sites keep working.
+   */
+  allServices?: readonly QuoteService[]
 }
 
 function emptyDraft(): Draft {
@@ -171,6 +181,7 @@ export function QuoteServiceDrawer({
   onSubmit,
   onArchive,
   onDelete,
+  allServices,
 }: QuoteServiceDrawerProps) {
   const [draft, setDraft] = useState<Draft>(() =>
     existingService ? draftFromService(existingService, mode) : emptyDraft(),
@@ -600,6 +611,8 @@ export function QuoteServiceDrawer({
           >
             <PriceSetup
               draft={draft}
+              existingServiceId={existingService?.id ?? null}
+              allServices={allServices}
               onPatch={patch}
               onPatchNumeric={(np) =>
                 setDraft((prev) => ({ ...prev, numeric: { ...prev.numeric, ...np } }))
@@ -1043,12 +1056,16 @@ function OptionsEditor({
 
 function PriceSetup({
   draft,
+  existingServiceId,
+  allServices,
   onPatch,
   onPatchNumeric,
   onPatchExtraUnit,
   onPatchSpecial,
 }: {
   draft: Draft
+  existingServiceId: string | null
+  allServices: readonly QuoteService[] | undefined
   onPatch: (p: Partial<Draft>) => void
   onPatchNumeric: (p: Partial<NumericMultiplierConfig>) => void
   onPatchExtraUnit: (p: Partial<ExtraUnitConfig>) => void
@@ -1244,54 +1261,36 @@ function PriceSetup({
             />
             <p className="mt-1 text-xs text-slate-500">Locked for MVP.</p>
           </div>
-          <TextField
-            id="svc-extra-link-base"
-            label="Link To Base Service (optional)"
-            value={draft.extraUnit.linkToBaseServiceId ?? ''}
+          <BaseServiceLinkField
+            currentValue={draft.extraUnit.linkToBaseServiceId}
+            existingServiceId={existingServiceId}
+            allServices={allServices}
             onChange={(v) =>
-              onPatchExtraUnit({ linkToBaseServiceId: v === '' ? null : v })
+              onPatchExtraUnit({ linkToBaseServiceId: v })
             }
-            placeholder="service id"
           />
         </div>
       )
     case 'special_extra_product': {
-      const totalUnits =
-        draft.specialExtra.numberOfRows * draft.specialExtra.maxUnitsPerRow
-      const sample = draft.specialExtra.blueSummaryLabelTemplate
-        .replace('{units}', String(totalUnits))
-        .replace('{grams}', String(totalUnits * draft.specialExtra.gramsPerUnit))
-        .replace(
-          '{minutes}',
-          String(totalUnits * draft.specialExtra.minutesPerUnit),
-        )
+      // Special Extra Product renders as a single standalone row on the
+      // Guest Quote page: one numeric grams input, one per-unit price.
+      // The legacy `numberOfRows` / `maxUnitsPerRow` fields are no
+      // longer exposed here — they remain on the draft/config only so
+      // existing saved rows round-trip unchanged through the admin save
+      // path. The preview below is intentionally a one-unit example,
+      // matching what the Guest Quote page will show.
+      const cfg = draft.specialExtra
+      const sample = cfg.blueSummaryLabelTemplate
+        .replace('{units}', '1')
+        .replace('{grams}', String(cfg.gramsPerUnit))
+        .replace('{minutes}', String(cfg.minutesPerUnit))
       return (
         <div className="grid gap-3 sm:grid-cols-2">
-          <TextField
-            id="svc-sep-rows"
-            label="Number Of Rows"
-            type="number"
-            value={String(draft.specialExtra.numberOfRows)}
-            onChange={(v) =>
-              onPatchSpecial({ numberOfRows: parseNumberOrNull(v) ?? 0 })
-            }
-            variant="value"
-          />
-          <TextField
-            id="svc-sep-max-units"
-            label="Max Units Per Row"
-            type="number"
-            value={String(draft.specialExtra.maxUnitsPerRow)}
-            onChange={(v) =>
-              onPatchSpecial({ maxUnitsPerRow: parseNumberOrNull(v) ?? 0 })
-            }
-            variant="value"
-          />
           <TextField
             id="svc-sep-price-per-unit"
             label="Price Per Unit"
             type="number"
-            value={String(draft.specialExtra.pricePerUnit)}
+            value={String(cfg.pricePerUnit)}
             onChange={(v) =>
               onPatchSpecial({ pricePerUnit: parseNumberOrNull(v) ?? 0 })
             }
@@ -1301,7 +1300,7 @@ function PriceSetup({
             id="svc-sep-grams"
             label="Grams Per Unit"
             type="number"
-            value={String(draft.specialExtra.gramsPerUnit)}
+            value={String(cfg.gramsPerUnit)}
             onChange={(v) =>
               onPatchSpecial({ gramsPerUnit: parseNumberOrNull(v) ?? 0 })
             }
@@ -1311,7 +1310,7 @@ function PriceSetup({
             id="svc-sep-minutes"
             label="Minutes Per Unit"
             type="number"
-            value={String(draft.specialExtra.minutesPerUnit)}
+            value={String(cfg.minutesPerUnit)}
             onChange={(v) =>
               onPatchSpecial({ minutesPerUnit: parseNumberOrNull(v) ?? 0 })
             }
@@ -1320,12 +1319,12 @@ function PriceSetup({
           <TextField
             id="svc-sep-template"
             label="Blue Summary Label Template"
-            value={draft.specialExtra.blueSummaryLabelTemplate}
+            value={cfg.blueSummaryLabelTemplate}
             onChange={(v) => onPatchSpecial({ blueSummaryLabelTemplate: v })}
             placeholder="{units} units / {grams} grams or {minutes} mins"
           />
           <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800 sm:col-span-2">
-            <span className="font-medium">Preview at max:</span> {sample}
+            <span className="font-medium">Preview (one unit):</span> {sample}
           </div>
         </div>
       )
@@ -1333,4 +1332,117 @@ function PriceSetup({
     default:
       return null
   }
+}
+
+/**
+ * Dropdown for the `extra_unit_price` "Link To Base Service" field.
+ *
+ * Backend/storage shape is unchanged — the field still stores a
+ * `link_to_base_service_id` GUID. This component simply swaps the
+ * admin-facing UX: instead of typing a GUID, the admin picks from a
+ * filtered list of eligible base services.
+ *
+ * Eligibility (frontend-only, computed from the loaded config):
+ *   1. Must not be the current service itself (prevent self-link).
+ *   2. Must not itself be an `extra_units` input row (those are
+ *      child-style rows; they cannot act as a base).
+ *   3. Must not already carry a `linkToBaseServiceId` of its own (a
+ *      service that links to another service is already a child — it
+ *      cannot also be a parent).
+ *   4. Must be `active`, except when it happens to be the currently-
+ *      linked base (we always keep the current selection visible so an
+ *      admin who just unarchived something or is editing a legacy row
+ *      doesn't silently lose the link on save).
+ *
+ * If the current value points to a service that is not in `allServices`
+ * at all (e.g. hard-deleted or a stale GUID), we render it as a
+ * fallback "(missing service: <short id>)" entry so the admin can see
+ * something's off and either keep or clear the link explicitly. If
+ * `allServices` is undefined (older call sites that haven't wired it
+ * yet) we fall back to the legacy free-text GUID input — storage is
+ * still a GUID either way.
+ */
+function BaseServiceLinkField({
+  currentValue,
+  existingServiceId,
+  allServices,
+  onChange,
+}: {
+  currentValue: string | null
+  existingServiceId: string | null
+  allServices: readonly QuoteService[] | undefined
+  onChange: (next: string | null) => void
+}) {
+  const eligible = useMemo(() => {
+    if (!allServices) return []
+    const list = allServices.filter((s) => {
+      if (s.id === existingServiceId) return false
+      if (s.inputType === 'extra_units') return false
+      if (s.extraUnit?.linkToBaseServiceId) return false
+      if (!s.active && s.id !== currentValue) return false
+      return true
+    })
+    list.sort((a, b) => a.name.localeCompare(b.name))
+    return list
+  }, [allServices, existingServiceId, currentValue])
+
+  if (!allServices) {
+    return (
+      <TextField
+        id="svc-extra-link-base"
+        label="Link To Base Service (optional)"
+        value={currentValue ?? ''}
+        onChange={(v) => onChange(v === '' ? null : v)}
+        placeholder="service id"
+      />
+    )
+  }
+
+  const inList = eligible.some((s) => s.id === currentValue)
+  const missing = currentValue != null && !inList
+    ? allServices.find((s) => s.id === currentValue) ?? null
+    : null
+
+  return (
+    <div>
+      <label
+        htmlFor="svc-extra-link-base"
+        className="block text-sm font-medium text-slate-700"
+      >
+        Link To Base Service (optional)
+      </label>
+      <select
+        id="svc-extra-link-base"
+        value={currentValue ?? ''}
+        onChange={(e) => {
+          const next = e.target.value
+          onChange(next === '' ? null : next)
+        }}
+        className="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-emerald-400 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+      >
+        <option value="">— None —</option>
+        {eligible.map((s) => (
+          <option key={s.id} value={s.id}>
+            {s.internalKey ? `${s.name} — ${s.internalKey}` : s.name}
+          </option>
+        ))}
+        {missing ? (
+          <option key={missing.id} value={missing.id}>
+            {(missing.internalKey
+              ? `${missing.name} — ${missing.internalKey}`
+              : missing.name) + ' (inactive or non-base)'}
+          </option>
+        ) : null}
+        {currentValue != null && !inList && !missing ? (
+          <option key={currentValue} value={currentValue}>
+            {`(missing service: ${currentValue.slice(0, 8)}…)`}
+          </option>
+        ) : null}
+      </select>
+      <p className="mt-1 text-xs text-slate-500">
+        Choose the base service this extra-unit row rolls up into. Leave
+        as &ldquo;None&rdquo; for a standalone extras row.
+      </p>
+    </div>
+  )
 }

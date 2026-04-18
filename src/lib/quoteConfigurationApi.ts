@@ -137,6 +137,10 @@ function mapExtraUnitConfig(v: unknown): ExtraUnitConfig | null {
 function mapSpecialExtraConfig(v: unknown): SpecialExtraProductConfig | null {
   if (v == null || typeof v !== 'object') return null
   const o = v as Row
+  // `numberOfRows` / `maxUnitsPerRow` are deprecated multi-row calculator
+  // fields — read and preserved verbatim so the admin save path (which
+  // writes the whole `extraSpecialConfig` JSONB back) round-trips them
+  // unchanged. The admin drawer no longer exposes them.
   return {
     numberOfRows: asNumber(o.numberOfRows),
     maxUnitsPerRow: asNumber(o.maxUnitsPerRow),
@@ -155,6 +159,26 @@ function mapService(
   rolePricesByService: Map<string, QuoteRolePriceMap>,
 ): QuoteService {
   const id = asString(row.id)
+
+  // `link_to_base_service_id` is stored authoritatively on the
+  // top-level `quote_services` column (that's what the save RPC writes
+  // and what `get_active_quote_config` returns to the stylist page).
+  // The drawer, however, models the link as a field on
+  // `extraUnit.linkToBaseServiceId`, and the admin save path reads it
+  // from there on submit. Prior to this fix, `mapService` only
+  // hydrated the nested field from whatever happened to be inside the
+  // `extra_unit_config` JSONB — which for seeded rows was nothing —
+  // so opening a seeded extra-unit service in the drawer silently
+  // showed "no link", and then the very next save stamped
+  // `link_to_base_service_id = NULL` back over the top-level column,
+  // breaking the Guest Quote rollup. Hydrate from the top-level
+  // column here so the drawer round-trips correctly.
+  const topLevelLinkToBase = asStringOrNull(row.link_to_base_service_id)
+  const extraUnitBase = mapExtraUnitConfig(row.extra_unit_config)
+  const extraUnit: QuoteService['extraUnit'] = extraUnitBase
+    ? { ...extraUnitBase, linkToBaseServiceId: topLevelLinkToBase }
+    : null
+
   return {
     id,
     sectionId: asString(row.section_id),
@@ -173,7 +197,7 @@ function mapService(
     fixedPrice: asNumberOrNull(row.fixed_price),
     rolePrices: rolePricesByService.get(id) ?? {},
     numeric: mapNumericConfig(row.numeric_config),
-    extraUnit: mapExtraUnitConfig(row.extra_unit_config),
+    extraUnit,
     specialExtra: mapSpecialExtraConfig(row.special_extra_config),
     includeInQuoteSummary: asBool(row.include_in_quote_summary, true),
     summaryGroupOverride: asStringOrNull(row.summary_group_override),

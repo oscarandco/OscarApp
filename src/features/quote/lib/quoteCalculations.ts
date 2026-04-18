@@ -123,6 +123,145 @@ export function priceForLine(
 }
 
 /**
+ * Convenience alias: the raw, per-line money amount for a service — the
+ * same value that feeds the grand total and the save payload mapping.
+ * Exposed so callers that need "just the number" don't have to destructure
+ * the full `LinePricing` result, and so the difference from
+ * `displayedRowTotal` (below) stays obvious at the call site.
+ */
+export function rawLineTotal(
+  service: StylistQuoteService,
+  line: GuestQuoteLineDraft,
+): number {
+  return priceForLine(service, line).lineTotal
+}
+
+/**
+ * Map of `serviceId → displayed green amount` for every service in the
+ * config, for the Guest Quote page's row display only. Grand total and
+ * save payload continue to use the raw per-line totals from
+ * `priceForLine` so this rollup is strictly cosmetic.
+ *
+ * Rules:
+ *   1. Child vs. base is determined solely by
+ *      `service.linkToBaseServiceId`. Services whose id matches
+ *      another service's `linkToBaseServiceId` are bases; services
+ *      with a non-null `linkToBaseServiceId` are children. No name
+ *      or internal_key heuristics are used here.
+ *   2. If a service has `linkToBaseServiceId` set, it is a child
+ *      adjustment row. Its displayed amount is `null` — the row
+ *      renders no standalone green price (or a neutral placeholder),
+ *      and its raw line total is rolled up into the parent instead.
+ *   3. For every other service (including services that have no
+ *      children at all), the displayed amount is:
+ *          rawLineTotal(self)  +  Σ rawLineTotal(children)
+ *      where children are the services whose `linkToBaseServiceId`
+ *      equals this service's id.
+ *   4. If a child references a base id that isn't present in the
+ *      current config (dangling link), we fall back to displaying
+ *      the child's own amount so the total stays visible to the
+ *      stylist. No guesswork.
+ *
+ * Defensive dev-only diagnostic: extra-unit / special-extra services
+ * are *expected* to always have a `linkToBaseServiceId` — they're
+ * adjustment rows on top of a parent service. If we encounter one
+ * without a link, we log a warning so the config bug (usually a
+ * dropped/NULL'd `link_to_base_service_id` column value for that
+ * service) surfaces in the browser console instead of silently
+ * behaving like a standalone service. Orphans are otherwise shown
+ * as-is — we never infer a parent by name matching.
+ *
+ * Implementation is O(n): one pass to compute each service's raw line
+ * total and bucket children by base id, then a second pass to sum
+ * each base row's own total plus its children.
+ */
+export function buildDisplayedRowTotals(
+  config: StylistQuoteConfig,
+  draft: GuestQuoteDraft,
+): Map<string, number | null> {
+  const rawByService = new Map<string, number>()
+  const childrenByBase = new Map<string, string[]>()
+  const allServiceIds = new Set<string>()
+  const orphanExtraServiceNames: string[] = []
+
+  for (const section of config.sections) {
+    for (const svc of section.services) {
+      allServiceIds.add(svc.id)
+      const line = lineFor(draft, svc.id)
+      rawByService.set(svc.id, priceForLine(svc, line).lineTotal)
+      const baseId = svc.linkToBaseServiceId
+      if (baseId) {
+        const list = childrenByBase.get(baseId) ?? []
+        list.push(svc.id)
+        childrenByBase.set(baseId, list)
+      } else {
+        // Only `extra_units` rows are expected to roll up into a base
+        // row via `linkToBaseServiceId`. `special_extra_product` is a
+        // standalone priced row (its own green total, its own visible
+        // line) and must NOT require a link — so it is explicitly
+        // excluded here and will never be classified as an orphan.
+        //
+        // For genuine extra_units children missing a link, display
+        // continues to show their own total (no guessed parent), but
+        // we flag them for the dev console below. The intended fix is
+        // to set `link_to_base_service_id` via Quote Configuration.
+        const shouldWarnMissingBaseLink =
+          svc.inputType === 'extra_units' &&
+          // Guard kept verbatim from the business-rule spec, even
+          // though the outer union already rules this out at the type
+          // level — documents intent and survives future additions to
+          // `inputType`.
+          (svc.inputType as string) !== 'special_extra_product' &&
+          !svc.linkToBaseServiceId
+        if (shouldWarnMissingBaseLink) {
+          orphanExtraServiceNames.push(svc.name || svc.id)
+        }
+      }
+    }
+  }
+
+  const out = new Map<string, number | null>()
+  for (const section of config.sections) {
+    for (const svc of section.services) {
+      const childBaseId = svc.linkToBaseServiceId
+      if (childBaseId) {
+        if (!allServiceIds.has(childBaseId)) {
+          // Dangling link: parent was archived or deleted. Keep the
+          // child's own amount visible rather than swallowing it.
+          out.set(svc.id, round2(rawByService.get(svc.id) ?? 0))
+          continue
+        }
+        // Child linked rows do not display a standalone price —
+        // their contribution is shown on the parent row instead.
+        out.set(svc.id, null)
+        continue
+      }
+      let total = rawByService.get(svc.id) ?? 0
+      const childIds = childrenByBase.get(svc.id) ?? []
+      for (const childId of childIds) {
+        total += rawByService.get(childId) ?? 0
+      }
+      out.set(svc.id, round2(total))
+    }
+  }
+
+  if (
+    orphanExtraServiceNames.length > 0 &&
+    typeof console !== 'undefined' &&
+    typeof console.warn === 'function'
+  ) {
+    console.warn(
+      '[GuestQuote] Extra-unit service(s) missing linkToBaseServiceId — ' +
+        'displayed as standalone rows instead of rolling into a base. ' +
+        'Fix via Quote Configuration → edit service → set "Link To Base Service": ' +
+        orphanExtraServiceNames.join(', '),
+    )
+  }
+
+  return out
+}
+
+/**
  * Decide the summary group label for a selected service.
  *
  * UI-side grouping rule (per task brief):

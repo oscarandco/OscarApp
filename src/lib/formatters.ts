@@ -63,6 +63,28 @@ export function formatWeekBadgeLabel(isoDate: string | null | undefined): string
   return formatShortDate(isoDate)
 }
 
+/**
+ * Compact local-time "date + 24h time" formatter used by the saved
+ * quote list and detail pages (e.g. `18 Apr 2026, 14:35`). `hourCycle:
+ * 'h23'` pins HH:MM 24-hour rendering regardless of user locale so the
+ * two screens stay visually consistent.
+ */
+const dateTimeCompactFormatter = new Intl.DateTimeFormat(undefined, {
+  day: '2-digit',
+  month: 'short',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+})
+
+export function formatDateTimeCompact(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return String(iso)
+  return dateTimeCompactFormatter.format(d)
+}
+
 export function humanizeKey(key: string): string {
   return key
     .replace(/_/g, ' ')

@@ -48,6 +48,11 @@ export function AdminQuoteSectionDetailPage() {
     [config, sectionId],
   )
 
+  const allServices = useMemo(
+    () => (config ? config.services : []),
+    [config],
+  )
+
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [drawerMode, setDrawerMode] = useState<QuoteServiceDrawerMode>('create')
   const [drawerService, setDrawerService] = useState<QuoteService | null>(null)
@@ -377,6 +382,7 @@ export function AdminQuoteSectionDetailPage() {
         mode={drawerMode}
         sectionId={currentSection.id}
         existingService={drawerService}
+        allServices={allServices}
         onClose={() => setDrawerOpen(false)}
         onSubmit={handleServiceDrawerSubmit}
         onArchive={handleServiceArchive}
