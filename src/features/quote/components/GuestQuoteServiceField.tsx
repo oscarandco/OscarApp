@@ -1,22 +1,14 @@
 /**
- * Guest Quote service row.
+ * Compact Guest Quote service row.
  *
- * Two distinct rendering paths:
+ * Row grammar (left → right):
+ *   [x]   [price / live meta]   [service label]   [inline control]
  *
- *   • Desktop (≥ lg): the classic compact worksheet row using the
- *     shared `guestQuoteRowGridClasses` grid — leading actions, green
- *     price, service label, inline control, all in one aligned line.
- *     Unchanged from before; this path preserves every worksheet
- *     alignment fix previously shipped.
- *
- *   • Mobile (< lg): a dedicated stacked layout that drops the rigid
- *     desktop grid entirely. The top line carries leading actions +
- *     price + service name, wrapping cleanly inside the container; the
- *     controls sit on a second line below, with wrapping option
- *     groups so nothing runs off-screen in portrait or landscape.
- *
- * Both paths share the same control components, event handlers and
- * pricing inputs — only presentation differs.
+ * - `[x]`: clears this line back to an empty/unselected state.
+ * - `[price]`: green live-calculated line total for normal services; blue
+ *   live meta ("N units @ $X ea", "N units / Ng or N mins") for
+ *   extra_unit / special_extra_product services.
+ * - Controls render inline and stay compact; no heavy card wrappers.
  */
 import type { ReactNode } from 'react'
 
@@ -36,11 +28,37 @@ type Props = {
   line: GuestQuoteLineDraft
   onChange: (patch: Partial<GuestQuoteLineDraft>) => void
   onClear: () => void
+  /**
+   * The amount shown in the row's green price cell, pre-computed by the
+   * page from `buildDisplayedRowTotals`. Differs from
+   * `priceForLine(service, line).lineTotal` in two cases:
+   *   - on a base service row it includes the raw totals of any linked
+   *     child extra rows, so the visible green amount reflects the
+   *     combined charge the stylist will quote;
+   *   - on a linked child row it is `null`, and the row hides its
+   *     standalone price (the amount is rolled up into the parent
+   *     instead).
+   * The draft state and save payload continue to use per-line totals,
+   * so this rollup is purely display-level.
+   */
   displayedTotal: number | null
+  /**
+   * Optional admin-only edit shortcut. When provided, a small red "E"
+   * button is rendered next to the clear button and this callback is
+   * invoked when clicked. Rendering is the caller's responsibility —
+   * pass `undefined` for non-elevated users so the control is fully
+   * absent from the DOM.
+   */
   onAdminEdit?: () => void
+  /**
+   * Disables the admin edit button while the parent is loading or
+   * saving the admin-side service config. Ignored when
+   * `onAdminEdit` is not provided.
+   */
   adminEditBusy?: boolean
 }
 
+/** Short role labels used inline in role_radio rows. */
 function shortRoleLabel(role: QuoteRole): string {
   switch (role) {
     case 'EMERGING':
@@ -54,14 +72,41 @@ function shortRoleLabel(role: QuoteRole): string {
   }
 }
 
+/**
+ * `extra_units` rows render as a sub-row variant: a wider merged
+ * meta/label area and a centered compact control group, distinct from
+ * the [price][label][controls] grammar of normal service rows. They
+ * reuse the *same* grid template as normal rows (via `col-span-2` on
+ * the merged cell), so the controls column starts at the same
+ * horizontal position on every row across the whole worksheet.
+ *
+ * `special_extra_product` rows are **not** part of this variant — they
+ * render as a normal priced row with a green visible total, a combined
+ * "Name: blue meta" label, and a left-aligned numeric qty input. See
+ * the dedicated branch in `GuestQuoteServiceField`.
+ */
 function isExtraUnitsVariant(service: StylistQuoteService): boolean {
   return service.inputType === 'extra_units'
 }
 
 /**
  * Formats the live blue helper text for a `special_extra_product`
- * standalone row (e.g. "5 units / 90 grams or 50 mins"). See the
- * original comment for details — behaviour unchanged.
+ * standalone row. The entered quantity (see `SpecialExtraControl`) is
+ * treated as a unit count, so:
+ *
+ *   units   = qty
+ *   grams   = qty * gramsPerUnit   (only when gramsPerUnit > 0)
+ *   minutes = qty * minutesPerUnit (only when minutesPerUnit > 0)
+ *
+ * Produces strings like:
+ *   "5 units / 90 grams or 50 mins"      (both scales configured)
+ *   "1 unit / 18 grams"                  (only grams configured)
+ *   "3 units / 30 mins"                  (only minutes configured)
+ *   "1 unit"                             (neither scale configured)
+ *
+ * Singular/plural for `unit` / `units` is preserved. This is purely
+ * display — no persisted config fields, no line draft fields, and no
+ * save payload mapping are affected.
  */
 function formatSpecialExtraMeta(
   service: StylistQuoteService,
@@ -78,47 +123,7 @@ function formatSpecialExtraMeta(
   return tail.length > 0 ? `${head} / ${tail.join(' or ')}` : head
 }
 
-/**
- * Compute the `extra_units` sub-row meta text ("3 foils @ $18.00 ea").
- * Shared between desktop and mobile renderers so both paths display
- * identical copy. Returns empty string for non-extra_units services.
- */
-function formatExtraUnitsMeta(
-  service: StylistQuoteService,
-  line: GuestQuoteLineDraft,
-): string {
-  if (service.inputType !== 'extra_units') return ''
-  const cfg = service.extraUnit
-  const n = line.extraUnitsSelected ?? 0
-  const each = cfg?.pricePerExtraUnit ?? 0
-  const rawUnit =
-    cfg?.extraUnitDisplaySuffix?.trim() ||
-    cfg?.extraLabel?.toLowerCase().trim() ||
-    'extras'
-  return `${n} ${rawUnit} @ ${formatNzd(each)} ea`
-}
-
-export function GuestQuoteServiceField(props: Props) {
-  // Render both variants inline and switch with responsive visibility —
-  // simplest possible approach that keeps each layout purpose-built
-  // for its viewport.
-  return (
-    <>
-      <div className="hidden lg:block">
-        <DesktopRow {...props} />
-      </div>
-      <div className="block lg:hidden">
-        <MobileRow {...props} />
-      </div>
-    </>
-  )
-}
-
-/* --------------------------------------------------------------------- */
-/*  Desktop renderer (≥ lg) — unchanged grid-based worksheet row         */
-/* --------------------------------------------------------------------- */
-
-function DesktopRow({
+export function GuestQuoteServiceField({
   service,
   line,
   onChange,
@@ -140,6 +145,11 @@ function DesktopRow({
   )
 
   if (service.inputType === 'special_extra_product') {
+    // Standalone priced row. Uses the normal row grid so the green
+    // `LinePriceLabel` is visible (same column as other priced rows),
+    // and the numeric qty input sits in the same left-aligned control
+    // column as checkboxes / numeric inputs / other standalone rows —
+    // no merged col-span / center-justify treatment here.
     const metaText = formatSpecialExtraMeta(service, pricing)
     const name = service.name?.trim() ?? ''
     const title = name && metaText ? `${name} — ${metaText}` : name || metaText
@@ -163,6 +173,8 @@ function DesktopRow({
   }
 
   if (isExtraUnitsVariant(service)) {
+    // `extra_units` sub-row: centered merged label/meta cell and a
+    // left-aligned 1..N selector group. Unchanged.
     return (
       <div
         className={gridClasses}
@@ -199,126 +211,14 @@ function DesktopRow({
   )
 }
 
-/* --------------------------------------------------------------------- */
-/*  Mobile renderer (< lg) — stacked, wrap-friendly card-style row       */
-/* --------------------------------------------------------------------- */
-
-function MobileRow({
-  service,
-  line,
-  onChange,
-  onClear,
-  onAdminEdit,
-  adminEditBusy,
-  displayedTotal,
-}: Props) {
-  const pricing = priceForLine(service, line)
-  const name = service.name?.trim() ?? ''
-
-  const leadingActions = (
-    <LeadingRowActions
-      serviceName={service.name}
-      onClear={onClear}
-      onAdminEdit={onAdminEdit}
-      adminEditBusy={adminEditBusy ?? false}
-    />
-  )
-
-  // Top line: [x/E buttons] [price or em-dash] [service label]
-  // Price renders a fixed-width slot so labels line up across rows
-  // regardless of whether the price is present, rolled-up, or absent.
-  // For `extra_units` rows the price is always rolled into the parent,
-  // so the price slot naturally shows a muted em-dash — no special
-  // cased empty slot is needed.
-  let topLabel: ReactNode = (
-    <span className="min-w-0 flex-1 break-words text-[12.5px] text-slate-800">
-      {name}
-    </span>
-  )
-  const priceSlot = <MobilePriceLabel displayedTotal={displayedTotal} />
-
-  if (service.inputType === 'extra_units') {
-    const meta = formatExtraUnitsMeta(service, line)
-    topLabel = (
-      <span
-        className="min-w-0 flex-1 break-words text-[12.5px]"
-        title={name ? `${name} — ${meta}` : meta}
-      >
-        {name ? <span className="text-slate-800">{name}: </span> : null}
-        <span className="text-sky-600">{meta}</span>
-      </span>
-    )
-  } else if (service.inputType === 'special_extra_product') {
-    const meta = formatSpecialExtraMeta(service, pricing)
-    topLabel = (
-      <span
-        className="min-w-0 flex-1 break-words text-[12.5px]"
-        title={name && meta ? `${name} — ${meta}` : name || meta}
-      >
-        {name ? <span className="text-slate-800">{name}</span> : null}
-        {name && meta ? <span className="text-slate-800">: </span> : null}
-        {meta ? <span className="text-sky-600">{meta}</span> : null}
-      </span>
-    )
-  }
-
-  return (
-    <div
-      className="border-b border-slate-200/60 py-1.5 last:border-b-0"
-      data-testid={`guest-quote-row-${service.id}`}
-    >
-      <div className="flex items-center gap-2">
-        {leadingActions}
-        {priceSlot}
-        {topLabel}
-      </div>
-      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 pl-7">
-        <FieldControl
-          service={service}
-          line={line}
-          onChange={onChange}
-          compact
-        />
-      </div>
-    </div>
-  )
-}
-
 /**
- * Mobile variant of the price label.
- *
- * Same semantics as `LinePriceLabel` but uses a narrow fixed-minimum
- * slot so the label column lines up across rows without requiring the
- * desktop grid template. No `NZD`/`$` localisation surprises on mobile
- * — the formatter is locked to `en-NZ` in `formatNzd`.
+ * Renders the leading column of a service row: the "x" clear button, and
+ * — for elevated users only — a small red "E" admin edit button. The
+ * edit button is kept visually distinct from the clear button (red tint
+ * vs slate outline, bold "E" vs lowercase "x") so the two actions are
+ * not confused. Both buttons stop click propagation so they never fire
+ * adjacent row-level interactions.
  */
-function MobilePriceLabel({
-  displayedTotal,
-}: {
-  displayedTotal: number | null
-}) {
-  if (displayedTotal == null) {
-    return (
-      <span
-        className="w-[4.5rem] shrink-0 text-[12px] text-slate-300"
-        aria-label="Included in linked service total"
-        title="Included in linked service total"
-      >
-        —
-      </span>
-    )
-  }
-  return (
-    <span className="w-[4.5rem] shrink-0 text-right text-[12.5px] font-semibold tabular-nums text-emerald-600">
-      {formatNzd(displayedTotal)}
-    </span>
-  )
-}
-
-/* --------------------------------------------------------------------- */
-/*  Shared helpers                                                        */
-/* --------------------------------------------------------------------- */
-
 function LeadingRowActions({
   serviceName,
   onClear,
@@ -365,6 +265,18 @@ function LeadingRowActions({
   )
 }
 
+/**
+ * Live-updating price cell for normal service rows.
+ * Extra-unit / special-extra rows use `ExtraRowLabel` instead, which
+ * renders a wider blue meta label spanning the price + name columns.
+ *
+ * `displayedTotal` comes pre-computed from `buildDisplayedRowTotals`:
+ *   - number   → render the green money amount (parent rows already
+ *                include linked child totals, so this "just works")
+ *   - null     → this row's price rolls up into its parent. Render a
+ *                muted em-dash as a neutral placeholder so the column
+ *                stays visually consistent across the worksheet.
+ */
 function LinePriceLabel({
   displayedTotal,
 }: {
@@ -388,6 +300,17 @@ function LinePriceLabel({
   )
 }
 
+/**
+ * Merged label for `extra_units` sub-rows. The service name is shown
+ * plain (e.g. "Additional"), followed by the blue live-updating meta
+ * so the row reads as a sub-row beneath its parent service:
+ *
+ *   Additional: 0 extra (0g)
+ *   Individual extras: 2 foils @ $18.00 ea
+ *
+ * (`special_extra_product` has its own standalone priced row renderer
+ * in `GuestQuoteServiceField` — see `formatSpecialExtraMeta`.)
+ */
 function ExtraRowLabel({
   service,
   line,
@@ -395,9 +318,35 @@ function ExtraRowLabel({
 }: {
   service: StylistQuoteService
   line: GuestQuoteLineDraft
+  /**
+   * When true, the meta/name text is rendered center-aligned inside its
+   * column. Used for `extra_units` rows where the label block sits in a
+   * wide merged cell and reads more naturally when centered under the
+   * parent. Defaults to left-aligned (the original behaviour) for all
+   * other variants.
+   */
   centered?: boolean
 }) {
-  const meta = formatExtraUnitsMeta(service, line)
+  // `ExtraRowLabel` is now only used for `extra_units` sub-rows.
+  // `special_extra_product` has its own standalone priced row renderer
+  // in `GuestQuoteServiceField` — see `formatSpecialExtraMeta`.
+  let meta = ''
+  if (service.inputType === 'extra_units') {
+    const cfg = service.extraUnit
+    const n = line.extraUnitsSelected ?? 0
+    const each = cfg?.pricePerExtraUnit ?? 0
+    // Reference format: "{n} {unit} @ ${price} ea". Prefer the more
+    // descriptive `extraUnitDisplaySuffix` (e.g. "units", "10g") over
+    // the generic `extraLabel`; fall back to "extras" when neither is
+    // set. Always separated by a space — prevents the old
+    // "0 extra foilunits" / "0 extra10g" concatenation bug.
+    const rawUnit =
+      cfg?.extraUnitDisplaySuffix?.trim() ||
+      cfg?.extraLabel?.toLowerCase().trim() ||
+      'extras'
+    meta = `${n} ${rawUnit} @ ${formatNzd(each)} ea`
+  }
+
   const name = service.name?.trim() ?? ''
   const alignClass = centered ? 'text-center' : ''
   return (
@@ -417,68 +366,24 @@ function ExtraRowLabel({
 /*  Inline controls                                                       */
 /* --------------------------------------------------------------------- */
 
-type ControlProps = {
-  service: StylistQuoteService
-  line: GuestQuoteLineDraft
-  onChange: (patch: Partial<GuestQuoteLineDraft>) => void
-  /**
-   * When true, controls render with wrap-friendly spacing — smaller
-   * gaps between radios/labels and no `whitespace-nowrap` — so option
-   * groups and role selectors stay inside the available mobile width.
-   */
-  compact?: boolean
-}
-
 function FieldControl({
   service,
   line,
   onChange,
-  compact,
-}: Omit<Props, 'onClear' | 'onAdminEdit' | 'adminEditBusy' | 'displayedTotal'> & {
-  compact?: boolean
-}) {
-  const c = compact ?? false
+}: Omit<Props, 'onClear' | 'onAdminEdit' | 'adminEditBusy' | 'displayedTotal'>) {
   switch (service.inputType) {
     case 'checkbox':
       return <CheckboxControl line={line} onChange={onChange} />
     case 'role_radio':
-      return (
-        <RoleRadioControl
-          service={service}
-          line={line}
-          onChange={onChange}
-          compact={c}
-        />
-      )
+      return <RoleRadioControl service={service} line={line} onChange={onChange} />
     case 'option_radio':
-      return (
-        <OptionRadioControl
-          service={service}
-          line={line}
-          onChange={onChange}
-          compact={c}
-        />
-      )
+      return <OptionRadioControl service={service} line={line} onChange={onChange} />
     case 'dropdown':
-      return (
-        <DropdownControl
-          service={service}
-          line={line}
-          onChange={onChange}
-          compact={c}
-        />
-      )
+      return <DropdownControl service={service} line={line} onChange={onChange} />
     case 'numeric_input':
       return <NumericControl service={service} line={line} onChange={onChange} />
     case 'extra_units':
-      return (
-        <ExtraUnitsControl
-          service={service}
-          line={line}
-          onChange={onChange}
-          compact={c}
-        />
-      )
+      return <ExtraUnitsControl service={service} line={line} onChange={onChange} />
     case 'special_extra_product':
       return <SpecialExtraControl service={service} line={line} onChange={onChange} />
     default:
@@ -494,6 +399,12 @@ function InlineNote({ children }: { children: ReactNode }) {
       {children}
     </span>
   )
+}
+
+type ControlProps = {
+  service: StylistQuoteService
+  line: GuestQuoteLineDraft
+  onChange: (patch: Partial<GuestQuoteLineDraft>) => void
 }
 
 function CheckboxControl({
@@ -514,25 +425,27 @@ function CheckboxControl({
   )
 }
 
-function RoleRadioControl({ service, line, onChange, compact }: ControlProps) {
+function RoleRadioControl({ service, line, onChange }: ControlProps) {
+  // Always render the four canonical role slots in a fixed order so the
+  // Em./Snr./Mst./Dir. columns line up across every role_radio row on
+  // the worksheet, even when a service restricts which roles are
+  // allowed. Unsupported roles render an inert, visually-hidden
+  // placeholder of the same shape as a real radio+label — this keeps
+  // the geometry identical without affecting pricing or selection.
   const canonicalRoles = sortRolesCanonical([...QUOTE_ROLES])
   const supported = new Set<QuoteRole>(
     service.visibleRoles.length > 0 ? service.visibleRoles : [...QUOTE_ROLES],
   )
   const active = line.selected ? line.selectedRole : null
-  const containerClasses = compact
-    ? 'flex flex-wrap items-center gap-x-3 gap-y-1'
-    : 'flex items-center gap-3'
-  const labelSizeClass = compact ? 'text-[11.5px]' : 'text-[12px]'
   return (
-    <div className={containerClasses}>
+    <div className="flex items-center gap-3">
       {canonicalRoles.map((role) => {
         if (!supported.has(role)) {
           return (
             <span
               key={role}
               aria-hidden="true"
-              className={`pointer-events-none invisible flex select-none items-center gap-1 ${labelSizeClass} text-slate-700`}
+              className="pointer-events-none invisible flex select-none items-center gap-1 text-[12px] text-slate-700"
             >
               <input
                 type="radio"
@@ -549,7 +462,7 @@ function RoleRadioControl({ service, line, onChange, compact }: ControlProps) {
         return (
           <label
             key={role}
-            className={`flex cursor-pointer items-center gap-1 ${labelSizeClass} text-slate-700`}
+            className="flex cursor-pointer items-center gap-1 text-[12px] text-slate-700"
           >
             <input
               type="radio"
@@ -568,27 +481,26 @@ function RoleRadioControl({ service, line, onChange, compact }: ControlProps) {
   )
 }
 
+/**
+ * Strip a redundant trailing time unit from option labels whose parent
+ * service name already implies minutes (e.g. "Additional mins reqd" →
+ * options "15 min" / "30 min" render as "15" / "30"). Presentation-only;
+ * option value_key, price, and saved payloads are unaffected.
+ */
 function displayOptionLabel(label: string): string {
   return label.replace(/\s+(minutes?|mins?)\s*$/i, '').trim() || label
 }
 
-function OptionRadioControl({ service, line, onChange, compact }: ControlProps) {
+function OptionRadioControl({ service, line, onChange }: ControlProps) {
   const activeId = line.selected ? line.selectedOptionIds[0] ?? null : null
-  // Compact mode drops `whitespace-nowrap` and switches to wrap so
-  // long option sets can break onto a second line on phone widths
-  // instead of overflowing the container.
-  const containerClasses = compact
-    ? 'flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1'
-    : 'flex min-w-0 items-center gap-3 whitespace-nowrap'
-  const labelSizeClass = compact ? 'text-[11.5px]' : 'text-[12px]'
   return (
-    <div className={containerClasses}>
+    <div className="flex min-w-0 items-center gap-3 whitespace-nowrap">
       {service.options.map((opt) => {
         const checked = activeId === opt.id
         return (
           <label
             key={opt.id}
-            className={`flex cursor-pointer items-center gap-1 ${labelSizeClass} text-slate-700`}
+            className="flex cursor-pointer items-center gap-1 text-[12px] text-slate-700"
           >
             <input
               type="radio"
@@ -607,14 +519,11 @@ function OptionRadioControl({ service, line, onChange, compact }: ControlProps) 
   )
 }
 
-function DropdownControl({ service, line, onChange, compact }: ControlProps) {
+function DropdownControl({ service, line, onChange }: ControlProps) {
   const activeId = line.selected ? line.selectedOptionIds[0] ?? '' : ''
-  // Compact mode caps the select at the available width so long option
-  // labels don't force the select wider than the container.
-  const widthClass = compact ? 'w-full max-w-xs' : 'w-40'
   return (
     <select
-      className={`${widthClass} rounded border border-slate-200 bg-white px-2 py-0.5 text-[12px] focus:border-emerald-400 focus:outline-none focus:ring-1 focus:ring-emerald-400`}
+      className="w-40 rounded border border-slate-200 bg-white px-2 py-0.5 text-[12px] focus:border-emerald-400 focus:outline-none focus:ring-1 focus:ring-emerald-400"
       value={activeId}
       onChange={(e) => {
         const id = e.target.value
@@ -661,24 +570,23 @@ function NumericControl({ service, line, onChange }: ControlProps) {
   )
 }
 
-function ExtraUnitsControl({ service, line, onChange, compact }: ControlProps) {
+function ExtraUnitsControl({ service, line, onChange }: ControlProps) {
   const cfg = service.extraUnit
   if (!cfg) return <InlineNote>Missing extra-unit config</InlineNote>
+  // Linked extras are always enabled — picking an option auto-activates
+  // the base service via the page-level patch handler. This keeps the
+  // UX from forcing users to tick the base checkbox first.
   const selected = line.extraUnitsSelected ?? 0
   const choices: number[] = []
   for (let i = 1; i <= cfg.maxExtras; i += 1) choices.push(i)
-  const containerClasses = compact
-    ? 'flex flex-wrap items-center gap-x-3 gap-y-1'
-    : 'flex items-center gap-3'
-  const labelSizeClass = compact ? 'text-[11.5px]' : 'text-[12px]'
   return (
-    <div className={containerClasses}>
+    <div className="flex items-center gap-3">
       {choices.map((n) => {
         const checked = line.selected && selected === n
         return (
           <label
             key={n}
-            className={`flex cursor-pointer items-center gap-1 ${labelSizeClass} text-slate-700`}
+            className="flex cursor-pointer items-center gap-1 text-[12px] text-slate-700"
           >
             <input
               type="radio"
@@ -700,6 +608,13 @@ function ExtraUnitsControl({ service, line, onChange, compact }: ControlProps) {
 function SpecialExtraControl({ service, line, onChange }: ControlProps) {
   const cfg = service.specialExtra
   if (!cfg) return <InlineNote>Missing special-extra config</InlineNote>
+  // The input now represents a unit quantity (qty). We still persist to
+  // `specialExtraGrams` so `priceForLine` and the save payload mapping
+  // remain byte-identical: the stored grams value is exactly
+  // `qty * gramsPerUnit`, which `priceForLine` divides back out to
+  // recover the same units count. When `gramsPerUnit` is 0 (unusual —
+  // time-only config), we fall back to multiplier 1 so storing qty as
+  // grams still yields the same units via `Math.ceil(grams / 1)`.
   const gramsPerUnit = cfg.gramsPerUnit > 0 ? cfg.gramsPerUnit : 1
   const qty =
     line.specialExtraGrams == null

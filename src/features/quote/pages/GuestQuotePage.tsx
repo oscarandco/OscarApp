@@ -419,14 +419,14 @@ function GuestQuoteForm({ config }: { config: StylistQuoteConfig }) {
   const showSuccessBanner = lastSavedId != null && !saveMutation.isPending
 
   return (
-    // Mobile: a tight 8px horizontal breathing pad keeps the top-form
-    // inputs aligned with the content inside each section card below
-    // (sections carry their own 8px inner pad), so the form area and
-    // service list share a consistent left/right rhythm at phone
-    // widths. Desktop stays flush (`lg:px-0`) so the worksheet grid
-    // retains its established look.
+    // Mobile: the root is flush (no outer horizontal pad); instead,
+    // each top-form block gets a `px-2 lg:px-0` inset, matching the
+    // 8px inner padding each section card already uses. That means
+    // the top-form inputs and the service-row grid inside sections
+    // share the exact same left/right rhythm at phone widths, so the
+    // form area and quote sections visually start at the same column.
     <div
-      className="w-full max-w-[620px] px-1 text-[13px] text-slate-900 lg:px-0"
+      className="w-full max-w-[620px] text-[13px] text-slate-900"
       data-testid="guest-quote-page"
     >
       {/* Top row — guest on the left, stylist on the right, with their
@@ -439,7 +439,7 @@ function GuestQuoteForm({ config }: { config: StylistQuoteConfig }) {
           mobile boundary is deliberately set at `lg`, not `sm`, so
           iPhones in landscape (≈ 667–932px wide) still get the mobile
           layout instead of the desktop two-column grid. */}
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 px-2 lg:grid-cols-2 lg:px-0">
         <div className="space-y-2">
           <div className="flex items-center gap-2">
             <label
@@ -582,7 +582,7 @@ function GuestQuoteForm({ config }: { config: StylistQuoteConfig }) {
 
       {/* Notes — only rendered when settings.notes_enabled is true. */}
       {config.settings.notesEnabled ? (
-        <div className="mt-3 flex items-start gap-2">
+        <div className="mt-3 flex items-start gap-2 px-2 lg:px-0">
           <label
             htmlFor="guest-notes"
             className="w-16 shrink-0 pt-1 text-slate-700"
@@ -607,7 +607,7 @@ function GuestQuoteForm({ config }: { config: StylistQuoteConfig }) {
           `lg` and up (iPhone landscape stays on the mobile layout).
           Buttons are sized for comfortable tap targets. */}
       <div
-        className="mt-3 flex flex-wrap gap-2 lg:hidden"
+        className="mt-3 flex flex-wrap gap-2 px-2 lg:hidden lg:px-0"
         data-testid="guest-quote-mobile-actions"
       >
         <button
@@ -630,51 +630,50 @@ function GuestQuoteForm({ config }: { config: StylistQuoteConfig }) {
         </button>
       </div>
 
-      {/* Sections — each section is its own subtle box; alternating
-          white / very light grey panels against the slate-50 page bg
-          read as distinct containers without needing heavy borders. */}
-      <div className="mt-4 space-y-2">
-        {config.sections.map((section, idx) => (
-          <SectionBlock
-            key={section.id}
-            section={section}
-            draft={liveDraft}
-            shaded={idx % 2 === 1}
-            onPatchLine={onPatchLine}
-            onClearLine={onClearLine}
-            onAdminEditService={isElevated ? onAdminEditService : undefined}
-            adminLoadingServiceId={adminLoadingServiceId}
-            displayedTotalsById={displayedTotalsById}
-          />
-        ))}
-      </div>
+      {/* Sections + Green Fee worksheet block.
 
-      {/* Green Fee shown as a worksheet-style line just above the
-          summary table, matching the reference — purely informational,
-          always included in the total below.
-          Desktop (≥ lg): uses the shared Guest Quote grid template so
-          the column starts line up with every service row above.
-          Mobile (< lg): renders as a simple price + label pair with
-          the same rhythm as the stacked mobile row layout. */}
-      <div data-testid="guest-quote-green-fee-row" className="mt-4">
-        <div className="hidden px-3 lg:block">
-          <div className={guestQuoteRowGridClasses(isElevated)}>
-            <span aria-hidden="true" />
-            <span className="truncate font-semibold text-emerald-600">
-              {formatNzd(summary.greenFee)}
-            </span>
-            <span className="text-slate-800">Green Fee</span>
-            <span aria-hidden="true" />
-          </div>
+          Below `lg`, we wrap this in a horizontal-scroll container
+          (`overflow-x-auto`) as the intentional portrait fallback:
+          the original aligned row grid is preserved, and when a
+          service row's controls would overflow the available phone
+          width the section scrolls horizontally instead of the row
+          collapsing/wrapping. This keeps the worksheet scanable and
+          identical to desktop in layout — just panned. At `lg` and up
+          (`lg:overflow-visible`) the container behaves exactly as
+          before, so desktop is unchanged. */}
+      <div className="mt-4 overflow-x-auto lg:overflow-visible">
+        <div className="space-y-2">
+          {config.sections.map((section, idx) => (
+            <SectionBlock
+              key={section.id}
+              section={section}
+              draft={liveDraft}
+              shaded={idx % 2 === 1}
+              onPatchLine={onPatchLine}
+              onClearLine={onClearLine}
+              onAdminEditService={isElevated ? onAdminEditService : undefined}
+              adminLoadingServiceId={adminLoadingServiceId}
+              displayedTotalsById={displayedTotalsById}
+            />
+          ))}
         </div>
-        <div className="flex items-center gap-2 px-2 py-1 lg:hidden">
-          <span aria-hidden="true" className="w-6 shrink-0" />
-          <span className="w-[4.5rem] shrink-0 text-right text-[12.5px] font-semibold tabular-nums text-emerald-600">
+
+        {/* Green Fee worksheet line — always uses the shared Guest
+            Quote grid template, same as every service row above, so
+            the column starts stay aligned both on desktop and while
+            the mobile horizontal-scroll container is panned. Mobile
+            uses `px-2` to match each section card's inner pad at the
+            same breakpoint; sm+ widens to `sm:px-3` to match. */}
+        <div
+          className={`mt-4 ${guestQuoteRowGridClasses(isElevated)} px-2 sm:px-3`}
+          data-testid="guest-quote-green-fee-row"
+        >
+          <span aria-hidden="true" />
+          <span className="truncate font-semibold text-emerald-600">
             {formatNzd(summary.greenFee)}
           </span>
-          <span className="min-w-0 flex-1 text-[12.5px] text-slate-800">
-            Green Fee
-          </span>
+          <span className="text-slate-800">Green Fee</span>
+          <span aria-hidden="true" />
         </div>
       </div>
 
