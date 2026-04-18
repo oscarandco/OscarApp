@@ -419,12 +419,15 @@ function GuestQuoteForm({ config }: { config: StylistQuoteConfig }) {
   const showSuccessBanner = lastSavedId != null && !saveMutation.isPending
 
   return (
-    // Mobile: the root is flush (no outer horizontal pad); instead,
-    // each top-form block gets a `px-2 lg:px-0` inset, matching the
-    // 8px inner padding each section card already uses. That means
-    // the top-form inputs and the service-row grid inside sections
-    // share the exact same left/right rhythm at phone widths, so the
-    // form area and quote sections visually start at the same column.
+    // Mobile: the root is flush (no outer horizontal pad) and none of
+    // the inner blocks carry any extra horizontal inset either. That
+    // means every element — top-form inputs, section cards, service
+    // rows, Green Fee row, Notes, mobile action bar — all start at
+    // the same x (the app shell's `px-3` mobile pad), and so do the
+    // TopNav / page header, keeping the whole mobile page feeling
+    // like one aligned column. sm+ breakpoints restore the previous
+    // `sm:px-3` rhythm so tablet/landscape widths keep their
+    // breathing room, and lg+ desktop is untouched.
     <div
       className="w-full max-w-[620px] text-[13px] text-slate-900"
       data-testid="guest-quote-page"
@@ -439,7 +442,7 @@ function GuestQuoteForm({ config }: { config: StylistQuoteConfig }) {
           mobile boundary is deliberately set at `lg`, not `sm`, so
           iPhones in landscape (≈ 667–932px wide) still get the mobile
           layout instead of the desktop two-column grid. */}
-      <div className="grid grid-cols-1 gap-3 px-2 lg:grid-cols-2 lg:px-0">
+      <div className="grid grid-cols-1 gap-3 sm:px-3 lg:grid-cols-2 lg:px-0">
         <div className="space-y-2">
           <div className="flex items-center gap-2">
             <label
@@ -582,7 +585,7 @@ function GuestQuoteForm({ config }: { config: StylistQuoteConfig }) {
 
       {/* Notes — only rendered when settings.notes_enabled is true. */}
       {config.settings.notesEnabled ? (
-        <div className="mt-3 flex items-start gap-2 px-2 lg:px-0">
+        <div className="mt-3 flex items-start gap-2 sm:px-3 lg:px-0">
           <label
             htmlFor="guest-notes"
             className="w-16 shrink-0 pt-1 text-slate-700"
@@ -607,7 +610,7 @@ function GuestQuoteForm({ config }: { config: StylistQuoteConfig }) {
           `lg` and up (iPhone landscape stays on the mobile layout).
           Buttons are sized for comfortable tap targets. */}
       <div
-        className="mt-3 flex flex-wrap gap-2 px-2 lg:hidden lg:px-0"
+        className="mt-3 flex flex-wrap gap-2 sm:px-3 lg:hidden lg:px-0"
         data-testid="guest-quote-mobile-actions"
       >
         <button
@@ -662,10 +665,11 @@ function GuestQuoteForm({ config }: { config: StylistQuoteConfig }) {
             Quote grid template, same as every service row above, so
             the column starts stay aligned both on desktop and while
             the mobile horizontal-scroll container is panned. Mobile
-            uses `px-2` to match each section card's inner pad at the
-            same breakpoint; sm+ widens to `sm:px-3` to match. */}
+            is flush (no internal inset) so it sits at the same x as
+            every section row above; sm+ uses `sm:px-3` to match each
+            section card's inner pad at that breakpoint. */}
         <div
-          className={`mt-4 ${guestQuoteRowGridClasses(isElevated)} px-2 sm:px-3`}
+          className={`mt-4 ${guestQuoteRowGridClasses(isElevated)} sm:px-3`}
           data-testid="guest-quote-green-fee-row"
         >
           <span aria-hidden="true" />
@@ -723,7 +727,7 @@ function SectionBlock({
 }) {
   return (
     <section
-      className={`rounded-md px-2 py-2 sm:px-3 sm:py-2.5 ${
+      className={`rounded-md py-2 sm:px-3 sm:py-2.5 ${
         shaded ? 'bg-slate-100/80' : 'bg-white'
       }`}
       data-testid={`guest-quote-section-${section.id}`}

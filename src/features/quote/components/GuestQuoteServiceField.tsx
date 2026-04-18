@@ -160,7 +160,10 @@ export function GuestQuoteServiceField({
       >
         {leadingActions}
         <LinePriceLabel displayedTotal={displayedTotal} />
-        <div className="min-w-0 break-words sm:truncate" title={title}>
+        <div
+          className="min-w-0 break-words text-[12px] sm:truncate sm:text-[13px]"
+          title={title}
+        >
           {name ? <span className="text-slate-800">{name}</span> : null}
           {name && metaText ? <span className="text-slate-800">: </span> : null}
           {metaText ? <span className="text-sky-600">{metaText}</span> : null}
@@ -199,7 +202,7 @@ export function GuestQuoteServiceField({
       {leadingActions}
       <LinePriceLabel displayedTotal={displayedTotal} />
       <div
-        className="min-w-0 break-words text-slate-800 sm:truncate"
+        className="min-w-0 break-words text-[12px] text-slate-800 sm:truncate sm:text-[13px]"
         title={service.name}
       >
         {service.name}
@@ -351,7 +354,7 @@ function ExtraRowLabel({
   const alignClass = centered ? 'text-center' : ''
   return (
     <div
-      className={`min-w-0 break-words sm:truncate ${alignClass}`.trim()}
+      className={`min-w-0 break-words text-[12px] sm:truncate sm:text-[13px] ${alignClass}`.trim()}
       title={name ? `${name} — ${meta}` : meta}
     >
       {name ? (
@@ -445,7 +448,7 @@ function RoleRadioControl({ service, line, onChange }: ControlProps) {
             <span
               key={role}
               aria-hidden="true"
-              className="pointer-events-none invisible flex select-none items-center gap-1 text-[12px] text-slate-700"
+              className="pointer-events-none invisible flex select-none items-center gap-1 text-[11px] text-slate-700 sm:text-[12px]"
             >
               <input
                 type="radio"
@@ -462,7 +465,7 @@ function RoleRadioControl({ service, line, onChange }: ControlProps) {
         return (
           <label
             key={role}
-            className="flex cursor-pointer items-center gap-1 text-[12px] text-slate-700"
+            className="flex cursor-pointer items-center gap-1 text-[11px] text-slate-700 sm:text-[12px]"
           >
             <input
               type="radio"
@@ -500,7 +503,7 @@ function OptionRadioControl({ service, line, onChange }: ControlProps) {
         return (
           <label
             key={opt.id}
-            className="flex cursor-pointer items-center gap-1 text-[12px] text-slate-700"
+            className="flex cursor-pointer items-center gap-1 text-[11px] text-slate-700 sm:text-[12px]"
           >
             <input
               type="radio"
@@ -586,7 +589,7 @@ function ExtraUnitsControl({ service, line, onChange }: ControlProps) {
         return (
           <label
             key={n}
-            className="flex cursor-pointer items-center gap-1 text-[12px] text-slate-700"
+            className="flex cursor-pointer items-center gap-1 text-[11px] text-slate-700 sm:text-[12px]"
           >
             <input
               type="radio"
