@@ -419,18 +419,27 @@ function GuestQuoteForm({ config }: { config: StylistQuoteConfig }) {
   const showSuccessBanner = lastSavedId != null && !saveMutation.isPending
 
   return (
+    // Mobile: a tight 8px horizontal breathing pad keeps the top-form
+    // inputs aligned with the content inside each section card below
+    // (sections carry their own 8px inner pad), so the form area and
+    // service list share a consistent left/right rhythm at phone
+    // widths. Desktop stays flush (`lg:px-0`) so the worksheet grid
+    // retains its established look.
     <div
-      className="w-full max-w-[620px] text-[13px] text-slate-900"
+      className="w-full max-w-[620px] px-1 text-[13px] text-slate-900 lg:px-0"
       data-testid="guest-quote-page"
     >
       {/* Top row — guest on the left, stylist on the right, with their
           action buttons sitting directly underneath, mirroring the
           reference worksheet.
-          Mobile (< sm): the whole right-hand Stylist column is hidden
+          Mobile (< lg): the whole right-hand Stylist column is hidden
           (the stylist is identified server-side anyway) and the
           Reset/Submit actions are moved to a dedicated mobile-only
-          bar below Notes — see `guest-quote-mobile-actions`. */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          bar below Notes — see `guest-quote-mobile-actions`. The
+          mobile boundary is deliberately set at `lg`, not `sm`, so
+          iPhones in landscape (≈ 667–932px wide) still get the mobile
+          layout instead of the desktop two-column grid. */}
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         <div className="space-y-2">
           <div className="flex items-center gap-2">
             <label
@@ -449,7 +458,7 @@ function GuestQuoteForm({ config }: { config: StylistQuoteConfig }) {
               className="flex-1 rounded border border-slate-300 bg-white px-2 py-1 text-[13px] focus:border-emerald-400 focus:outline-none focus:ring-1 focus:ring-emerald-400"
             />
           </div>
-          <div className="hidden pl-[72px] sm:block">
+          <div className="hidden pl-[72px] lg:block">
             <button
               type="button"
               onClick={onResetForm}
@@ -460,7 +469,7 @@ function GuestQuoteForm({ config }: { config: StylistQuoteConfig }) {
             </button>
           </div>
         </div>
-        <div className="hidden space-y-2 sm:block">
+        <div className="hidden space-y-2 lg:block">
           <div className="flex items-center gap-2">
             <label
               htmlFor="stylist-name"
@@ -595,9 +604,10 @@ function GuestQuoteForm({ config }: { config: StylistQuoteConfig }) {
       {/* Mobile-only action bar — below Notes, matching the requested
           mobile flow. Desktop renders the same actions inline next to
           the Guest / Stylist inputs above, so this block is hidden at
-          `sm` and up. Buttons are sized for comfortable tap targets. */}
+          `lg` and up (iPhone landscape stays on the mobile layout).
+          Buttons are sized for comfortable tap targets. */}
       <div
-        className="mt-3 flex gap-2 sm:hidden"
+        className="mt-3 flex flex-wrap gap-2 lg:hidden"
         data-testid="guest-quote-mobile-actions"
       >
         <button
@@ -641,20 +651,31 @@ function GuestQuoteForm({ config }: { config: StylistQuoteConfig }) {
 
       {/* Green Fee shown as a worksheet-style line just above the
           summary table, matching the reference — purely informational,
-          always included in the total below. When an elevated user is
-          viewing the page, service rows gain a 24px-wider leading
-          column; keep the Green Fee row aligned by using the same
-          grid template. */}
-      <div
-        className={`mt-4 ${guestQuoteRowGridClasses(isElevated)} px-3`}
-        data-testid="guest-quote-green-fee-row"
-      >
-        <span aria-hidden="true" />
-        <span className="truncate font-semibold text-emerald-600">
-          {formatNzd(summary.greenFee)}
-        </span>
-        <span className="text-slate-800">Green Fee</span>
-        <span aria-hidden="true" />
+          always included in the total below.
+          Desktop (≥ lg): uses the shared Guest Quote grid template so
+          the column starts line up with every service row above.
+          Mobile (< lg): renders as a simple price + label pair with
+          the same rhythm as the stacked mobile row layout. */}
+      <div data-testid="guest-quote-green-fee-row" className="mt-4">
+        <div className="hidden px-3 lg:block">
+          <div className={guestQuoteRowGridClasses(isElevated)}>
+            <span aria-hidden="true" />
+            <span className="truncate font-semibold text-emerald-600">
+              {formatNzd(summary.greenFee)}
+            </span>
+            <span className="text-slate-800">Green Fee</span>
+            <span aria-hidden="true" />
+          </div>
+        </div>
+        <div className="flex items-center gap-2 px-2 py-1 lg:hidden">
+          <span aria-hidden="true" className="w-6 shrink-0" />
+          <span className="w-[4.5rem] shrink-0 text-right text-[12.5px] font-semibold tabular-nums text-emerald-600">
+            {formatNzd(summary.greenFee)}
+          </span>
+          <span className="min-w-0 flex-1 text-[12.5px] text-slate-800">
+            Green Fee
+          </span>
+        </div>
       </div>
 
       <GuestQuoteSummary summary={summary} />
