@@ -1,4 +1,10 @@
-const nzdFormatter = new Intl.NumberFormat(undefined, {
+// Pin the locale to en-NZ so money renders as "$1,234.56" consistently
+// on every platform. When the locale argument is `undefined`, browsers
+// fall back to the user's OS locale — Safari/iOS users with en-US end
+// up seeing "NZ$1,234.56" or "NZD 1,234.56" for the same amount that
+// Chrome on en-NZ shows as "$1,234.56". Locking the locale makes the
+// salon's NZD default deterministic across desktop and mobile.
+const nzdFormatter = new Intl.NumberFormat('en-NZ', {
   style: 'currency',
   currency: 'NZD',
   maximumFractionDigits: 2,

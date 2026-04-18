@@ -425,7 +425,11 @@ function GuestQuoteForm({ config }: { config: StylistQuoteConfig }) {
     >
       {/* Top row — guest on the left, stylist on the right, with their
           action buttons sitting directly underneath, mirroring the
-          reference worksheet. */}
+          reference worksheet.
+          Mobile (< sm): the whole right-hand Stylist column is hidden
+          (the stylist is identified server-side anyway) and the
+          Reset/Submit actions are moved to a dedicated mobile-only
+          bar below Notes — see `guest-quote-mobile-actions`. */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="space-y-2">
           <div className="flex items-center gap-2">
@@ -445,7 +449,7 @@ function GuestQuoteForm({ config }: { config: StylistQuoteConfig }) {
               className="flex-1 rounded border border-slate-300 bg-white px-2 py-1 text-[13px] focus:border-emerald-400 focus:outline-none focus:ring-1 focus:ring-emerald-400"
             />
           </div>
-          <div className="pl-[72px]">
+          <div className="hidden pl-[72px] sm:block">
             <button
               type="button"
               onClick={onResetForm}
@@ -456,7 +460,7 @@ function GuestQuoteForm({ config }: { config: StylistQuoteConfig }) {
             </button>
           </div>
         </div>
-        <div className="space-y-2">
+        <div className="hidden space-y-2 sm:block">
           <div className="flex items-center gap-2">
             <label
               htmlFor="stylist-name"
@@ -587,6 +591,34 @@ function GuestQuoteForm({ config }: { config: StylistQuoteConfig }) {
           />
         </div>
       ) : null}
+
+      {/* Mobile-only action bar — below Notes, matching the requested
+          mobile flow. Desktop renders the same actions inline next to
+          the Guest / Stylist inputs above, so this block is hidden at
+          `sm` and up. Buttons are sized for comfortable tap targets. */}
+      <div
+        className="mt-3 flex gap-2 sm:hidden"
+        data-testid="guest-quote-mobile-actions"
+      >
+        <button
+          type="button"
+          onClick={onResetForm}
+          className="flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          data-testid="guest-quote-reset-form-mobile"
+        >
+          Reset Form
+        </button>
+        <button
+          type="button"
+          onClick={onSubmit}
+          disabled={saveMutation.isPending}
+          aria-busy={saveMutation.isPending}
+          className="flex-1 rounded-md border border-emerald-600 bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-wait disabled:bg-emerald-500"
+          data-testid="guest-quote-submit-mobile"
+        >
+          {saveMutation.isPending ? 'Saving…' : 'Submit Quote'}
+        </button>
+      </div>
 
       {/* Sections — each section is its own subtle box; alternating
           white / very light grey panels against the slate-50 page bg
