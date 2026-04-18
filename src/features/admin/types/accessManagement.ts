@@ -14,6 +14,8 @@ export type AdminAccessMappingRow = {
   is_active: boolean
   created_at: string | null
   updated_at: string | null
+  /** Most recent auth.users.last_sign_in_at for this mapping's user. */
+  last_sign_in_at: string | null
 }
 
 /** `search_staff_members()` */
@@ -27,6 +29,10 @@ export type StaffMemberSearchRow = {
 export type AuthUserSearchRow = {
   user_id: string
   email: string | null
+  /** auth.users.created_at — only populated by `search_auth_users`. */
+  created_at?: string | null
+  /** auth.users.last_sign_in_at — only populated by `search_auth_users`. */
+  last_sign_in_at?: string | null
 }
 
 /** Stored values for `staff_member_user_access.access_role` (DB check constraint). */

@@ -85,6 +85,56 @@ export function formatDateTimeCompact(iso: string | null | undefined): string {
   return dateTimeCompactFormatter.format(d)
 }
 
+const relativeTimeFormatter = new Intl.RelativeTimeFormat(undefined, {
+  numeric: 'auto',
+  style: 'long',
+})
+
+/**
+ * Human-friendly "time ago" label, e.g. `2 days ago`, `5 minutes ago`,
+ * `in 3 hours`. Returns the empty string for null/invalid input so the
+ * caller can decide the "no value" presentation (e.g. show `Never`).
+ *
+ * The unit is auto-selected from the magnitude of the delta:
+ *   < 60 s   → seconds
+ *   < 60 m   → minutes
+ *   < 24 h   → hours
+ *   < 30 d   → days
+ *   < 12 mo  → months
+ *   else     → years
+ *
+ * Uses the browser's `Intl.RelativeTimeFormat` so output respects the
+ * user locale. `numeric: 'auto'` yields friendlier phrasings like
+ * `yesterday` instead of `1 day ago` where available.
+ */
+export function formatRelativeTime(iso: string | null | undefined): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  const t = d.getTime()
+  if (Number.isNaN(t)) return ''
+  const diffSec = Math.round((t - Date.now()) / 1000)
+  const abs = Math.abs(diffSec)
+  if (abs < 60) return relativeTimeFormatter.format(diffSec, 'second')
+  const diffMin = Math.round(diffSec / 60)
+  if (Math.abs(diffMin) < 60) {
+    return relativeTimeFormatter.format(diffMin, 'minute')
+  }
+  const diffHr = Math.round(diffMin / 60)
+  if (Math.abs(diffHr) < 24) {
+    return relativeTimeFormatter.format(diffHr, 'hour')
+  }
+  const diffDay = Math.round(diffHr / 24)
+  if (Math.abs(diffDay) < 30) {
+    return relativeTimeFormatter.format(diffDay, 'day')
+  }
+  const diffMonth = Math.round(diffDay / 30)
+  if (Math.abs(diffMonth) < 12) {
+    return relativeTimeFormatter.format(diffMonth, 'month')
+  }
+  const diffYear = Math.round(diffMonth / 12)
+  return relativeTimeFormatter.format(diffYear, 'year')
+}
+
 export function humanizeKey(key: string): string {
   return key
     .replace(/_/g, ' ')

@@ -25,6 +25,12 @@ type AccessMappingFormModalProps = {
   open: boolean
   mode: 'create' | 'edit'
   initial: AdminAccessMappingRow | null
+  /**
+   * When opening in `create` mode, optionally prefill (and lock) the auth
+   * user so the admin doesn't have to re-search for them. Used by the
+   * "Create mapping" action on pending-mapping rows.
+   */
+  prefillUser?: AuthUserSearchRow | null
   onClose: () => void
 }
 
@@ -39,6 +45,7 @@ export function AccessMappingFormModal({
   open,
   mode,
   initial,
+  prefillUser,
   onClose,
 }: AccessMappingFormModalProps) {
   const createMut = useCreateAccessMappingMutation()
@@ -60,7 +67,10 @@ export function AccessMappingFormModal({
   const showStaffField = roleShowsStaffMemberField(safeRole)
   const strictStaff = staffMemberRequiredForRole(safeRole)
 
-  const authQ = useAuthUserSearch(debouncedAuth, open && mode === 'create')
+  const authQ = useAuthUserSearch(
+    debouncedAuth,
+    open && mode === 'create' && !prefillUser,
+  )
   const staffQ = useStaffMemberSearch(debouncedStaff, open && showStaffField)
 
   function handleAccessRoleChange(nextRaw: string) {
@@ -79,7 +89,7 @@ export function AccessMappingFormModal({
     if (mode === 'create') {
       setAuthSearch('')
       setStaffSearch('')
-      setPickedUser(null)
+      setPickedUser(prefillUser ?? null)
       setPickedStaff(null)
       setAccessRole('stylist')
       setIsActive(true)
@@ -106,7 +116,7 @@ export function AccessMappingFormModal({
       setIsActive(initial.is_active)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reset mutation errors when dialog opens
-  }, [open, mode, initial?.mapping_id])
+  }, [open, mode, initial?.mapping_id, prefillUser?.user_id])
 
   const pending = createMut.isPending || updateMut.isPending
   const mutError = createMut.error ?? updateMut.error
@@ -187,7 +197,24 @@ export function AccessMappingFormModal({
             </div>
           ) : null}
 
-          {mode === 'create' ? (
+          {mode === 'create' && prefillUser ? (
+            <div>
+              <label className="block text-sm font-medium text-slate-700">
+                Auth user
+              </label>
+              <p className="mt-0.5 text-xs text-slate-500">
+                Prefilled from the pending-mapping row.
+              </p>
+              <div
+                className="mt-1 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm"
+                data-testid="access-modal-auth-prefilled"
+              >
+                <span className="font-mono text-slate-900">
+                  {prefillUser.email ?? prefillUser.user_id}
+                </span>
+              </div>
+            </div>
+          ) : mode === 'create' ? (
             <div>
               <label className="block text-sm font-medium text-slate-700">
                 Auth user

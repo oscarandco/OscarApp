@@ -15,6 +15,7 @@ import { ProductConfigurationPage } from '@/features/admin/pages/ProductConfigur
 import { RemunerationConfigurationPage } from '@/features/admin/pages/RemunerationConfigurationPage'
 import { StaffConfigurationPage } from '@/features/admin/pages/StaffConfigurationPage'
 import { LoginPage } from '@/features/auth/pages/LoginPage'
+import { ResetPasswordPage } from '@/features/auth/pages/ResetPasswordPage'
 import { PayrollSummaryPage } from '@/features/payroll/pages/PayrollSummaryPage'
 import { PayrollWeekDetailPage } from '@/features/payroll/pages/PayrollWeekDetailPage'
 import { GuestQuotePage } from '@/features/quote/pages/GuestQuotePage'
@@ -26,6 +27,7 @@ export function AppRouter() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route element={<RequireAuth />}>
         <Route path="/app" element={<AuthenticatedLayout />}>
           <Route index element={<Navigate to="/app/payroll" replace />} />

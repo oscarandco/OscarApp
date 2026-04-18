@@ -4,59 +4,70 @@ import { useHasElevatedAccess } from '@/features/access/accessContext'
 
 const linkClass = ({ isActive }: { isActive: boolean }) =>
   [
-    'block rounded-md px-3 py-2 text-sm font-medium',
+    'block rounded-md px-3 py-1.5 text-sm font-medium',
     isActive
       ? 'bg-violet-50 text-violet-900'
       : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900',
   ].join(' ')
+
+/**
+ * Section heading used above each grouped block of nav links. Kept
+ * visually quieter than the links themselves (smaller type, muted
+ * colour, reduced tracking) so it doesn't compete with the items.
+ */
+function NavSectionHeading({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="px-3 pb-0.5 pt-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 first:pt-0">
+      {children}
+    </p>
+  )
+}
 
 export function SideNav() {
   const elevated = useHasElevatedAccess()
 
   return (
     <aside className="hidden w-52 shrink-0 overflow-y-auto border-r border-slate-200 bg-white lg:block">
-      <nav className="flex flex-col gap-1 p-3">
+      <nav className="flex flex-col gap-0.5 p-3">
+        <NavSectionHeading>Main</NavSectionHeading>
         <NavLink to="/app/payroll" className={linkClass} end>
-          Weekly summary
+          My payroll
         </NavLink>
         <NavLink to="/app/quote" className={linkClass}>
-          Guest Quote
+          Guest quote
         </NavLink>
         <NavLink to="/app/quotes" className={linkClass}>
-          Previous Quotes
+          Previous quotes
         </NavLink>
+
         {elevated ? (
           <>
-            <div className="my-2 border-t border-slate-100" />
-            <p className="px-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Admin
-            </p>
-            <NavLink to="/app/admin" className={linkClass} end>
-              Admin home
+            <NavSectionHeading>Admin</NavSectionHeading>
+            <NavLink to="/app/admin/weekly-commission" className={linkClass}>
+              Weekly Payroll
             </NavLink>
             <NavLink to="/app/admin/payroll" className={linkClass}>
-              Admin weekly payroll
-            </NavLink>
-            <NavLink to="/app/admin/weekly-commission" className={linkClass}>
-              Weekly commission dashboard
-            </NavLink>
-            <NavLink to="/app/admin/remuneration" className={linkClass}>
-              Remuneration configuration
-            </NavLink>
-            <NavLink to="/app/admin/staff" className={linkClass}>
-              Staff configuration
-            </NavLink>
-            <NavLink to="/app/admin/products" className={linkClass}>
-              Product configuration
-            </NavLink>
-            <NavLink to="/app/admin/quotes" className={linkClass}>
-              Quote Configuration
-            </NavLink>
-            <NavLink to="/app/admin/access" className={linkClass}>
-              Access management
+              Commission Breakdown
             </NavLink>
             <NavLink to="/app/admin/imports" className={linkClass}>
               Imports
+            </NavLink>
+
+            <NavSectionHeading>Configuration</NavSectionHeading>
+            <NavLink to="/app/admin/staff" className={linkClass}>
+              Staff
+            </NavLink>
+            <NavLink to="/app/admin/products" className={linkClass}>
+              Products
+            </NavLink>
+            <NavLink to="/app/admin/quotes" className={linkClass}>
+              Quotes
+            </NavLink>
+            <NavLink to="/app/admin/remuneration" className={linkClass}>
+              Remuneration
+            </NavLink>
+            <NavLink to="/app/admin/access" className={linkClass}>
+              Access
             </NavLink>
           </>
         ) : null}

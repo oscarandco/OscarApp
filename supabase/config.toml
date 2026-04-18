@@ -8,3 +8,11 @@ verify_jwt = false
 # Gateway JWT verify is incompatible with JWT signing keys; auth is enforced in-function.
 [functions.invite-access-user]
 verify_jwt = false
+
+# Admin password reset (admin-only, auth enforced in-function).
+[functions.admin-send-password-reset]
+verify_jwt = false
+
+# Admin delete user (admin-only, auth and safety checks enforced in-function).
+[functions.admin-delete-user]
+verify_jwt = false
