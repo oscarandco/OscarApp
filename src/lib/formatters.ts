@@ -18,6 +18,33 @@ export function formatNzd(value: unknown): string {
   return nzdFormatter.format(n)
 }
 
+// Same currency/locale as `nzdFormatter` but with no decimals. Used by
+// the Guest Quote *mobile* price column only: the fixed 48px column is
+// wide enough for `$85.00` but not `$105.00`, so once the integer part
+// reaches 3 digits we drop the cents to keep the value visible without
+// ellipsis. Desktop keeps the full `$x.xx` form via `formatNzd`.
+const nzdFormatterWhole = new Intl.NumberFormat('en-NZ', {
+  style: 'currency',
+  currency: 'NZD',
+  maximumFractionDigits: 0,
+})
+
+/**
+ * Guest Quote mobile price display. For values whose integer part is
+ * ≥ 3 digits (|value| ≥ 100) the decimals are dropped (`$105`); for
+ * smaller values the full `$nn.nn` form is kept exactly like
+ * {@link formatNzd}. Intended for mobile-only callers — pair with a
+ * `lg:hidden` / `hidden lg:inline` sibling that uses `formatNzd` so
+ * desktop rendering stays unchanged.
+ */
+export function formatNzdMobile(value: unknown): string {
+  if (value == null || value === '') return '—'
+  const n = typeof value === 'number' ? value : Number(value)
+  if (Number.isNaN(n)) return String(value)
+  if (Math.abs(n) >= 100) return nzdFormatterWhole.format(n)
+  return nzdFormatter.format(n)
+}
+
 /**
  * Commission rate from payroll lines: DB uses a fractional multiplier (`price_ex_gst * rate`);
  * |value| ≤ 1 is treated as a fraction (0.35 → 35%), otherwise as percentage points (35 → 35%).

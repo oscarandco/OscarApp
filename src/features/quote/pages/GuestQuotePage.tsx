@@ -48,7 +48,7 @@ import type {
   StylistQuoteConfig,
   StylistQuoteSection,
 } from '@/features/quote/types/stylistQuoteConfig'
-import { formatNzd } from '@/lib/formatters'
+import { formatNzd, formatNzdMobile } from '@/lib/formatters'
 import {
   fetchQuoteConfiguration,
   saveQuoteService,
@@ -686,7 +686,8 @@ function GuestQuoteForm({ config }: { config: StylistQuoteConfig }) {
         >
           <span aria-hidden="true" />
           <span className="truncate font-semibold text-emerald-600">
-            {formatNzd(summary.greenFee)}
+            <span className="lg:hidden">{formatNzdMobile(summary.greenFee)}</span>
+            <span className="hidden lg:inline">{formatNzd(summary.greenFee)}</span>
           </span>
           <span className="text-slate-800">Green Fee</span>
           <span aria-hidden="true" />

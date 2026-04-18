@@ -21,7 +21,7 @@ import { guestQuoteRowGridClasses } from '@/features/quote/components/guestQuote
 import type { GuestQuoteLineDraft } from '@/features/quote/state/guestQuoteDraft'
 import type { StylistQuoteService } from '@/features/quote/types/stylistQuoteConfig'
 import { priceForLine } from '@/features/quote/lib/quoteCalculations'
-import { formatNzd } from '@/lib/formatters'
+import { formatNzd, formatNzdMobile } from '@/lib/formatters'
 
 type Props = {
   service: StylistQuoteService
@@ -296,9 +296,13 @@ function LinePriceLabel({
       </span>
     )
   }
+  // Mobile (< lg) uses the compact "$105" form once the integer part
+  // reaches 3 digits so the value fits the fixed 48px price column.
+  // Desktop (≥ lg) keeps the full "$105.00" form exactly as before.
   return (
     <span className="truncate font-semibold text-emerald-600">
-      {formatNzd(displayedTotal)}
+      <span className="lg:hidden">{formatNzdMobile(displayedTotal)}</span>
+      <span className="hidden lg:inline">{formatNzd(displayedTotal)}</span>
     </span>
   )
 }
