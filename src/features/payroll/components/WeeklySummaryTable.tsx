@@ -67,10 +67,16 @@ type WeeklySummaryTableProps = {
   mobileDetailLabel?: string | null
 }
 
+// Mobile (`<sm`) gets noticeably tighter horizontal padding and a
+// smaller per-column min-width so the visible columns sit closer
+// together; the existing `sm:` upgrades restore the original desktop
+// spacing untouched (px-4, min-w 6.5rem). Vertical padding (py-2.5)
+// is preserved on both widths so row heights / tap targets do not
+// change.
 const thBase =
-  'border-b border-slate-200 px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 sm:px-4 sm:py-3 sm:normal-case sm:text-sm sm:tracking-normal sm:text-slate-700'
+  'border-b border-slate-200 px-1.5 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 sm:px-4 sm:py-3 sm:normal-case sm:text-sm sm:tracking-normal sm:text-slate-700'
 const tdBase =
-  'whitespace-nowrap px-3 py-2.5 text-slate-700 sm:px-4 sm:py-3 min-w-[6.5rem]'
+  'whitespace-nowrap px-1.5 py-2.5 text-slate-700 sm:px-4 sm:py-3 min-w-[4rem] sm:min-w-[6.5rem]'
 
 function isDateLikeKey(rowKey: string): boolean {
   if (rowKey === 'pay_week_start') return false
@@ -216,7 +222,7 @@ export function WeeklySummaryTable({
         </div>
       ) : null}
       <TableScrollArea testId="weekly-summary-table">
-        <table className="min-w-[760px] w-full border-collapse text-left text-sm">
+        <table className="w-full border-collapse text-left text-sm sm:min-w-[760px]">
           <thead className="sticky top-0 z-20 bg-slate-50 shadow-[0_1px_0_0_rgb(226_232_240)]">
             <tr>
               {/* Start-of-week is now the leftmost (and sticky) column;
@@ -224,7 +230,7 @@ export function WeeklySummaryTable({
                   removed as part of the My Sales redesign. */}
               <th
                 scope="col"
-                className={`${thBase} sticky left-0 z-30 min-w-[8.5rem] bg-slate-50`}
+                className={`${thBase} sticky left-0 z-30 min-w-[5.25rem] bg-slate-50 sm:min-w-[8.5rem]`}
               >
                 Start of week
               </th>
@@ -266,7 +272,7 @@ export function WeeklySummaryTable({
                   </th>
                 )
               })}
-              <th scope="col" className={`${thBase} min-w-[5.5rem]`}>
+              <th scope="col" className={`${thBase} min-w-[3rem] sm:min-w-[5.5rem]`}>
                 {mobileDetailLabel != null ? (
                   <>
                     <span className="lg:hidden">{mobileDetailLabel}</span>
@@ -292,7 +298,7 @@ export function WeeklySummaryTable({
                   className="group border-b border-slate-100 odd:bg-white even:bg-slate-50/90 hover:bg-violet-50/60"
                 >
                   <td
-                    className={`${tdBase} sticky left-0 z-10 min-w-[8.5rem] border-slate-100 font-medium ${
+                    className={`${tdBase} sticky left-0 z-10 min-w-[5.25rem] border-slate-100 font-medium sm:min-w-[8.5rem] ${
                       idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/90'
                     } group-hover:bg-violet-50/60`}
                   >
@@ -319,7 +325,7 @@ export function WeeklySummaryTable({
                       </td>
                     )
                   })}
-                  <td className={`${tdBase} min-w-[5.5rem]`}>
+                  <td className={`${tdBase} min-w-[3rem] sm:min-w-[5.5rem]`}>
                     {weekStart ? (
                       <Link
                         to={`/app/my-sales/${encodeURIComponent(weekStart)}`}
