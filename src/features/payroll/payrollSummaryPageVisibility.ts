@@ -63,6 +63,30 @@ export type MySalesVisibility = {
    * on. Returned as a fresh object per call.
    */
   columnLabelOverrides: Partial<Record<MiddleColumnId, string>>
+  /**
+   * Mobile-only middle-column hides for this role. Layered on top of
+   * `hiddenTableColumnIds` and rendered by `WeeklySummaryTable` via
+   * Tailwind `hidden lg:table-cell` (so the column is fully visible on
+   * desktop and only collapses below the `lg` breakpoint). Returned as
+   * a fresh `Set` per call.
+   */
+  mobileHiddenColumnIds: Set<MiddleColumnId>
+  /**
+   * Mobile-only column header label overrides. Layered over
+   * `columnLabelOverrides`: on mobile (`<lg`) these labels win; on
+   * desktop (`>=lg`) the desktop label is used. Used for short forms
+   * like `Sales` and `Poss. Comm.` that only fit at phone width.
+   * Returned as a fresh object per call.
+   */
+  mobileColumnLabelOverrides: Partial<Record<MiddleColumnId, string>>
+  /**
+   * Mobile-only label for the rightmost fixed `Detail` column. `null`
+   * = keep the desktop label on mobile too. My Sales passes `"View"`
+   * for stylist/assistant. Owned here (rather than as a hard-coded
+   * mobile label inside the table) so admin pages keep `Detail`
+   * everywhere.
+   */
+  mobileDetailLabel: string | null
 }
 
 /**
@@ -95,6 +119,12 @@ export function mySalesVisibilityForRole(
         // No header overrides — manager/admin keep the global default
         // labels from `COLUMN_LABEL` so admin pages render unchanged.
         columnLabelOverrides: {},
+        // Manager/admin: no mobile-only hides or shorter labels — the
+        // mobile changes are scoped to stylist/assistant per the
+        // latest requirements.
+        mobileHiddenColumnIds: new Set<MiddleColumnId>(),
+        mobileColumnLabelOverrides: {},
+        mobileDetailLabel: null,
       }
     case 'stylist':
       return {
@@ -116,6 +146,17 @@ export function mySalesVisibilityForRole(
           total_actual_commission_ex_gst: 'Commission',
           total_sales_ex_gst: 'Sales (ex GST)',
         },
+        // Stylist mobile: drop End-of-week and Rem Plan, shorten the
+        // remaining money column header. (Commission stays as-is at
+        // both widths because the desktop override is already short.)
+        mobileHiddenColumnIds: new Set<MiddleColumnId>([
+          'pay_week_end',
+          'derived_staff_paid_remuneration_plan',
+        ]),
+        mobileColumnLabelOverrides: {
+          total_sales_ex_gst: 'Sales',
+        },
+        mobileDetailLabel: 'View',
       }
     case 'assistant':
     default:
@@ -138,6 +179,18 @@ export function mySalesVisibilityForRole(
           total_theoretical_commission_ex_gst: 'Potential Commission',
           total_sales_ex_gst: 'Sales (ex GST)',
         },
+        // Assistant mobile: same End-of-week / Rem Plan hide as
+        // stylist, plus a shorter `Poss. Comm.` for Potential
+        // Commission and `Sales` for Sales.
+        mobileHiddenColumnIds: new Set<MiddleColumnId>([
+          'pay_week_end',
+          'derived_staff_paid_remuneration_plan',
+        ]),
+        mobileColumnLabelOverrides: {
+          total_sales_ex_gst: 'Sales',
+          total_theoretical_commission_ex_gst: 'Poss. Comm.',
+        },
+        mobileDetailLabel: 'View',
       }
   }
 }

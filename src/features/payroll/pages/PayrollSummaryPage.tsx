@@ -194,6 +194,11 @@ export function PayrollSummaryPage() {
                   forceHiddenColumnIds={forceHiddenColumnIds}
                   showColumnPicker={visibility.showColumnPicker}
                   columnLabelOverrides={visibility.columnLabelOverrides}
+                  mobileHiddenColumnIds={visibility.mobileHiddenColumnIds}
+                  mobileColumnLabelOverrides={
+                    visibility.mobileColumnLabelOverrides
+                  }
+                  mobileDetailLabel={visibility.mobileDetailLabel}
                 />
               </div>
             </>

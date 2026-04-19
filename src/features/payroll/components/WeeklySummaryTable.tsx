@@ -7,7 +7,6 @@ import { usePayrollSummaryColumnPreferences } from '@/features/payroll/hooks/use
 import {
   COLUMN_LABEL,
   isMiddleColumnId,
-  middleRowKeysForPreferences,
   reorderMiddleColumnOrder,
   visibleMiddleColumns,
   type MiddleColumnId,
@@ -44,6 +43,28 @@ type WeeklySummaryTableProps = {
    * default labels admin pages still expect.
    */
   columnLabelOverrides?: Partial<Record<MiddleColumnId, string>>
+  /**
+   * Mobile-only column hides. Columns named here render with
+   * `hidden lg:table-cell` so they disappear below the `lg`
+   * breakpoint and stay visible on desktop. The column otherwise
+   * stays in the visible-middle pipeline (preferences, ordering,
+   * cell formatting), so this is a pure presentation tweak.
+   */
+  mobileHiddenColumnIds?: ReadonlySet<MiddleColumnId>
+  /**
+   * Mobile-only header label overrides. Layered over
+   * `columnLabelOverrides`: at `<lg` widths the mobile string is
+   * rendered, at `>=lg` the desktop string is rendered. Used for
+   * shortened headers like `Sales` and `Poss. Comm.` that only fit
+   * at phone width.
+   */
+  mobileColumnLabelOverrides?: Partial<Record<MiddleColumnId, string>>
+  /**
+   * Mobile-only label for the rightmost fixed `Detail` column. When
+   * provided, mobile renders this string and desktop continues to
+   * render `Detail`. Stylist/assistant pass `"View"`.
+   */
+  mobileDetailLabel?: string | null
 }
 
 const thBase =
@@ -126,6 +147,9 @@ export function WeeklySummaryTable({
   forceHiddenColumnIds,
   showColumnPicker = true,
   columnLabelOverrides,
+  mobileHiddenColumnIds,
+  mobileColumnLabelOverrides,
+  mobileDetailLabel,
 }: WeeklySummaryTableProps) {
   const { prefs, setPrefs, reset } = usePayrollSummaryColumnPreferences()
   const [previewSummaryRow, setPreviewSummaryRow] =
@@ -134,14 +158,6 @@ export function WeeklySummaryTable({
   const [dropTargetId, setDropTargetId] = useState<MiddleColumnId | null>(null)
 
   const sample = rows[0]
-
-  const keys = useMemo(
-    () =>
-      sample
-        ? middleRowKeysForPreferences(sample, prefs, forceHiddenColumnIds)
-        : [],
-    [sample, prefs, forceHiddenColumnIds],
-  )
 
   const visibleMiddle = useMemo(
     () =>
@@ -216,6 +232,10 @@ export function WeeklySummaryTable({
                 const isDragging = draggingId === id
                 const isDropTarget =
                   dropTargetId === id && draggingId != null && draggingId !== id
+                const mobileHidden = mobileHiddenColumnIds?.has(id) ?? false
+                const desktopLabel =
+                  columnLabelOverrides?.[id] ?? COLUMN_LABEL[id]
+                const mobileLabel = mobileColumnLabelOverrides?.[id]
                 return (
                   <th
                     key={k}
@@ -227,20 +247,34 @@ export function WeeklySummaryTable({
                     onDragEnd={onDragEnd}
                     title="Drag to reorder column"
                     className={`${thBase} cursor-grab select-none active:cursor-grabbing ${
-                      isDragging ? 'opacity-50' : ''
-                    } ${
+                      mobileHidden ? 'hidden lg:table-cell' : ''
+                    } ${isDragging ? 'opacity-50' : ''} ${
                       isDropTarget
                         ? 'bg-violet-100/90 ring-1 ring-inset ring-violet-300'
                         : ''
                     }`}
                     aria-grabbed={isDragging}
                   >
-                    {columnLabelOverrides?.[id] ?? COLUMN_LABEL[id]}
+                    {mobileLabel != null ? (
+                      <>
+                        <span className="lg:hidden">{mobileLabel}</span>
+                        <span className="hidden lg:inline">{desktopLabel}</span>
+                      </>
+                    ) : (
+                      desktopLabel
+                    )}
                   </th>
                 )
               })}
               <th scope="col" className={`${thBase} min-w-[5.5rem]`}>
-                Detail
+                {mobileDetailLabel != null ? (
+                  <>
+                    <span className="lg:hidden">{mobileDetailLabel}</span>
+                    <span className="hidden lg:inline">Detail</span>
+                  </>
+                ) : (
+                  'Detail'
+                )}
               </th>
             </tr>
           </thead>
@@ -268,14 +302,23 @@ export function WeeklySummaryTable({
                       <span className="text-slate-400">—</span>
                     )}
                   </td>
-                  {keys.map((k) => (
-                    <td key={k} className={tdBase}>
-                      <Cell
-                        rowKey={k}
-                        value={row[k as keyof WeeklyCommissionSummaryRow]}
-                      />
-                    </td>
-                  ))}
+                  {visibleMiddle.map(({ id, rowKey: k }) => {
+                    const mobileHidden =
+                      mobileHiddenColumnIds?.has(id) ?? false
+                    return (
+                      <td
+                        key={k}
+                        className={`${tdBase} ${
+                          mobileHidden ? 'hidden lg:table-cell' : ''
+                        }`}
+                      >
+                        <Cell
+                          rowKey={k}
+                          value={row[k as keyof WeeklyCommissionSummaryRow]}
+                        />
+                      </td>
+                    )
+                  })}
                   <td className={`${tdBase} min-w-[5.5rem]`}>
                     {weekStart ? (
                       <Link

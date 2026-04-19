@@ -118,6 +118,20 @@ export function formatDateTimeCompact(iso: string | null | undefined): string {
   return dateTimeCompactFormatter.format(d)
 }
 
+/**
+ * Mobile variant of `formatDateTimeCompact` that drops the locale's
+ * date/time separator (typically a comma in en-*). Produces e.g.
+ * `18 Apr 2026 22:40` for the Previous Quotes mobile card list,
+ * which needs the tighter look without the comma.
+ */
+export function formatDateTimeCompactMobile(
+  iso: string | null | undefined,
+): string {
+  const formatted = formatDateTimeCompact(iso)
+  if (formatted === '—') return formatted
+  return formatted.replace(/,\s*/g, ' ').replace(/\s{2,}/g, ' ').trim()
+}
+
 const relativeTimeFormatter = new Intl.RelativeTimeFormat(undefined, {
   numeric: 'auto',
   style: 'long',

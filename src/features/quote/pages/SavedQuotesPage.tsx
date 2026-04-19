@@ -7,6 +7,7 @@ import { ErrorState } from '@/components/feedback/ErrorState'
 import { LoadingState } from '@/components/feedback/LoadingState'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useHasElevatedAccess } from '@/features/access/accessContext'
+import { useAuth } from '@/features/auth/authContext'
 import { fetchSavedQuoteDetail } from '@/features/quote/data/savedQuoteDetailApi'
 import { useDeleteSavedQuote } from '@/features/quote/hooks/useDeleteSavedQuote'
 import { savedQuoteDetailQueryKey } from '@/features/quote/hooks/useSavedQuoteDetail'
@@ -17,10 +18,20 @@ import type {
   SavedQuoteSearchRow,
 } from '@/features/quote/types/savedQuote'
 import type { SavedQuoteDetail } from '@/features/quote/types/savedQuoteDetail'
-import { formatDateTimeCompact, formatNzd } from '@/lib/formatters'
+import {
+  formatDateTimeCompact,
+  formatDateTimeCompactMobile,
+  formatNzd,
+} from '@/lib/formatters'
 import { queryErrorDetail } from '@/lib/queryError'
 
-const PAGE_SIZE = 50
+/**
+ * Display-rows dropdown options for the page-size control. `20` is
+ * the default; the rest are chosen to cover the common "wider scan"
+ * cases without growing the RPC's clamp ceiling (500).
+ */
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const
+const DEFAULT_PAGE_SIZE = 20
 
 const thBase =
   'border-b border-slate-200 px-2.5 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 sm:px-3 sm:py-2 sm:normal-case sm:text-sm sm:tracking-normal sm:text-slate-700'
@@ -41,25 +52,22 @@ function useDebouncedValue<T>(value: T, delayMs = 300): T {
 
 export function SavedQuotesPage() {
   const elevated = useHasElevatedAccess()
+  const { user } = useAuth()
+  const currentUserId = user?.id ?? null
 
   const [search, setSearch] = useState('')
-  const [stylist, setStylist] = useState('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [offset, setOffset] = useState(0)
+  const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE)
 
   const debouncedSearch = useDebouncedValue(search, 300)
-  const debouncedStylist = useDebouncedValue(stylist, 300)
 
-  // Any filter change should reset pagination to page 1. Setters below
-  // call `setOffset(0)` inline rather than chaining through an effect,
-  // which keeps the render strictly one-pass.
+  // Any filter or page-size change should reset pagination to page 1.
+  // Setters below call `setOffset(0)` inline rather than chaining
+  // through an effect, which keeps the render strictly one-pass.
   const onSearchChange = (v: string) => {
     setSearch(v)
-    setOffset(0)
-  }
-  const onStylistChange = (v: string) => {
-    setStylist(v)
     setOffset(0)
   }
   const onDateFromChange = (v: string) => {
@@ -70,21 +78,24 @@ export function SavedQuotesPage() {
     setDateTo(v)
     setOffset(0)
   }
+  const onPageSizeChange = (n: number) => {
+    setPageSize(n)
+    setOffset(0)
+  }
 
   const filters: SavedQuoteSearchFilters = useMemo(
     () => ({
       search: debouncedSearch,
-      // Stylist filter is only meaningful for elevated users; stylists
-      // always see only their own quotes regardless of this value
-      // (server enforces), but don't send it to keep the query key
-      // cleaner.
-      stylist: elevated ? debouncedStylist : null,
+      // Dedicated stylist filter was removed from the UI — searching
+      // by stylist name now goes through the main `Search` field
+      // (the RPC matches against guest_name OR stylist_display_name).
+      stylist: null,
       dateFrom: dateFrom || null,
       dateTo: dateTo || null,
-      limit: PAGE_SIZE,
+      limit: pageSize,
       offset,
     }),
-    [debouncedSearch, debouncedStylist, elevated, dateFrom, dateTo, offset],
+    [debouncedSearch, dateFrom, dateTo, pageSize, offset],
   )
 
   const { data, isLoading, isError, error, isFetching, refetch } =
@@ -95,11 +106,10 @@ export function SavedQuotesPage() {
   const canPrev = offset > 0
   const canNext = offset + rows.length < (totalCount ?? 0)
 
-  const hasFilters = Boolean(search || stylist || dateFrom || dateTo)
+  const hasFilters = Boolean(search || dateFrom || dateTo)
 
   function resetFilters() {
     setSearch('')
-    setStylist('')
     setDateFrom('')
     setDateTo('')
     setOffset(0)
@@ -124,7 +134,22 @@ export function SavedQuotesPage() {
   const [requotingId, setRequotingId] = useState<string | null>(null)
   const [requoteError, setRequoteError] = useState<string | null>(null)
 
+  /**
+   * `true` when the signed-in user is allowed to delete `row`. Manager
+   * / admin (elevated) can delete anything; assistant / stylist can
+   * only delete quotes they personally created. The frontend uses this
+   * to hide the Delete button on rows the user does not own; the
+   * `delete_saved_quote` RPC re-enforces the same rule server-side, so
+   * the UI guard is a UX improvement rather than a security boundary.
+   */
+  function canDeleteRow(row: SavedQuoteSearchRow): boolean {
+    if (elevated) return true
+    if (currentUserId == null) return false
+    return row.stylistUserId === currentUserId
+  }
+
   const onDeleteRow = (row: SavedQuoteSearchRow) => {
+    if (!canDeleteRow(row)) return
     if (deleteMutation.isPending) return
     if (requotingId != null) return
     const label = row.guestName?.trim() || 'this quote'
@@ -179,22 +204,18 @@ export function SavedQuotesPage() {
     <div data-testid="saved-quotes-page">
       <PageHeader
         title="Previous Quotes"
-        description={
-          elevated
-            ? 'Find any quote saved through the Guest Quote page.'
-            : 'Find quotes you have saved.'
-        }
+        description="Find any quote saved through the Guest Quote page."
       />
 
       <div
         className="mb-4 rounded-lg border border-slate-200 bg-white px-3 py-3 shadow-sm"
         data-testid="saved-quotes-filters"
       >
-        <div
-          className={`grid grid-cols-1 gap-3 ${
-            elevated ? 'sm:grid-cols-4' : 'sm:grid-cols-3'
-          }`}
-        >
+        {/* Filter grid is now a fixed 4-up at `sm` for every role:
+            Search, Date from, Date to, Display rows. The dedicated
+            Stylist text input was removed — searching by stylist name
+            still works through the main `Search` field. */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
           <label className="block text-xs font-medium text-slate-600">
             Search
             <input
@@ -206,19 +227,6 @@ export function SavedQuotesPage() {
               data-testid="saved-quotes-filter-search"
             />
           </label>
-          {elevated ? (
-            <label className="block text-xs font-medium text-slate-600">
-              Stylist
-              <input
-                type="text"
-                value={stylist}
-                onChange={(e) => onStylistChange(e.target.value)}
-                placeholder="Stylist name"
-                className={`mt-1 ${inputClass}`}
-                data-testid="saved-quotes-filter-stylist"
-              />
-            </label>
-          ) : null}
           <label className="block text-xs font-medium text-slate-600">
             Date from
             <input
@@ -238,6 +246,21 @@ export function SavedQuotesPage() {
               className={`mt-1 ${inputClass}`}
               data-testid="saved-quotes-filter-date-to"
             />
+          </label>
+          <label className="block text-xs font-medium text-slate-600">
+            Display rows
+            <select
+              value={pageSize}
+              onChange={(e) => onPageSizeChange(Number(e.target.value))}
+              className={`mt-1 ${inputClass}`}
+              data-testid="saved-quotes-filter-page-size"
+            >
+              {PAGE_SIZE_OPTIONS.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
           </label>
         </div>
         {hasFilters ? (
@@ -311,7 +334,7 @@ export function SavedQuotesPage() {
       ) : (
         <SavedQuotesTable
           rows={rows}
-          elevated={elevated}
+          canDeleteRow={canDeleteRow}
           onDelete={onDeleteRow}
           deletingId={deleteMutation.isPending ? deleteMutation.variables : null}
           onRequote={onRequoteRow}
@@ -332,7 +355,7 @@ export function SavedQuotesPage() {
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => setOffset((o) => Math.max(0, o - PAGE_SIZE))}
+              onClick={() => setOffset((o) => Math.max(0, o - pageSize))}
               disabled={!canPrev}
               className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
               data-testid="saved-quotes-prev"
@@ -341,7 +364,7 @@ export function SavedQuotesPage() {
             </button>
             <button
               type="button"
-              onClick={() => setOffset((o) => o + PAGE_SIZE)}
+              onClick={() => setOffset((o) => o + pageSize)}
               disabled={!canNext}
               className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
               data-testid="saved-quotes-next"
@@ -357,19 +380,31 @@ export function SavedQuotesPage() {
 
 function SavedQuotesTable({
   rows,
-  elevated,
+  canDeleteRow,
   onDelete,
   deletingId,
   onRequote,
   requotingId,
 }: {
   rows: SavedQuoteSearchRow[]
-  elevated: boolean
+  /**
+   * Per-row delete authorisation. The page passes its own ownership
+   * helper here so the table doesn't need to know who the signed-in
+   * user is. When this returns `false` the Delete button is omitted
+   * for that row entirely (rather than rendered disabled) so it's
+   * obvious the action isn't available.
+   */
+  canDeleteRow: (row: SavedQuoteSearchRow) => boolean
   onDelete: (row: SavedQuoteSearchRow) => void
   deletingId: string | null | undefined
   onRequote: (row: SavedQuoteSearchRow) => void
   requotingId: string | null
 }) {
+  // The Stylist column is shown for every role: assistants and
+  // stylists can now read every author's quotes (per the latest
+  // visibility rules), so hiding it would leave them unable to tell
+  // whose quote they're looking at. Manager / admin output is
+  // unchanged from before.
   const navigate = useNavigate()
   const open = (id: string) => navigate(`/app/previous-quotes/${id}`)
   // Hold off both row actions while the other is in flight so the two
@@ -408,68 +443,83 @@ function SavedQuotesTable({
             aria-label={`Open quote for ${row.guestName?.trim() || 'guest without name'}`}
             data-testid={`saved-quotes-card-${row.id}`}
           >
+            {/*
+              Mobile card layout (revised):
+                - Left column: title (`Guest (Quote by Stylist)`),
+                  combined date + line count meta line, optional
+                  notes preview.
+                - Right column: price stacked over a compact
+                  Requote/Delete action group.
+              The whole row is a single `flex items-start` so the
+              right-side stack pins to the top, and the right column
+              uses `shrink-0` so the long left content can wrap or
+              truncate without pushing the actions off-screen.
+            */}
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold text-slate-900">
+                <p className="break-words text-sm font-semibold leading-tight text-slate-900">
                   {row.guestName?.trim() || (
                     <span className="italic text-slate-400">No name</span>
                   )}
+                  {row.stylistDisplayName ? (
+                    <span className="font-normal text-slate-600">
+                      {' '}(Quote by {row.stylistDisplayName})
+                    </span>
+                  ) : null}
                 </p>
                 <p className="mt-0.5 text-xs text-slate-500">
-                  {formatDateTimeCompact(row.createdAt)}
+                  {formatDateTimeCompactMobile(row.createdAt)} -{' '}
+                  {row.lineCount} Line{row.lineCount === 1 ? '' : 's'}
                 </p>
+                {row.notesPreview ? (
+                  <p className="mt-1 line-clamp-2 break-words text-xs text-slate-600">
+                    {row.notesPreview}
+                  </p>
+                ) : null}
               </div>
-              <p className="shrink-0 text-sm font-semibold tabular-nums text-slate-900">
-                {formatNzd(row.grandTotal)}
-              </p>
-            </div>
-            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-slate-600">
-              <span className="tabular-nums">
-                {row.lineCount} line{row.lineCount === 1 ? '' : 's'}
-              </span>
-              {elevated ? (
-                <span className="truncate">
-                  Stylist: {row.stylistDisplayName}
-                </span>
-              ) : null}
-            </div>
-            {row.notesPreview ? (
-              <p className="mt-1 line-clamp-2 break-words text-xs text-slate-600">
-                {row.notesPreview}
-              </p>
-            ) : null}
-            <div
-              className="mt-2 flex items-center gap-2"
-              data-row-action
-            >
-              <button
-                type="button"
+              <div
+                className="flex shrink-0 flex-col items-end gap-1"
                 data-row-action
-                onClick={(e) => {
-                  e.stopPropagation()
-                  void onRequote(row)
-                }}
-                disabled={anyActionPending}
-                aria-busy={requotingId === row.id}
-                className="inline-flex items-center rounded-md border border-violet-200 bg-white px-2.5 py-1 text-xs font-medium text-violet-700 shadow-sm hover:bg-violet-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-1 disabled:cursor-wait disabled:opacity-50"
-                data-testid={`saved-quotes-card-requote-${row.id}`}
               >
-                {requotingId === row.id ? 'Loading…' : 'Requote'}
-              </button>
-              <button
-                type="button"
-                data-row-action
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onDelete(row)
-                }}
-                disabled={anyActionPending}
-                aria-busy={deletingId === row.id}
-                className="inline-flex items-center rounded-md border border-rose-200 bg-white px-2.5 py-1 text-xs font-medium text-rose-700 shadow-sm hover:bg-rose-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-1 disabled:cursor-wait disabled:opacity-50"
-                data-testid={`saved-quotes-card-delete-${row.id}`}
-              >
-                {deletingId === row.id ? 'Deleting…' : 'Delete'}
-              </button>
+                <p className="text-sm font-semibold tabular-nums text-slate-900">
+                  {formatNzd(row.grandTotal)}
+                </p>
+                <div
+                  className="flex items-center gap-1.5"
+                  data-row-action
+                >
+                  <button
+                    type="button"
+                    data-row-action
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      void onRequote(row)
+                    }}
+                    disabled={anyActionPending}
+                    aria-busy={requotingId === row.id}
+                    className="inline-flex items-center rounded-md border border-violet-200 bg-white px-2 py-0.5 text-[11px] font-medium text-violet-700 shadow-sm hover:bg-violet-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-1 disabled:cursor-wait disabled:opacity-50"
+                    data-testid={`saved-quotes-card-requote-${row.id}`}
+                  >
+                    {requotingId === row.id ? 'Loading…' : 'Requote'}
+                  </button>
+                  {canDeleteRow(row) ? (
+                    <button
+                      type="button"
+                      data-row-action
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onDelete(row)
+                      }}
+                      disabled={anyActionPending}
+                      aria-busy={deletingId === row.id}
+                      className="inline-flex items-center rounded-md border border-rose-200 bg-white px-2 py-0.5 text-[11px] font-medium text-rose-700 shadow-sm hover:bg-rose-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-1 disabled:cursor-wait disabled:opacity-50"
+                      data-testid={`saved-quotes-card-delete-${row.id}`}
+                    >
+                      {deletingId === row.id ? 'Deleting…' : 'Delete'}
+                    </button>
+                  ) : null}
+                </div>
+              </div>
             </div>
           </li>
         ))}
@@ -484,7 +534,7 @@ function SavedQuotesTable({
           <tr>
             <th className={`${thBase} w-32`}>Date</th>
             <th className={thBase}>Guest</th>
-            {elevated ? <th className={thBase}>Stylist</th> : null}
+            <th className={thBase}>Stylist</th>
             <th className={`${thBase} w-20 text-right`}>Lines</th>
             <th className={`${thBase} w-28 text-right`}>Total</th>
             <th className={thBase}>Notes</th>
@@ -531,11 +581,9 @@ function SavedQuotesTable({
                   )}
                 </span>
               </td>
-              {elevated ? (
-                <td className={`${tdBase} whitespace-nowrap`}>
-                  {row.stylistDisplayName}
-                </td>
-              ) : null}
+              <td className={`${tdBase} whitespace-nowrap`}>
+                {row.stylistDisplayName}
+              </td>
               <td className={`${tdBase} whitespace-nowrap text-right tabular-nums`}>
                 {row.lineCount}
               </td>
@@ -578,26 +626,28 @@ function SavedQuotesTable({
                   >
                     {requotingId === row.id ? 'Loading…' : 'Requote'}
                   </button>
-                  <button
-                    type="button"
-                    data-row-action
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onDelete(row)
-                    }}
-                    // Disable every row's delete while ANY action is in
-                    // flight — the clicked row shows "Deleting…" for
-                    // feedback, and the others simply cannot be clicked
-                    // until the current mutation settles. Prevents a
-                    // second mutate() call overwriting the first one's
-                    // variables/callbacks.
-                    disabled={anyActionPending}
-                    aria-busy={deletingId === row.id}
-                    className="inline-flex items-center rounded-md border border-rose-200 bg-white px-2 py-1 text-xs font-medium text-rose-700 shadow-sm hover:bg-rose-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-1 disabled:cursor-wait disabled:opacity-50"
-                    data-testid={`saved-quotes-row-delete-${row.id}`}
-                  >
-                    {deletingId === row.id ? 'Deleting…' : 'Delete'}
-                  </button>
+                  {canDeleteRow(row) ? (
+                    <button
+                      type="button"
+                      data-row-action
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onDelete(row)
+                      }}
+                      // Disable every row's delete while ANY action is
+                      // in flight — the clicked row shows "Deleting…"
+                      // for feedback, and the others simply cannot be
+                      // clicked until the current mutation settles.
+                      // Prevents a second mutate() call overwriting
+                      // the first one's variables/callbacks.
+                      disabled={anyActionPending}
+                      aria-busy={deletingId === row.id}
+                      className="inline-flex items-center rounded-md border border-rose-200 bg-white px-2 py-1 text-xs font-medium text-rose-700 shadow-sm hover:bg-rose-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-1 disabled:cursor-wait disabled:opacity-50"
+                      data-testid={`saved-quotes-row-delete-${row.id}`}
+                    >
+                      {deletingId === row.id ? 'Deleting…' : 'Delete'}
+                    </button>
+                  ) : null}
                 </div>
               </td>
             </tr>

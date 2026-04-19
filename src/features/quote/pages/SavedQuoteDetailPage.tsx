@@ -216,7 +216,17 @@ function QuoteDetailHeaderCard({ detail }: { detail: SavedQuoteDetail }) {
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
             Notes
           </p>
-          <p className="mt-1 whitespace-pre-wrap text-sm text-slate-800">
+          {/*
+            `whitespace-pre-wrap` preserves the user's line breaks, but
+            on its own does not break inside an unbroken token (long
+            URL, glued string, etc.) — those would push the card width
+            and force horizontal page overflow on mobile. `break-words`
+            (overflow-wrap: break-word) covers the common long-word /
+            long-URL case, and the arbitrary
+            `[overflow-wrap:anywhere]` is a safety net for pathological
+            inputs with no natural break opportunity at all.
+          */}
+          <p className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-800 [overflow-wrap:anywhere]">
             {header.notes}
           </p>
         </div>
