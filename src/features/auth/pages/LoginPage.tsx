@@ -22,9 +22,13 @@ export function LoginPage() {
   const [forgotMessage, setForgotMessage] = useState<string | null>(null)
   const [forgotError, setForgotError] = useState<string | null>(null)
 
+  // Default post-login landing is Guest Quote — the page stylists use
+  // most often. If the user hit a protected URL while signed-out and
+  // was bounced to login, `location.state.from.pathname` preserves
+  // that intent and we send them back there instead.
   const from =
     (location.state as { from?: { pathname?: string } } | null)?.from
-      ?.pathname ?? '/app/my-sales'
+      ?.pathname ?? '/app/guest-quote'
 
   if (!loading && user) {
     return <Navigate to={from} replace />

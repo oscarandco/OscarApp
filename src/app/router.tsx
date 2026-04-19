@@ -51,7 +51,11 @@ export function AppRouter() {
       <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route element={<RequireAuth />}>
         <Route path="/app" element={<AuthenticatedLayout />}>
-          <Route index element={<Navigate to="/app/my-sales" replace />} />
+          {/* Default landing inside `/app` — Guest Quote is the page
+              stylists use most often, so we send everyone there by
+              default after login. Direct deep-links to other pages
+              still resolve normally. */}
+          <Route index element={<Navigate to="/app/guest-quote" replace />} />
 
           {/* Shared pages — every authenticated role may view. */}
           <Route path="my-sales" element={<PayrollSummaryPage />} />
@@ -224,7 +228,7 @@ export function AppRouter() {
           />
         </Route>
       </Route>
-      <Route path="/" element={<Navigate to="/app/my-sales" replace />} />
+      <Route path="/" element={<Navigate to="/app/guest-quote" replace />} />
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
   )
