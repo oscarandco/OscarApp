@@ -183,7 +183,7 @@ export function PayrollSummaryPage() {
               <WeeklySummaryStats
                 rows={displayRows}
                 weeksCardLabel="Number of weeks shown"
-                commissionCardLabel="Commission earnt"
+                commissionCardLabel="Commission"
                 showCommissionCard={visibility.showCommissionCard}
                 showSalesCard={visibility.showSalesCard}
               />
