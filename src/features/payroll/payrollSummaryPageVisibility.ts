@@ -31,6 +31,13 @@ export type MySalesVisibility = {
   /** "Sales (ex GST)" summary card. */
   showSalesCard: boolean
   /**
+   * `Columns` button (the column-picker trigger above the table). Hidden
+   * for stylist / assistant — those roles get a fixed, role-tailored
+   * column set and re-ordering / hiding columns themselves would just
+   * confuse the simplified view. Manager / admin keep it.
+   */
+  showColumnPicker: boolean
+  /**
    * Middle table columns that must be hidden for this role on My Sales,
    * regardless of any saved column-picker preference. Layered on top of
    * the user's `prefs.hidden` set inside `WeeklySummaryTable` /
@@ -58,6 +65,7 @@ export function mySalesVisibilityForRole(
         showLocationFilter: true,
         showCommissionCard: true,
         showSalesCard: true,
+        showColumnPicker: true,
         // Manager/Admin see all role-gated middle columns (Staff Paid,
         // Potential Commission, Commission payable). `pay_date` is the
         // only column hard-removed across every role on My Sales (see
@@ -73,10 +81,17 @@ export function mySalesVisibilityForRole(
         showLocationFilter: false,
         showCommissionCard: true,
         showSalesCard: false,
+        // Stylist no longer hides the Columns button per the latest
+        // change; it is hidden instead via `showColumnPicker: false`
+        // because the role-tailored column set is fixed.
+        showColumnPicker: false,
+        // Stylists see Potential Commission again (per the latest
+        // requirement). `total_theoretical_commission_ex_gst` is no
+        // longer in the role-hidden set; only Pay Date and Staff Paid
+        // remain hidden for stylists.
         hiddenTableColumnIds: new Set<MiddleColumnId>([
           'pay_date',
           'derived_staff_paid_full_name',
-          'total_theoretical_commission_ex_gst',
         ]),
       }
     case 'assistant':
@@ -86,6 +101,7 @@ export function mySalesVisibilityForRole(
         showLocationFilter: false,
         showCommissionCard: false,
         showSalesCard: false,
+        showColumnPicker: false,
         hiddenTableColumnIds: new Set<MiddleColumnId>([
           'pay_date',
           'derived_staff_paid_full_name',

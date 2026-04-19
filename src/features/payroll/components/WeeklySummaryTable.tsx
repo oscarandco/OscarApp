@@ -28,6 +28,13 @@ type WeeklySummaryTableProps = {
    * shared column-preferences storage.
    */
   forceHiddenColumnIds?: ReadonlySet<MiddleColumnId>
+  /**
+   * Render the `Columns` button (column-picker trigger). Defaults to
+   * `true` so existing callers (admin pages) keep their picker. My
+   * Sales passes `false` for stylist and assistant per the role-based
+   * visibility helper, since those roles get a fixed column set.
+   */
+  showColumnPicker?: boolean
 }
 
 const thBase =
@@ -108,6 +115,7 @@ const DND_TYPE = 'application/x-payroll-middle-column'
 export function WeeklySummaryTable({
   rows,
   forceHiddenColumnIds,
+  showColumnPicker = true,
 }: WeeklySummaryTableProps) {
   const { prefs, setPrefs, reset } = usePayrollSummaryColumnPreferences()
   const [previewSummaryRow, setPreviewSummaryRow] =
@@ -172,13 +180,15 @@ export function WeeklySummaryTable({
 
   return (
     <div className="space-y-2">
-      <div className="flex justify-end">
-        <WeeklySummaryColumnPicker
-          prefs={prefs}
-          onChange={setPrefs}
-          onReset={reset}
-        />
-      </div>
+      {showColumnPicker ? (
+        <div className="flex justify-end">
+          <WeeklySummaryColumnPicker
+            prefs={prefs}
+            onChange={setPrefs}
+            onReset={reset}
+          />
+        </div>
+      ) : null}
       <TableScrollArea testId="weekly-summary-table">
         <table className="min-w-[760px] w-full border-collapse text-left text-sm">
           <thead className="sticky top-0 z-20 bg-slate-50 shadow-[0_1px_0_0_rgb(226_232_240)]">

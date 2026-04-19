@@ -191,6 +191,7 @@ export function PayrollSummaryPage() {
                 <WeeklySummaryTable
                   rows={displayRows}
                   forceHiddenColumnIds={forceHiddenColumnIds}
+                  showColumnPicker={visibility.showColumnPicker}
                 />
               </div>
             </>
