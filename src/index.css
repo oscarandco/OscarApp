@@ -7,9 +7,59 @@
 body {
   margin: 0;
   min-height: 100dvh;
+  /*
+   * Defensive horizontal-overflow guard for mobile Safari.
+   *
+   * Symptom: on first load the app could appear slightly zoomed in
+   * because some descendant (e.g. the wide weekly summary table inside
+   * its own scroll area, a long unbroken word, etc.) momentarily
+   * extended the document past the visual viewport, prompting Safari
+   * to scale the whole page down to fit. Pinch-zooming and releasing
+   * forced a re-layout, which is why the issue "fixed itself" after a
+   * gesture.
+   *
+   * Clamping `overflow-x` on the document body keeps the viewport
+   * width as the upper bound for layout. Internal horizontal-scroll
+   * containers (TableScrollArea, the Guest Quote sections wrapper,
+   * etc.) keep working — they own their own overflow.
+   *
+   * `position: sticky` continues to work because every sticky element
+   * in the app is scoped to its own scroll container (e.g. the
+   * `<thead>` inside `TableScrollArea`, the `lg:overflow-y-auto` main
+   * region on desktop), not to the body.
+   */
+  overflow-x: hidden;
   @apply bg-slate-50 text-slate-900 antialiased;
 }
 
 #root {
   min-height: 100dvh;
+}
+
+/*
+ * iOS Safari auto-zoom prevention.
+ *
+ * Mobile Safari zooms into any focused text-input control whose
+ * computed `font-size` is < 16px (e.g. `text-sm` = 14px on the login
+ * email/password fields, `text-[13px]` on Guest Quote inputs). When
+ * Safari restores autofill or auto-focuses a form on first paint that
+ * zoom can fire immediately on page load, which is exactly the
+ * "slightly zoomed in" symptom described on the iPhone login screen.
+ *
+ * Forcing `font-size: 16px` on text-like form controls below the `lg`
+ * breakpoint disables that zoom without a JavaScript scale hack.
+ * Non-text controls (checkbox, radio, range, button-likes, file) are
+ * deliberately excluded — they neither trigger the zoom nor benefit
+ * from the rule.
+ *
+ * 1023.98px matches Tailwind's `lg` (1024px) breakpoint that the
+ * rest of the app uses for the mobile / desktop split, so iPad
+ * portrait inherits the same protection that phones get.
+ */
+@media (max-width: 1023.98px) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):not([type='button']):not([type='submit']):not([type='reset']):not([type='file']),
+  select,
+  textarea {
+    font-size: 16px;
+  }
 }

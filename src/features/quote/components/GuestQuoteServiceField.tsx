@@ -501,7 +501,12 @@ function displayOptionLabel(label: string): string {
 function OptionRadioControl({ service, line, onChange }: ControlProps) {
   const activeId = line.selected ? line.selectedOptionIds[0] ?? null : null
   return (
-    <div className="flex min-w-0 items-center gap-1.5 whitespace-nowrap sm:gap-3">
+    // Numeric / short option-radio groups (e.g. "1 2 3 4 5", "15 30 45")
+    // sit closer together than the role-radio group on purpose: the
+    // labels are tiny (often a single digit) so the previous gap looked
+    // visually loose. Role radios (`Em. Snr. Mst. Dir.`) keep the
+    // wider `gap-1.5 sm:gap-3` rhythm — see `RoleRadioControl`.
+    <div className="flex min-w-0 items-center gap-1 whitespace-nowrap sm:gap-2">
       {service.options.map((opt) => {
         const checked = activeId === opt.id
         return (
@@ -587,7 +592,10 @@ function ExtraUnitsControl({ service, line, onChange }: ControlProps) {
   const choices: number[] = []
   for (let i = 1; i <= cfg.maxExtras; i += 1) choices.push(i)
   return (
-    <div className="flex items-center gap-1.5 sm:gap-3">
+    // Same tighter spacing as `OptionRadioControl` — these are the
+    // numeric "1 2 3 4 5" extra-unit radios called out in the spec.
+    // Role radios stay on their wider rhythm in `RoleRadioControl`.
+    <div className="flex items-center gap-1 sm:gap-2">
       {choices.map((n) => {
         const checked = line.selected && selected === n
         return (
