@@ -4,10 +4,13 @@ import { EmptyState } from '@/components/feedback/EmptyState'
 import { ErrorState } from '@/components/feedback/ErrorState'
 import { LoadingState } from '@/components/feedback/LoadingState'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { useAccessProfile } from '@/features/access/accessContext'
+import { resolveRole } from '@/features/access/pageAccess'
 import { SummaryFiltersBar } from '@/features/payroll/components/SummaryFiltersBar'
 import { WeeklySummaryStats } from '@/features/payroll/components/WeeklySummaryStats'
 import { WeeklySummaryTable } from '@/features/payroll/components/WeeklySummaryTable'
 import { useMyWeeklyCommissionSummary } from '@/features/payroll/hooks/useMyWeeklyCommissionSummary'
+import { mySalesVisibilityForRole } from '@/features/payroll/payrollSummaryPageVisibility'
 import { aggregateWeeklyCommissionSummaryByStaffWeek } from '@/lib/aggregateWeeklyCommissionSummaryByStaffWeek'
 import {
   filterStylistSummaryRows,
@@ -21,10 +24,28 @@ export function PayrollSummaryPage() {
   const { data, isLoading, isError, error, refetch } =
     useMyWeeklyCommissionSummary()
 
+  // Resolve the user's role once and feed it through the centralised
+  // My Sales visibility helper. Every role-based filter / card / column
+  // decision below reads from `visibility` so the matrix lives in one
+  // place — see `payrollSummaryPageVisibility.ts`.
+  const { normalized } = useAccessProfile()
+  const role = useMemo(() => resolveRole(normalized), [normalized])
+  const visibility = useMemo(() => mySalesVisibilityForRole(role), [role])
+
   const [locationId, setLocationId] = useState('')
   const [payWeekStart, setPayWeekStart] = useState('')
   const [search, setSearch] = useState('')
   const [splitByLocation, setSplitByLocation] = useState(false)
+
+  // Force-hidden table columns: role-driven hides from the visibility
+  // helper, plus the filter-driven hide for `location` whenever the
+  // Summary rows toggle is set to "Combined" (one row per staff +
+  // week, regardless of site).
+  const forceHiddenColumnIds = useMemo(() => {
+    const next = new Set(visibility.hiddenTableColumnIds)
+    if (!splitByLocation) next.add('location')
+    return next
+  }, [visibility.hiddenTableColumnIds, splitByLocation])
 
   const sourceRows = useMemo(() => {
     const raw = data ?? []
@@ -121,6 +142,8 @@ export function PayrollSummaryPage() {
             showReset={showReset}
             splitByLocation={splitByLocation}
             onSplitByLocationChange={setSplitByLocation}
+            showSearch={visibility.showSearchFilter}
+            showLocation={visibility.showLocationFilter}
           />
           {hasFilters ? (
             <p
@@ -157,9 +180,18 @@ export function PayrollSummaryPage() {
             />
           ) : (
             <>
-              <WeeklySummaryStats rows={displayRows} />
+              <WeeklySummaryStats
+                rows={displayRows}
+                weeksCardLabel="Number of weeks shown"
+                commissionCardLabel="Commission earnt"
+                showCommissionCard={visibility.showCommissionCard}
+                showSalesCard={visibility.showSalesCard}
+              />
               <div className="mt-4">
-                <WeeklySummaryTable rows={displayRows} />
+                <WeeklySummaryTable
+                  rows={displayRows}
+                  forceHiddenColumnIds={forceHiddenColumnIds}
+                />
               </div>
             </>
           )}

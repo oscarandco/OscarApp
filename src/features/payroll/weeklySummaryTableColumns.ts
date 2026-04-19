@@ -49,13 +49,18 @@ const ALL_MIDDLE_IDS: readonly MiddleColumnId[] = [
   'access_role',
 ]
 
-/** Ids that cannot be hidden (still participate in ordering). */
-export const MIDDLE_LOCKED_VISIBLE: ReadonlySet<MiddleColumnId> = new Set([
-  'pay_date',
-])
+/**
+ * Ids that cannot be hidden (still participate in ordering).
+ *
+ * Currently empty — `pay_date` was previously locked visible but the
+ * My Sales redesign removes the Pay Date column entirely. Kept as an
+ * exported set so the picker / table code paths stay generic in case
+ * a future column needs to be re-locked.
+ */
+export const MIDDLE_LOCKED_VISIBLE: ReadonlySet<MiddleColumnId> = new Set()
 
 export const COLUMN_LABEL: Record<MiddleColumnId, string> = {
-  pay_week_end: 'End',
+  pay_week_end: 'End of week',
   pay_date: 'Pay Date',
   location: 'Location',
   derived_staff_paid_id: 'Derived staff paid ID',
@@ -68,7 +73,7 @@ export const COLUMN_LABEL: Record<MiddleColumnId, string> = {
   expected_no_commission_line_count: 'Expected no commission line count',
   zero_value_line_count: 'Zero value line count',
   review_line_count: 'Review line count',
-  total_actual_commission_ex_gst: 'Actual Commission (ex GST)',
+  total_actual_commission_ex_gst: 'Commission payable (ex GST)',
   total_theoretical_commission_ex_gst: 'Potential Commission (ex GST)',
   total_assistant_commission_ex_gst: 'Total assistant commission (ex GST)',
   unconfigured_paid_staff_line_count: 'Unconfigured paid staff line count',
@@ -78,11 +83,15 @@ export const COLUMN_LABEL: Record<MiddleColumnId, string> = {
 }
 
 /**
- * Default visible middle columns (after fixed Week + Pay week start; Detail stays fixed).
- * Picker lists these first in this order; all other middle columns are off by default.
+ * Default visible middle columns (after the fixed Start-of-week column;
+ * Detail stays fixed on the right). Picker lists these first in this
+ * order; all other middle columns are off by default.
+ *
+ * Note: `pay_date` is intentionally absent here and is also force-
+ * hidden at the page level (see `mySalesVisibilityForRole`) so the
+ * column never appears on My Sales regardless of stored preferences.
  */
 const DEFAULT_VISIBLE_MIDDLE: readonly MiddleColumnId[] = [
-  'pay_date',
   'pay_week_end',
   'location',
   'derived_staff_paid_full_name',
@@ -209,15 +218,29 @@ export function resolveRowKeyForMiddleColumn(
 /** Visible middle columns in table order (for headers, cells, drag targets). */
 export type VisibleMiddleColumn = { id: MiddleColumnId; rowKey: string }
 
+/**
+ * `extraHidden` is a set of middle column ids that must always be
+ * filtered out, *layered on top of* the user's saved preferences. Use
+ * it for role-based hides (e.g. stylists never see Staff Paid) and
+ * filter-driven hides (e.g. Location hides when Summary rows = Combined)
+ * — anything where the visibility decision is owned by the page rather
+ * than by the column-picker preferences.
+ *
+ * Locked-visible columns continue to win over the user's `prefs.hidden`,
+ * but `extraHidden` overrides everything: a page that needs a column
+ * gone always gets it gone, regardless of locked status.
+ */
 export function visibleMiddleColumns(
   sample: WeeklyCommissionSummaryRow,
   prefs: ColumnPreferences,
+  extraHidden?: ReadonlySet<MiddleColumnId>,
 ): VisibleMiddleColumn[] {
   const hidden = new Set(
     prefs.hidden.filter((id) => !MIDDLE_LOCKED_VISIBLE.has(id)),
   )
   const out: VisibleMiddleColumn[] = []
   for (const id of prefs.order) {
+    if (extraHidden?.has(id)) continue
     if (hidden.has(id)) continue
     const rk = resolveRowKeyForMiddleColumn(id, sample)
     if (rk != null) out.push({ id, rowKey: rk })
@@ -232,8 +255,9 @@ export function visibleMiddleColumns(
 export function middleRowKeysForPreferences(
   sample: WeeklyCommissionSummaryRow,
   prefs: ColumnPreferences,
+  extraHidden?: ReadonlySet<MiddleColumnId>,
 ): string[] {
-  return visibleMiddleColumns(sample, prefs).map((c) => c.rowKey)
+  return visibleMiddleColumns(sample, prefs, extraHidden).map((c) => c.rowKey)
 }
 
 /** Move `fromId` to the index of `toId` in the full preference order (HTML5 DnD + picker). */

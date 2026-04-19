@@ -9,6 +9,23 @@ type WeeklySummaryStatsProps = {
     active: boolean
     onToggle: () => void
   }
+  /**
+   * Override for the "Pay weeks" card label. Defaults to `Pay weeks`
+   * so existing callers (e.g. AdminPayrollSummaryPage) render the same
+   * label as before. My Sales overrides this to `Number of weeks shown`.
+   */
+  weeksCardLabel?: string
+  /**
+   * Override for the commission card label. Defaults to `Commission`.
+   * My Sales passes `Commission earnt`. The underlying value is always
+   * sourced from `total_actual_commission_ex_gst` (Actual Commission
+   * ex GST), never the theoretical/potential figure.
+   */
+  commissionCardLabel?: string
+  /** Mount the commission card. Defaults to `true`. Apprentice hides it. */
+  showCommissionCard?: boolean
+  /** Mount the sales (ex GST) card. Defaults to `true`. Stylist + apprentice hide it. */
+  showSalesCard?: boolean
 }
 
 function sumActualCommission(rows: WeeklyCommissionSummaryRow[]): number | null {
@@ -61,6 +78,10 @@ function anyUnconfigured(rows: WeeklyCommissionSummaryRow[]): boolean {
 export function WeeklySummaryStats({
   rows,
   unconfiguredFilterProps,
+  weeksCardLabel = 'Pay weeks',
+  commissionCardLabel = 'Commission',
+  showCommissionCard = true,
+  showSalesCard = true,
 }: WeeklySummaryStatsProps) {
   const weeks = distinctPayWeeks(rows)
   const commission = sumActualCommission(rows)
@@ -78,7 +99,7 @@ export function WeeklySummaryStats({
       <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4">
         <div className="hidden rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm sm:block">
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-            Pay weeks
+            {weeksCardLabel}
           </p>
           <p className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">
             {weeks}
@@ -92,22 +113,26 @@ export function WeeklySummaryStats({
             {rows.length}
           </p>
         </div>
-        <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm sm:px-4 sm:py-3">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500 sm:text-xs">
-            Commission
-          </p>
-          <p className="mt-0.5 text-lg font-semibold tabular-nums text-slate-900 sm:mt-1 sm:text-2xl">
-            {commission != null ? formatNzd(commission) : '—'}
-          </p>
-        </div>
-        <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm sm:px-4 sm:py-3">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500 sm:text-xs">
-            Sales (ex GST)
-          </p>
-          <p className="mt-0.5 text-lg font-semibold tabular-nums text-slate-900 sm:mt-1 sm:text-2xl">
-            {sales != null ? formatNzd(sales) : '—'}
-          </p>
-        </div>
+        {showCommissionCard ? (
+          <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm sm:px-4 sm:py-3">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500 sm:text-xs">
+              {commissionCardLabel}
+            </p>
+            <p className="mt-0.5 text-lg font-semibold tabular-nums text-slate-900 sm:mt-1 sm:text-2xl">
+              {commission != null ? formatNzd(commission) : '—'}
+            </p>
+          </div>
+        ) : null}
+        {showSalesCard ? (
+          <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm sm:px-4 sm:py-3">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500 sm:text-xs">
+              Sales (ex GST)
+            </p>
+            <p className="mt-0.5 text-lg font-semibold tabular-nums text-slate-900 sm:mt-1 sm:text-2xl">
+              {sales != null ? formatNzd(sales) : '—'}
+            </p>
+          </div>
+        ) : null}
       </div>
       {warnUnconfigured ? (
         <div

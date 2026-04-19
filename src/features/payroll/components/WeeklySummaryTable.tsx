@@ -15,10 +15,19 @@ import {
 import { TableScrollArea } from '@/components/ui/TableScrollArea'
 import type { WeeklyCommissionSummaryRow } from '@/features/payroll/types'
 import { isEmptyish, formatScalarText } from '@/lib/cellValue'
-import { formatDateLabel, formatNzd, formatShortDate } from '@/lib/formatters'
+import { formatNzd, formatShortDate } from '@/lib/formatters'
 
 type WeeklySummaryTableProps = {
   rows: WeeklyCommissionSummaryRow[]
+  /**
+   * Middle column ids that must always be hidden, layered on top of
+   * the user's saved column-picker preferences. Owned by the page so
+   * role-based hides (Staff Paid, Potential Commission, Commission
+   * payable) and filter-driven hides (Location when Summary rows =
+   * Combined) stay in `PayrollSummaryPage` instead of leaking into the
+   * shared column-preferences storage.
+   */
+  forceHiddenColumnIds?: ReadonlySet<MiddleColumnId>
 }
 
 const thBase =
@@ -67,9 +76,6 @@ function Cell({
       return <span className="tabular-nums">{formatNzd(value)}</span>
     }
   }
-  if (rowKey === 'pay_week_start') {
-    return <span>{formatDateLabel(String(value))}</span>
-  }
   if (isDateLikeKey(rowKey)) {
     return <span>{formatShortDate(String(value))}</span>
   }
@@ -99,7 +105,10 @@ function stableSummaryRowKey(
 
 const DND_TYPE = 'application/x-payroll-middle-column'
 
-export function WeeklySummaryTable({ rows }: WeeklySummaryTableProps) {
+export function WeeklySummaryTable({
+  rows,
+  forceHiddenColumnIds,
+}: WeeklySummaryTableProps) {
   const { prefs, setPrefs, reset } = usePayrollSummaryColumnPreferences()
   const [previewSummaryRow, setPreviewSummaryRow] =
     useState<WeeklyCommissionSummaryRow | null>(null)
@@ -109,13 +118,19 @@ export function WeeklySummaryTable({ rows }: WeeklySummaryTableProps) {
   const sample = rows[0]
 
   const keys = useMemo(
-    () => (sample ? middleRowKeysForPreferences(sample, prefs) : []),
-    [sample, prefs],
+    () =>
+      sample
+        ? middleRowKeysForPreferences(sample, prefs, forceHiddenColumnIds)
+        : [],
+    [sample, prefs, forceHiddenColumnIds],
   )
 
   const visibleMiddle = useMemo(
-    () => (sample ? visibleMiddleColumns(sample, prefs) : []),
-    [sample, prefs],
+    () =>
+      sample
+        ? visibleMiddleColumns(sample, prefs, forceHiddenColumnIds)
+        : [],
+    [sample, prefs, forceHiddenColumnIds],
   )
 
   if (!rows.length) {
@@ -168,14 +183,14 @@ export function WeeklySummaryTable({ rows }: WeeklySummaryTableProps) {
         <table className="min-w-[760px] w-full border-collapse text-left text-sm">
           <thead className="sticky top-0 z-20 bg-slate-50 shadow-[0_1px_0_0_rgb(226_232_240)]">
             <tr>
+              {/* Start-of-week is now the leftmost (and sticky) column;
+                  the previous separate Pay Week long-format header was
+                  removed as part of the My Sales redesign. */}
               <th
                 scope="col"
                 className={`${thBase} sticky left-0 z-30 min-w-[8.5rem] bg-slate-50`}
               >
-                Pay Week
-              </th>
-              <th scope="col" className={thBase}>
-                Start
+                Start of week
               </th>
               {visibleMiddle.map(({ id, rowKey: k }) => {
                 const isDragging = draggingId === id
@@ -227,13 +242,6 @@ export function WeeklySummaryTable({ rows }: WeeklySummaryTableProps) {
                       idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/90'
                     } group-hover:bg-violet-50/60`}
                   >
-                    {weekStart ? (
-                      <Cell rowKey="pay_week_start" value={row.pay_week_start} />
-                    ) : (
-                      <span className="text-slate-400">—</span>
-                    )}
-                  </td>
-                  <td className={tdBase}>
                     {weekStart ? (
                       <span>{formatShortDate(row.pay_week_start)}</span>
                     ) : (
