@@ -105,6 +105,13 @@ export function AdminAccessManagementPage() {
       })
       void queryClient.invalidateQueries({ queryKey: ['admin-access-mappings'] })
       void queryClient.invalidateQueries({ queryKey: ['search-auth-users'] })
+      // Drop the cached access profile too — if an admin deleted a
+      // user that happens to be themselves (e.g. cleaning up a
+      // duplicate account that shared their email), the next
+      // `useAccessProfile` read must refetch rather than serve the
+      // stale, now-orphaned admin row. See the matching note in
+      // `useAccessMappingMutations` for the full rationale.
+      void queryClient.invalidateQueries({ queryKey: ['access-profile'] })
       void refetch()
       void pendingQ.refetch()
     },
@@ -469,6 +476,11 @@ export function AdminAccessManagementPage() {
           onInvite={async (email) => {
             await invokeInviteAccessUser(email)
             void queryClient.invalidateQueries({ queryKey: ['search-auth-users'] })
+            // Inviting a brand-new user does not normally affect the
+            // signed-in admin's own access profile, but if the same
+            // email was previously the admin's account being
+            // re-invited, this keeps the cached profile honest.
+            void queryClient.invalidateQueries({ queryKey: ['access-profile'] })
           }}
         />
       ) : null}
