@@ -31,6 +31,13 @@ export type MySalesVisibility = {
   /** "Sales (ex GST)" summary card. */
   showSalesCard: boolean
   /**
+   * "Rows shown" summary card. Hidden for stylist / assistant — the
+   * same figure is already shown in the diagnostics line above the
+   * table, and the simplified stylist/assistant view does not need a
+   * second copy. Manager / admin keep it.
+   */
+  showRowsShownCard: boolean
+  /**
    * `Columns` button (the column-picker trigger above the table). Hidden
    * for stylist / assistant — those roles get a fixed, role-tailored
    * column set and re-ordering / hiding columns themselves would just
@@ -46,6 +53,16 @@ export type MySalesVisibility = {
    * toggle is set to "Combined").
    */
   hiddenTableColumnIds: Set<MiddleColumnId>
+  /**
+   * Per-role overrides for the column header labels. Keys are
+   * `MiddleColumnId`s; only the columns named here use the override
+   * label, every other column falls back to the global `COLUMN_LABEL`.
+   * Used to give stylist/assistant their shorter, simplified header
+   * names (e.g. `Commission` instead of `Commission payable (ex GST)`)
+   * without changing the global default that admin pages still rely
+   * on. Returned as a fresh object per call.
+   */
+  columnLabelOverrides: Partial<Record<MiddleColumnId, string>>
 }
 
 /**
@@ -65,6 +82,7 @@ export function mySalesVisibilityForRole(
         showLocationFilter: true,
         showCommissionCard: true,
         showSalesCard: true,
+        showRowsShownCard: true,
         showColumnPicker: true,
         // Manager/Admin see all role-gated middle columns (Staff Paid,
         // Potential Commission, Commission payable). `pay_date` is the
@@ -74,6 +92,9 @@ export function mySalesVisibilityForRole(
         // the table layer; Pay Date is a middle column and is hidden
         // here so it never re-appears via stored preferences).
         hiddenTableColumnIds: new Set<MiddleColumnId>(['pay_date']),
+        // No header overrides — manager/admin keep the global default
+        // labels from `COLUMN_LABEL` so admin pages render unchanged.
+        columnLabelOverrides: {},
       }
     case 'stylist':
       return {
@@ -81,18 +102,20 @@ export function mySalesVisibilityForRole(
         showLocationFilter: false,
         showCommissionCard: true,
         showSalesCard: false,
-        // Stylist no longer hides the Columns button per the latest
-        // change; it is hidden instead via `showColumnPicker: false`
-        // because the role-tailored column set is fixed.
+        showRowsShownCard: false,
         showColumnPicker: false,
-        // Stylists see Potential Commission again (per the latest
-        // requirement). `total_theoretical_commission_ex_gst` is no
-        // longer in the role-hidden set; only Pay Date and Staff Paid
-        // remain hidden for stylists.
+        // Stylists hide Pay Date, Staff Paid AND Potential Commission;
+        // their Commission Payable column is then renamed to just
+        // `Commission` via the overrides below.
         hiddenTableColumnIds: new Set<MiddleColumnId>([
           'pay_date',
           'derived_staff_paid_full_name',
+          'total_theoretical_commission_ex_gst',
         ]),
+        columnLabelOverrides: {
+          total_actual_commission_ex_gst: 'Commission',
+          total_sales_ex_gst: 'Sales (ex GST)',
+        },
       }
     case 'assistant':
     default:
@@ -101,13 +124,20 @@ export function mySalesVisibilityForRole(
         showLocationFilter: false,
         showCommissionCard: false,
         showSalesCard: false,
+        showRowsShownCard: false,
         showColumnPicker: false,
+        // Assistant now sees Potential Commission (renamed via override
+        // below) but still hides Commission Payable + Staff Paid + Pay
+        // Date.
         hiddenTableColumnIds: new Set<MiddleColumnId>([
           'pay_date',
           'derived_staff_paid_full_name',
-          'total_theoretical_commission_ex_gst',
           'total_actual_commission_ex_gst',
         ]),
+        columnLabelOverrides: {
+          total_theoretical_commission_ex_gst: 'Potential Commission',
+          total_sales_ex_gst: 'Sales (ex GST)',
+        },
       }
   }
 }

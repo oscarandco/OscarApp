@@ -186,12 +186,14 @@ export function PayrollSummaryPage() {
                 commissionCardLabel="Commission"
                 showCommissionCard={visibility.showCommissionCard}
                 showSalesCard={visibility.showSalesCard}
+                showRowsShownCard={visibility.showRowsShownCard}
               />
               <div className="mt-4">
                 <WeeklySummaryTable
                   rows={displayRows}
                   forceHiddenColumnIds={forceHiddenColumnIds}
                   showColumnPicker={visibility.showColumnPicker}
+                  columnLabelOverrides={visibility.columnLabelOverrides}
                 />
               </div>
             </>

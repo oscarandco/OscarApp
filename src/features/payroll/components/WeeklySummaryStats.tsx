@@ -26,6 +26,13 @@ type WeeklySummaryStatsProps = {
   showCommissionCard?: boolean
   /** Mount the sales (ex GST) card. Defaults to `true`. Stylist + apprentice hide it. */
   showSalesCard?: boolean
+  /**
+   * Mount the "Rows shown" meta card. Defaults to `true` so existing
+   * callers (e.g. AdminPayrollSummaryPage) keep showing it. My Sales
+   * passes `false` for stylist + assistant — the same figure is
+   * already in the diagnostics line above the table.
+   */
+  showRowsShownCard?: boolean
 }
 
 function sumActualCommission(rows: WeeklyCommissionSummaryRow[]): number | null {
@@ -82,6 +89,7 @@ export function WeeklySummaryStats({
   commissionCardLabel = 'Commission',
   showCommissionCard = true,
   showSalesCard = true,
+  showRowsShownCard = true,
 }: WeeklySummaryStatsProps) {
   const weeks = distinctPayWeeks(rows)
   const commission = sumActualCommission(rows)
@@ -105,14 +113,16 @@ export function WeeklySummaryStats({
             {weeks}
           </p>
         </div>
-        <div className="hidden rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm sm:block">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-            Rows shown
-          </p>
-          <p className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">
-            {rows.length}
-          </p>
-        </div>
+        {showRowsShownCard ? (
+          <div className="hidden rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm sm:block">
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+              Rows shown
+            </p>
+            <p className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">
+              {rows.length}
+            </p>
+          </div>
+        ) : null}
         {showCommissionCard ? (
           <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm sm:px-4 sm:py-3">
             <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500 sm:text-xs">

@@ -35,6 +35,15 @@ type WeeklySummaryTableProps = {
    * visibility helper, since those roles get a fixed column set.
    */
   showColumnPicker?: boolean
+  /**
+   * Per-column header label overrides. Any id present here uses the
+   * mapped string in the table header; columns not listed fall back to
+   * the global `COLUMN_LABEL`. Used by My Sales to give stylist /
+   * assistant their shorter names (e.g. `Commission`,
+   * `Sales (ex GST)`, `Potential Commission`) without changing the
+   * default labels admin pages still expect.
+   */
+  columnLabelOverrides?: Partial<Record<MiddleColumnId, string>>
 }
 
 const thBase =
@@ -116,6 +125,7 @@ export function WeeklySummaryTable({
   rows,
   forceHiddenColumnIds,
   showColumnPicker = true,
+  columnLabelOverrides,
 }: WeeklySummaryTableProps) {
   const { prefs, setPrefs, reset } = usePayrollSummaryColumnPreferences()
   const [previewSummaryRow, setPreviewSummaryRow] =
@@ -225,7 +235,7 @@ export function WeeklySummaryTable({
                     }`}
                     aria-grabbed={isDragging}
                   >
-                    {COLUMN_LABEL[id]}
+                    {columnLabelOverrides?.[id] ?? COLUMN_LABEL[id]}
                   </th>
                 )
               })}
