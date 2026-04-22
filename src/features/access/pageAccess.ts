@@ -30,6 +30,7 @@ export type PageId =
   | 'my_payroll'
   | 'guest_quote'
   | 'previous_quotes'
+  | 'kpi_dashboard'
   | 'weekly_payroll'
   | 'commission_breakdown'
   | 'imports'
@@ -64,6 +65,17 @@ export const PAGE_ACCESS_MATRIX: Record<
     admin: 'full',
   },
   previous_quotes: {
+    assistant: 'full',
+    stylist: 'full',
+    manager: 'full',
+    admin: 'full',
+  },
+  // KPI dashboard is open to all four roles. The backend
+  // (`private.kpi_resolve_scope`) silently restricts stylist /
+  // assistant callers to their own staff scope, so the page shows
+  // self-scope KPIs for them and business-scope KPIs for manager /
+  // admin. No UI scope picker yet.
+  kpi_dashboard: {
     assistant: 'full',
     stylist: 'full',
     manager: 'full',

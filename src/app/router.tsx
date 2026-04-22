@@ -19,6 +19,7 @@ import { LoginPage } from '@/features/auth/pages/LoginPage'
 import { ResetPasswordPage } from '@/features/auth/pages/ResetPasswordPage'
 import { PayrollSummaryPage } from '@/features/payroll/pages/PayrollSummaryPage'
 import { PayrollWeekDetailPage } from '@/features/payroll/pages/PayrollWeekDetailPage'
+import { KpiDashboardPage } from '@/features/kpi/pages/KpiDashboardPage'
 import { GuestQuotePage } from '@/features/quote/pages/GuestQuotePage'
 import { SavedQuoteDetailPage } from '@/features/quote/pages/SavedQuoteDetailPage'
 import { SavedQuotesPage } from '@/features/quote/pages/SavedQuotesPage'
@@ -68,6 +69,14 @@ export function AppRouter() {
           <Route
             path="previous-quotes/:quoteId"
             element={<SavedQuoteDetailPage />}
+          />
+          <Route
+            path="kpis"
+            element={
+              <RequirePageAccess pageId="kpi_dashboard">
+                <KpiDashboardPage />
+              </RequirePageAccess>
+            }
           />
 
           {/*

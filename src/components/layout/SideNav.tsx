@@ -37,6 +37,7 @@ function NavBody({ onNavigate }: { onNavigate?: () => void }) {
   const canMyPayroll = useCanViewPage('my_payroll')
   const canGuestQuote = useCanViewPage('guest_quote')
   const canPreviousQuotes = useCanViewPage('previous_quotes')
+  const canKpiDashboard = useCanViewPage('kpi_dashboard')
 
   const canWeeklyPayroll = useCanViewPage('weekly_payroll')
   const canCommissionBreakdown = useCanViewPage('commission_breakdown')
@@ -48,7 +49,8 @@ function NavBody({ onNavigate }: { onNavigate?: () => void }) {
   const canRemuneration = useCanViewPage('remuneration')
   const canAccess = useCanViewPage('access')
 
-  const anyMain = canMyPayroll || canGuestQuote || canPreviousQuotes
+  const anyMain =
+    canMyPayroll || canGuestQuote || canPreviousQuotes || canKpiDashboard
   const anyAdmin = canWeeklyPayroll || canCommissionBreakdown || canImports
   const anyConfig =
     canStaff || canProducts || canQuotes || canRemuneration || canAccess
@@ -86,6 +88,15 @@ function NavBody({ onNavigate }: { onNavigate?: () => void }) {
               onClick={handleClick}
             >
               Previous quotes
+            </NavLink>
+          ) : null}
+          {canKpiDashboard ? (
+            <NavLink
+              to="/app/kpis"
+              className={linkClass}
+              onClick={handleClick}
+            >
+              KPIs
             </NavLink>
           ) : null}
         </>
