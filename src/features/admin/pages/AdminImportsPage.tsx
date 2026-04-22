@@ -654,7 +654,7 @@ export function AdminImportsPage() {
               Removes every Sales Daily Sheets import stored in the app across{' '}
               <span className="font-medium text-red-950">all salons</span>, so you can load
               everything again from scratch if you ever need a clean slate. Regular uploads for a
-              single salon already replace that salon’s data—you only need this for an all-salon
+              single salon already replace that salon’s data.  You only need to use this function for an all-salon
               fresh start.
             </p>
             <p className="mt-2 text-xs text-red-800/90">Managers and administrators only.</p>
