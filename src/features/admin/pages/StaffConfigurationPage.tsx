@@ -17,7 +17,7 @@ type StatusFilter = 'all' | 'active' | 'inactive'
 
 type EmploymentKind = 'Employee' | 'Contractor'
 
-/** Form state; maps to `StaffMemberUpdatePayload` on save (FTE not sent — preserved in DB). */
+/** Form state; maps to `StaffMemberUpdatePayload` on save. `fte` is kept as a string for input-friendly editing (parsed to number|null on save). */
 type StaffFormDraft = {
   id: string
   full_name: string
@@ -26,6 +26,7 @@ type StaffFormDraft = {
   secondary_roles: string
   remuneration_plan: string
   employment_type: EmploymentKind
+  fte: string
   employment_start_date: string
   employment_end_date: string
   is_active: boolean
@@ -128,6 +129,7 @@ function draftFromRow(row: StaffMemberRow): StaffFormDraft {
     secondary_roles: row.secondary_roles ?? '',
     remuneration_plan: row.remuneration_plan ?? '',
     employment_type: normalizeEmploymentKind(row.employment_type),
+    fte: row.fte == null ? '' : String(row.fte),
     employment_start_date: isoDateToInput(row.employment_start_date),
     employment_end_date: isoDateToInput(row.employment_end_date),
     is_active: row.is_active,
@@ -259,6 +261,7 @@ export function StaffConfigurationPage() {
       'secondary_roles',
       'remuneration_plan',
       'employment_type',
+      'fte',
       'employment_start_date',
       'employment_end_date',
       'is_active',
@@ -287,6 +290,15 @@ export function StaffConfigurationPage() {
   const saveMut = useMutation({
     mutationFn: async () => {
       if (!draft) return
+      const fteTrimmed = draft.fte.trim()
+      let fteValue: number | null = null
+      if (fteTrimmed !== '') {
+        const n = Number(fteTrimmed)
+        if (!Number.isFinite(n)) {
+          throw new Error('FTE must be a number (e.g. 1, 0.5, 0.8).')
+        }
+        fteValue = n
+      }
       const payload: StaffMemberUpdatePayload = {
         id: draft.id,
         full_name: draft.full_name,
@@ -295,6 +307,7 @@ export function StaffConfigurationPage() {
         secondary_roles: draft.secondary_roles || null,
         remuneration_plan: draft.remuneration_plan || null,
         employment_type: draft.employment_type,
+        fte: fteValue,
         employment_start_date: draft.employment_start_date || null,
         employment_end_date: draft.employment_end_date || null,
         is_active: draft.is_active,
@@ -710,28 +723,52 @@ export function StaffConfigurationPage() {
                   </div>
                 </div>
 
-                <div className="max-w-md">
-                  <label className="block text-sm font-medium text-slate-700" htmlFor="employment_type">
-                    Employment type
-                  </label>
-                  <select
-                    id="employment_type"
-                    value={draft.employment_type}
-                    onChange={(e) =>
-                      setDraft((d) =>
-                        d
-                          ? {
-                              ...d,
-                              employment_type: e.target.value as EmploymentKind,
-                            }
-                          : d,
-                      )
-                    }
-                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
-                  >
-                    <option value="Employee">Employee</option>
-                    <option value="Contractor">Contractor</option>
-                  </select>
+                <div className="grid max-w-md grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700" htmlFor="employment_type">
+                      Employment type
+                    </label>
+                    <select
+                      id="employment_type"
+                      value={draft.employment_type}
+                      onChange={(e) =>
+                        setDraft((d) =>
+                          d
+                            ? {
+                                ...d,
+                                employment_type: e.target.value as EmploymentKind,
+                              }
+                            : d,
+                        )
+                      }
+                      className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                    >
+                      <option value="Employee">Employee</option>
+                      <option value="Contractor">Contractor</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700" htmlFor="fte">
+                      FTE
+                    </label>
+                    <input
+                      id="fte"
+                      type="number"
+                      inputMode="decimal"
+                      step="0.01"
+                      min="0"
+                      max="9.9999"
+                      value={draft.fte}
+                      onChange={(e) =>
+                        setDraft((d) => (d ? { ...d, fte: e.target.value } : d))
+                      }
+                      placeholder="e.g. 1, 0.8, 0.5"
+                      className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                    />
+                    <p className="mt-1 text-xs text-slate-500">
+                      Full-time equivalent. Typical range 0–1. Leave blank if unknown.
+                    </p>
+                  </div>
                 </div>
 
                 {draft.employment_type === 'Contractor' ? (

@@ -61,6 +61,7 @@ export type StaffMemberUpdatePayload = {
   secondary_roles: string | null
   remuneration_plan: string | null
   employment_type: string | null
+  fte: number | null
   employment_start_date: string | null
   employment_end_date: string | null
   is_active: boolean
@@ -85,6 +86,7 @@ export async function updateStaffMember(
       secondary_roles: emptyToNull(payload.secondary_roles),
       remuneration_plan: emptyToNull(payload.remuneration_plan),
       employment_type: emptyToNull(payload.employment_type),
+      fte: payload.fte,
       employment_start_date: emptyToNull(payload.employment_start_date),
       employment_end_date: emptyToNull(payload.employment_end_date),
       is_active: payload.is_active,
