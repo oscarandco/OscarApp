@@ -8,6 +8,25 @@ import {
   metaFor,
 } from '@/features/kpi/kpiLabels'
 
+/**
+ * Metric-specific labels used by the stylist comparison note. This
+ * map also acts as the display allow-list: any KPI not listed here
+ * renders no comparison note even if the backend sends a row.
+ *
+ * The set is deliberately narrow. The comparison RPC was trimmed on
+ * 2026-04 to these four lightweight KPIs (revenue, guests, new
+ * clients, average client spend) after the full nine-KPI fanout
+ * tripped statement_timeout at real-world cohort sizes. Keep this
+ * list in lockstep with
+ * `20260501510000_kpi_stylist_comparisons_trim_to_lightweight.sql`.
+ */
+const COMPARISON_METRIC_LABEL: Record<string, string> = {
+  revenue: 'revenue',
+  guests_per_month: 'guests',
+  new_clients_per_month: 'new clients',
+  average_client_spend: 'avg spend',
+}
+
 type KpiCardProps = {
   row: KpiSnapshotRow
   selected?: boolean
@@ -47,18 +66,29 @@ export function KpiCard({
     row.value_denominator,
   )
 
-  // Comparison only renders when the backend returned a row AND the
-  // cohort has at least one other stylist with a comparable value.
-  // The backend already gates `is_highest` / `is_above_average` on
-  // `cohort_size >= 2`, but we still hide the line below that to
-  // keep the card honest ("Highest: $X" against a single-stylist
-  // cohort would be misleading).
-  const cohortSize = comparison ? Number(comparison.cohort_size) : 0
-  const showComparison = !!comparison && cohortSize >= 2
+  // Per-KPI metric label for the "Highest stylist X / Average
+  // stylist X" note. The map doubles as the comparison-eligibility
+  // gate on the display side: any KPI not listed here will never
+  // render a note even if the backend sends a row for it. This is
+  // intentional for the three KPIs explicitly out of the stylist
+  // comparison scope (`new_client_retention_6m`, `new_client_retention_12m`,
+  // `stylist_profitability`).
+  const comparisonMetricLabel = COMPARISON_METRIC_LABEL[row.kpi_code]
+
+  // Show the two-line "Highest stylist X / Average stylist X" note
+  // whenever the backend returned a comparison row with a meaningful
+  // `highest_value` AND the KPI is in the comparison-eligible set.
+  // The backend itself already gates `is_highest` / `is_above_average`
+  // on `cohort_size >= 2`, so the tint stays correctly off for
+  // single-stylist cohorts without needing a second frontend gate.
+  const showComparison =
+    !!comparison &&
+    !!comparisonMetricLabel &&
+    comparison.highest_value != null
   const valueToneClass = showComparison
-    ? comparison.is_highest
+    ? comparison?.is_highest
       ? 'text-amber-500'
-      : comparison.is_above_average
+      : comparison?.is_above_average
         ? 'text-emerald-600'
         : 'text-slate-900'
     : 'text-slate-900'
@@ -96,15 +126,23 @@ export function KpiCard({
         </p>
       ) : null}
       {showComparison ? (
-        <p
-          className="mt-1 truncate text-[11px] font-medium text-slate-500"
+        <div
+          className="mt-2 space-y-0.5"
           data-testid={`kpi-card-comparison-${row.kpi_code}`}
         >
-          {`Highest: ${formatKpiValue(
-            meta.format,
-            comparison.highest_value,
-          )} · Avg: ${formatKpiValue(meta.format, comparison.average_value)}`}
-        </p>
+          <p className="truncate text-[11px] font-medium text-slate-500">
+            {`Highest stylist ${comparisonMetricLabel}: ${formatKpiValue(
+              meta.format,
+              comparison.highest_value,
+            )}`}
+          </p>
+          <p className="truncate text-[11px] font-medium text-slate-500">
+            {`Average stylist ${comparisonMetricLabel}: ${formatKpiValue(
+              meta.format,
+              comparison.average_value,
+            )}`}
+          </p>
+        </div>
       ) : null}
     </>
   )

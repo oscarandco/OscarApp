@@ -43,6 +43,19 @@ import { rpcListActiveLocationsForImport } from '@/lib/supabaseRpc'
  * where it would certainly raise (elevated + location/staff without
  * a picked id).
  */
+/**
+ * KPIs that are intentionally hidden from the self/staff dashboard
+ * view for non-elevated callers (stylist / assistant). Manager /
+ * admin views are unaffected — this is a display-only filter and
+ * the backend still returns the rows so elevated users can switch
+ * scopes without a reload.
+ */
+const SELF_VIEW_HIDDEN_KPI_CODES: ReadonlySet<string> = new Set([
+  'new_client_retention_6m',
+  'new_client_retention_12m',
+  'stylist_profitability',
+])
+
 function firstOfCurrentMonth(): string {
   const d = new Date()
   const y = d.getFullYear()
@@ -132,8 +145,21 @@ export function KpiDashboardPage() {
 
   const sortedRows = useMemo(() => {
     const rows = data ?? []
-    return [...rows].sort((a, b) => kpiSortComparator(a.kpi_code, b.kpi_code))
-  }, [data])
+    const sorted = [...rows].sort((a, b) =>
+      kpiSortComparator(a.kpi_code, b.kpi_code),
+    )
+    // Non-elevated users (stylist / assistant) are always pinned to
+    // self/staff scope on this page, so hiding here is equivalent to
+    // "hide on self/staff view for stylist + assistant" and never
+    // affects manager / admin views. The detail-panel + drilldown
+    // reconciliation below already reselects the first surviving
+    // KPI when the prior selection drops out of the set, so no
+    // extra wiring is needed.
+    if (!elevated) {
+      return sorted.filter((r) => !SELF_VIEW_HIDDEN_KPI_CODES.has(r.kpi_code))
+    }
+    return sorted
+  }, [data, elevated])
 
   const first = sortedRows[0]
 
