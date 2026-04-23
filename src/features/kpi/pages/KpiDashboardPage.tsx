@@ -1,30 +1,109 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 
 import { EmptyState } from '@/components/feedback/EmptyState'
 import { ErrorState } from '@/components/feedback/ErrorState'
 import { LoadingState } from '@/components/feedback/LoadingState'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { useHasElevatedAccess } from '@/features/access/accessContext'
+import { useStaffMemberSearch } from '@/features/admin/hooks/useAccessMappingSearch'
 import { KpiCard } from '@/features/kpi/components/KpiCard'
+import { KpiDetailPanel } from '@/features/kpi/components/KpiDetailPanel'
+import { KpiDrilldownTable } from '@/features/kpi/components/KpiDrilldownTable'
+import {
+  KpiFiltersBar,
+  type KpiFiltersValue,
+} from '@/features/kpi/components/KpiFiltersBar'
+import type { KpiSnapshotScope } from '@/features/kpi/data/kpiApi'
 import { useKpiSnapshot } from '@/features/kpi/hooks/useKpiSnapshot'
 import { kpiSortComparator } from '@/features/kpi/kpiLabels'
 import { formatShortDate } from '@/lib/formatters'
 import { queryErrorDetail } from '@/lib/queryError'
+import { rpcListActiveLocationsForImport } from '@/lib/supabaseRpc'
 
 /**
- * First UI slice for KPI reporting. Renders the live snapshot from
- * `public.get_kpi_snapshot_live` in a responsive card grid.
+ * KPI dashboard — card grid + filters bar.
  *
- * Scope / period controls are intentionally omitted:
- *   • Period is fixed to the current month (backend default).
- *   • Scope follows the caller's default accessible scope — the
- *     backend's `private.kpi_resolve_scope` silently restricts
- *     stylist / assistant callers to their own staff scope and
- *     leaves manager / admin callers at business scope. No UI
- *     switching is exposed in this slice; see `KpiDashboardPage`
- *     deferral note for scope/period pickers.
+ * Controls for this slice:
+ *   - month picker (all roles)
+ *   - scope select, location select, staff select (elevated only)
+ * Non-elevated users are pinned to `scope='staff'`; the backend then
+ * auto-resolves their own `staff_member_id` from `auth.uid()`.
+ *
+ * Scope rules mirror `private.kpi_resolve_scope` exactly:
+ *   - business   : no id required
+ *   - location   : `p_location_id` required
+ *   - staff      : `p_staff_member_id` required for elevated callers;
+ *                  NULL is fine for non-elevated callers (auto-resolve).
+ * The `enabled` gate below prevents firing the RPC in the two cases
+ * where it would certainly raise (elevated + location/staff without
+ * a picked id).
  */
+function firstOfCurrentMonth(): string {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  return `${y}-${m}-01`
+}
+
+function formatMonthLabel(isoFirstOfMonth: string): string {
+  // "1 Mar 2026" → "Mar 2026". Used for the header when the user
+  // picks a historical month (non-current).
+  const d = new Date(`${isoFirstOfMonth}T12:00:00`)
+  if (Number.isNaN(d.getTime())) return isoFirstOfMonth
+  return d.toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
+}
+
 export function KpiDashboardPage() {
-  const { data, isLoading, isError, error, refetch } = useKpiSnapshot()
+  const elevated = useHasElevatedAccess()
+
+  const [filters, setFilters] = useState<KpiFiltersValue>(() => ({
+    periodStart: firstOfCurrentMonth(),
+    scope: 'business',
+    locationId: '',
+    staffMemberId: '',
+  }))
+
+  // Locations / staff lists only matter for elevated users. Gate both
+  // queries on `elevated` so stylist/assistant don't fire unused RPCs.
+  const { data: locations = [], isLoading: locationsLoading } = useQuery({
+    queryKey: ['list-active-locations-import'],
+    queryFn: rpcListActiveLocationsForImport,
+    enabled: elevated,
+  })
+  const { data: staff = [], isLoading: staffLoading } = useStaffMemberSearch(
+    '',
+    elevated,
+  )
+
+  // Elevated users pick the scope in the UI. Non-elevated users are
+  // pinned to 'staff' so the UI shape matches what
+  // `private.kpi_resolve_scope` will accept — see
+  // `useKpiSnapshot` for the locked-scope rationale.
+  const effectiveScope: KpiSnapshotScope = elevated ? filters.scope : 'staff'
+
+  const effectiveLocationId =
+    effectiveScope === 'location' && filters.locationId
+      ? filters.locationId
+      : null
+
+  const effectiveStaffId =
+    effectiveScope === 'staff' && elevated && filters.staffMemberId
+      ? filters.staffMemberId
+      : null
+
+  const snapshotEnabled =
+    (effectiveScope !== 'location' || !!effectiveLocationId) &&
+    (effectiveScope !== 'staff' || !elevated || !!effectiveStaffId)
+
+  const { data, isLoading, isFetching, isError, error, refetch } =
+    useKpiSnapshot({
+      periodStart: filters.periodStart,
+      scope: effectiveScope,
+      locationId: effectiveLocationId,
+      staffMemberId: effectiveStaffId,
+      enabled: snapshotEnabled,
+    })
 
   const sortedRows = useMemo(() => {
     const rows = data ?? []
@@ -32,28 +111,117 @@ export function KpiDashboardPage() {
   }, [data])
 
   const first = sortedRows[0]
+
+  // Diagnostic detail-panel selection. Reset to the first tile after
+  // load, and whenever a filter change produces a row set that no
+  // longer contains the previously-selected KPI (e.g. different
+  // scope / period returns a different KPI mix). Reusing the same
+  // `kpi_code` across renders means the panel stays on the user's
+  // pick when the same KPI is still in the new snapshot.
+  const [selectedKpiCode, setSelectedKpiCode] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (sortedRows.length === 0) {
+      if (selectedKpiCode !== null) setSelectedKpiCode(null)
+      return
+    }
+    const stillPresent = sortedRows.some(
+      (r) => r.kpi_code === selectedKpiCode,
+    )
+    if (!stillPresent) {
+      setSelectedKpiCode(sortedRows[0].kpi_code)
+    }
+  }, [sortedRows, selectedKpiCode])
+
+  const selectedRow = useMemo(
+    () =>
+      sortedRows.find((r) => r.kpi_code === selectedKpiCode) ??
+      sortedRows[0] ??
+      null,
+    [sortedRows, selectedKpiCode],
+  )
+
   const periodLabel = first
     ? first.is_current_open_month
       ? `Month-to-date · through ${formatShortDate(first.mtd_through)}`
-      : `${formatShortDate(first.period_start)} – ${formatShortDate(first.period_end)}`
-    : 'Current month'
+      : formatMonthLabel(first.period_start)
+    : formatMonthLabel(filters.periodStart)
 
-  const scopeLabel = first
-    ? first.scope_type === 'business'
-      ? 'Business'
-      : first.scope_type === 'location'
-        ? 'Location'
-        : 'Self'
-    : null
+  const scopeLabel = useMemo(() => {
+    if (!first) {
+      // Snapshot hasn't resolved yet — label from the user's pick.
+      switch (effectiveScope) {
+        case 'business':
+          return 'Business'
+        case 'location':
+          return 'Location'
+        case 'staff':
+          return elevated ? 'Staff' : 'Self'
+      }
+    }
+    switch (first.scope_type) {
+      case 'business':
+        return 'Business'
+      case 'location': {
+        const name = locations.find((l) => l.id === first.location_id)?.name
+        return name ? `Location · ${name}` : 'Location'
+      }
+      case 'staff': {
+        const match = staff.find(
+          (s) => s.staff_member_id === first.staff_member_id,
+        )
+        const name = match?.display_name?.trim() || match?.full_name?.trim()
+        if (elevated) return name ? `Staff · ${name}` : 'Staff'
+        return 'Self'
+      }
+      default:
+        return null
+    }
+  }, [first, effectiveScope, elevated, locations, staff])
 
   const description = scopeLabel
     ? `${scopeLabel} · ${periodLabel}`
     : periodLabel
 
+  const filtersBar = (
+    <KpiFiltersBar
+      value={filters}
+      onChange={setFilters}
+      elevated={elevated}
+      locations={locations}
+      locationsLoading={locationsLoading}
+      staff={staff}
+      staffLoading={staffLoading}
+      disabled={isFetching}
+    />
+  )
+
+  // "Pick a value" prompt for the two elevated-scope-with-no-id cases.
+  // Shown instead of the loading spinner because we intentionally did
+  // not fire the RPC yet.
+  if (!snapshotEnabled) {
+    const prompt =
+      effectiveScope === 'location'
+        ? 'Select a location to view KPIs.'
+        : 'Select a staff member to view KPIs.'
+    return (
+      <>
+        <PageHeader title="KPIs" description={description} />
+        {filtersBar}
+        <EmptyState
+          title="Choose a filter"
+          description={prompt}
+          testId="kpi-dashboard-needs-filter"
+        />
+      </>
+    )
+  }
+
   if (isLoading) {
     return (
       <>
-        <PageHeader title="KPIs" description="Loading current month…" />
+        <PageHeader title="KPIs" description={description} />
+        {filtersBar}
         <LoadingState testId="kpi-dashboard-loading" />
       </>
     )
@@ -63,7 +231,8 @@ export function KpiDashboardPage() {
     const detail = queryErrorDetail(error)
     return (
       <>
-        <PageHeader title="KPIs" />
+        <PageHeader title="KPIs" description={description} />
+        {filtersBar}
         <ErrorState
           title="Could not load KPIs"
           message={detail.message}
@@ -79,9 +248,10 @@ export function KpiDashboardPage() {
     return (
       <>
         <PageHeader title="KPIs" description={description} />
+        {filtersBar}
         <EmptyState
           title="No KPIs available"
-          description="No KPI rows were returned for the current month yet."
+          description="No KPI rows were returned for the current selection."
           testId="kpi-dashboard-empty"
         />
       </>
@@ -91,14 +261,36 @@ export function KpiDashboardPage() {
   return (
     <>
       <PageHeader title="KPIs" description={description} />
+      {filtersBar}
       <div
-        className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4"
-        data-testid="kpi-dashboard-grid"
+        className="flex flex-col gap-4 lg:grid lg:items-start lg:gap-5 lg:grid-cols-[minmax(0,1fr)_22rem]"
+        data-testid="kpi-dashboard-layout"
       >
-        {sortedRows.map((row) => (
-          <KpiCard key={row.kpi_code} row={row} />
-        ))}
+        <div
+          className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3"
+          data-testid="kpi-dashboard-grid"
+        >
+          {sortedRows.map((row) => (
+            <KpiCard
+              key={row.kpi_code}
+              row={row}
+              selected={row.kpi_code === selectedRow?.kpi_code}
+              onSelect={setSelectedKpiCode}
+            />
+          ))}
+        </div>
+        {selectedRow ? <KpiDetailPanel row={selectedRow} /> : null}
       </div>
+      {selectedRow ? (
+        <KpiDrilldownTable
+          kpiCode={selectedRow.kpi_code}
+          periodStart={filters.periodStart}
+          scope={effectiveScope}
+          locationId={effectiveLocationId}
+          staffMemberId={effectiveStaffId}
+          enabled={snapshotEnabled}
+        />
+      ) : null}
     </>
   )
 }
