@@ -11,6 +11,16 @@ function pickBool(v: unknown, fallback = false): boolean {
   return fallback
 }
 
+function pickNumber(v: unknown): number | null {
+  if (v == null) return null
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null
+  if (typeof v === 'string') {
+    const n = Number(v)
+    return Number.isFinite(n) ? n : null
+  }
+  return null
+}
+
 /**
  * Primary source of truth: access_role.
  * Stored roles are `stylist` | `assistant` | `manager` | `admin` (see DB constraint).
@@ -44,6 +54,8 @@ export function normalizeAccessProfile(
     staffMemberId: pickString(row.staff_member_id),
     staffDisplayName: pickString(row.staff_display_name),
     staffFullName: pickString(row.staff_full_name),
+    staffPrimaryRole: pickString(row.staff_primary_role),
+    staffFte: pickNumber(row.staff_fte),
     accessRole,
     isActive: pickBool(row.is_active, true),
     isAdmin,

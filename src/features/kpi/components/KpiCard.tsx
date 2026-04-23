@@ -9,9 +9,13 @@ import {
 } from '@/features/kpi/kpiLabels'
 
 /**
- * Metric-specific labels used by the stylist comparison note. This
- * map also acts as the display allow-list: any KPI not listed here
- * renders no comparison note even if the backend sends a row.
+ * Per-KPI prefix for the "Avg ..." comparison pill, e.g. "Avg revenue"
+ * → rendered as "Avg revenue (all salons): $3,634.04". This map also
+ * acts as the display allow-list: any KPI not listed here renders no
+ * comparison pills even if the backend sends a row.
+ *
+ * `average_client_spend` is special-cased to avoid the awkward
+ * "Avg avg spend" phrasing — it reads "Average client spend" instead.
  *
  * The set is deliberately narrow. The comparison RPC was trimmed on
  * 2026-04 to these four lightweight KPIs (revenue, guests, new
@@ -20,12 +24,30 @@ import {
  * list in lockstep with
  * `20260501510000_kpi_stylist_comparisons_trim_to_lightweight.sql`.
  */
-const COMPARISON_METRIC_LABEL: Record<string, string> = {
-  revenue: 'revenue',
-  guests_per_month: 'guests',
-  new_clients_per_month: 'new clients',
-  average_client_spend: 'avg spend',
+const COMPARISON_AVG_LABEL: Record<string, string> = {
+  revenue: 'Avg revenue',
+  guests_per_month: 'Avg guests',
+  new_clients_per_month: 'Avg new guests',
+  average_client_spend: 'Average guest spend',
 }
+
+/**
+ * KPIs for which FTE-based normalisation is meaningful. Volume-like
+ * metrics (total revenue, total guests, total new clients) scale
+ * linearly with time worked, so a 0.5 FTE stylist's raw numbers are
+ * roughly half of a full-timer's — dividing by fte brings the display
+ * onto a 1.0 FTE basis. Rate / ratio / retention KPIs are excluded on
+ * purpose (they already normalise per-client or per-sale), as is
+ * `stylist_profitability` which has its own $/FTE denominator.
+ *
+ * This set is intentionally narrow. Expand only after confirming the
+ * underlying metric is a raw volume.
+ */
+const NORMALISABLE_KPI_CODES: ReadonlySet<string> = new Set([
+  'revenue',
+  'guests_per_month',
+  'new_clients_per_month',
+])
 
 type KpiCardProps = {
   row: KpiSnapshotRow
@@ -37,11 +59,29 @@ type KpiCardProps = {
    * AND the KPI is in the comparison-eligible set returned by
    * `public.get_kpi_stylist_comparisons_live`. When present and the
    * cohort has at least 2 contributors, the card renders a small
-   * "Highest / Avg" line and tints the headline value (gold = highest,
-   * green = above average). KPIs without a comparison row render
-   * exactly as before.
+   * status marker at the start of the title row (gold star = highest,
+   * green dot = above average, orange dot = below average) plus two
+   * compact "Top / Avg [metric] (all salons)" pills centered at the
+   * bottom of the card (pale gold for Top, pale green for Avg). The
+   * main KPI value and supporting text stay left aligned — only the
+   * pill block is centered. The headline number itself keeps the
+   * default slate tone; the icon is the only status indicator. KPIs
+   * without a comparison row render exactly as before.
    */
   comparison?: KpiStylistComparisonRow | null
+  /**
+   * Optional FTE for the current self/staff caller. When `fte` is a
+   * finite number strictly between 0 and 1 AND the KPI is in
+   * `NORMALISABLE_KPI_CODES`, the card displays the raw metric scaled
+   * to a 1.0 FTE basis (value / fte), appends "(NORMALISED)" to the
+   * title, and shows a muted "Raw: …" line under the main number.
+   * Otherwise the card renders unchanged.
+   *
+   * The dashboard only sets this on non-elevated (stylist / assistant)
+   * self/staff cards; elevated manager / admin views receive `null`
+   * and are never normalised.
+   */
+  fte?: number | null
 }
 
 /**
@@ -57,23 +97,57 @@ export function KpiCard({
   selected = false,
   onSelect,
   comparison = null,
+  fte = null,
 }: KpiCardProps) {
   const meta = metaFor(row.kpi_code)
-  const valueText = formatKpiValue(meta.format, row.value)
+
+  // FTE normalisation. Only applied when the caller passed a finite
+  // `fte` in the open interval (0, 1) AND the KPI is a raw-volume
+  // metric (see `NORMALISABLE_KPI_CODES`). We multiply the raw value
+  // by `1 / fte` so a 0.5 FTE stylist's number is effectively doubled,
+  // a 0.8 FTE stylist's number is divided by 0.8, and so on. All
+  // rendering is done via the existing `formatKpiValue` so currency /
+  // count formatting stays consistent.
+  const rawValueNumber =
+    row.value == null
+      ? null
+      : typeof row.value === 'number'
+        ? row.value
+        : Number(row.value)
+  const rawValueFinite =
+    rawValueNumber != null && Number.isFinite(rawValueNumber)
+      ? rawValueNumber
+      : null
+  const shouldNormalise =
+    NORMALISABLE_KPI_CODES.has(row.kpi_code) &&
+    fte != null &&
+    Number.isFinite(fte) &&
+    fte > 0 &&
+    fte < 1 &&
+    rawValueFinite != null
+  const displayedValue = shouldNormalise
+    ? rawValueFinite! / (fte as number)
+    : row.value
+  const valueText = formatKpiValue(meta.format, displayedValue)
+  const rawValueText = shouldNormalise
+    ? formatKpiValue(meta.format, row.value)
+    : null
+  const titleText = shouldNormalise ? `${meta.label} (NORMALISED)` : meta.label
   const supporting = formatKpiSupporting(
     meta.format,
     row.value_numerator,
     row.value_denominator,
   )
 
-  // Per-KPI metric label for the "Highest stylist X / Average
-  // stylist X" note. The map doubles as the comparison-eligibility
-  // gate on the display side: any KPI not listed here will never
-  // render a note even if the backend sends a row for it. This is
-  // intentional for the three KPIs explicitly out of the stylist
-  // comparison scope (`new_client_retention_6m`, `new_client_retention_12m`,
-  // `stylist_profitability`).
-  const comparisonMetricLabel = COMPARISON_METRIC_LABEL[row.kpi_code]
+  // Per-KPI prefix for the "Avg ..." pill. The map doubles as the
+  // comparison-eligibility gate on the display side: any KPI not
+  // listed here will never render pills even if the backend sends a
+  // row for it. This is intentional for the three KPIs explicitly
+  // out of the stylist comparison scope (`new_client_retention_6m`,
+  // `new_client_retention_12m`, `stylist_profitability`). The top
+  // pill label is a fixed "Top Stylist" string for every supported
+  // KPI so it doesn't need a per-KPI entry.
+  const comparisonAvgLabel = COMPARISON_AVG_LABEL[row.kpi_code]
 
   // Show the two-line "Highest stylist X / Average stylist X" note
   // whenever the backend returned a comparison row with a meaningful
@@ -83,15 +157,43 @@ export function KpiCard({
   // single-stylist cohorts without needing a second frontend gate.
   const showComparison =
     !!comparison &&
-    !!comparisonMetricLabel &&
+    !!comparisonAvgLabel &&
     comparison.highest_value != null
-  const valueToneClass = showComparison
+
+  // Status marker shown at the start of the title row. Same precedence
+  // as the retired value tint: highest > above average > below average.
+  // `null` when there is no comparison to show — keeps title row
+  // visually identical for business / location / unsupported-KPI cards.
+  const comparisonStatus: 'highest' | 'above' | 'below' | null = showComparison
     ? comparison?.is_highest
-      ? 'text-amber-500'
+      ? 'highest'
       : comparison?.is_above_average
-        ? 'text-emerald-600'
-        : 'text-slate-900'
-    : 'text-slate-900'
+        ? 'above'
+        : 'below'
+    : null
+
+  const comparisonIcon =
+    comparisonStatus === 'highest' ? (
+      <span
+        aria-hidden="true"
+        className="shrink-0 text-sm leading-none text-amber-400"
+        data-testid={`kpi-card-status-${row.kpi_code}`}
+      >
+        ★
+      </span>
+    ) : comparisonStatus === 'above' ? (
+      <span
+        aria-hidden="true"
+        className="inline-block h-2 w-2 shrink-0 rounded-full bg-emerald-500"
+        data-testid={`kpi-card-status-${row.kpi_code}`}
+      />
+    ) : comparisonStatus === 'below' ? (
+      <span
+        aria-hidden="true"
+        className="inline-block h-2 w-2 shrink-0 rounded-full bg-orange-500"
+        data-testid={`kpi-card-status-${row.kpi_code}`}
+      />
+    ) : null
 
   const base =
     'flex min-w-0 flex-col rounded-lg border bg-white p-5 shadow-sm text-left transition-colors'
@@ -107,19 +209,34 @@ export function KpiCard({
 
   const body = (
     <>
-      <p className="truncate text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-        {meta.label}
-      </p>
-      {meta.description ? (
-        <p className="mt-1.5 text-xs leading-snug text-slate-500">
-          {meta.description}
+      <div className="flex min-w-0 items-center gap-1.5">
+        {comparisonIcon}
+        <p className="min-w-0 truncate text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+          {titleText}
         </p>
-      ) : null}
-      <p
-        className={`mt-3 truncate text-2xl font-semibold sm:text-3xl ${valueToneClass}`}
-      >
+      </div>
+      {/*
+        Reserved min-height keeps the main KPI value row aligned
+        horizontally across cards in the same grid row, even when one
+        description wraps onto a second line (e.g. "New clients") and
+        another fits on one (e.g. "Revenue"). Tuned for up to 2 lines
+        at `text-xs leading-snug`; longer-description KPIs naturally
+        sit in other rows.
+      */}
+      <p className="mt-1.5 min-h-[2.5rem] text-xs leading-snug text-slate-500">
+        {meta.description ?? ''}
+      </p>
+      <p className="mt-3 truncate text-2xl font-semibold text-slate-900 sm:text-3xl">
         {valueText}
       </p>
+      {rawValueText ? (
+        <p
+          className="mt-1 truncate text-[11px] font-medium text-slate-400"
+          data-testid={`kpi-card-raw-${row.kpi_code}`}
+        >
+          {`Raw: ${rawValueText}`}
+        </p>
+      ) : null}
       {supporting ? (
         <p className="mt-1.5 truncate text-xs font-medium text-slate-600">
           {supporting}
@@ -127,21 +244,21 @@ export function KpiCard({
       ) : null}
       {showComparison ? (
         <div
-          className="mt-2 space-y-0.5"
+          className="mt-auto flex flex-col items-stretch gap-1 pt-3"
           data-testid={`kpi-card-comparison-${row.kpi_code}`}
         >
-          <p className="truncate text-[11px] font-medium text-slate-500">
-            {`Highest stylist ${comparisonMetricLabel}: ${formatKpiValue(
+          <span className="block w-full truncate rounded-full bg-amber-50 px-3 py-0.5 text-center text-[11px] font-medium text-slate-700 ring-1 ring-inset ring-amber-100">
+            {`Top Stylist (all salons): ${formatKpiValue(
               meta.format,
               comparison.highest_value,
             )}`}
-          </p>
-          <p className="truncate text-[11px] font-medium text-slate-500">
-            {`Average stylist ${comparisonMetricLabel}: ${formatKpiValue(
+          </span>
+          <span className="block w-full truncate rounded-full bg-emerald-50 px-3 py-0.5 text-center text-[11px] font-medium text-slate-700 ring-1 ring-inset ring-emerald-100">
+            {`${comparisonAvgLabel} (all salons): ${formatKpiValue(
               meta.format,
               comparison.average_value,
             )}`}
-          </p>
+          </span>
         </div>
       ) : null}
     </>

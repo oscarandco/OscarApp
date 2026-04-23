@@ -193,3 +193,60 @@ export async function rpcGetKpiDrilldownLive(
     ? (data as KpiDrilldownRow[])
     : [data as KpiDrilldownRow]
 }
+
+/**
+ * One line returned by `public.get_invoice_detail_live`. Backs the
+ * invoice-detail popup opened from the KPI underlying-rows table on
+ * sales-line KPIs (revenue / assistant_utilisation_ratio). Numeric
+ * columns may arrive as `number` or `string` — normalise at the call
+ * site via `Number(...)`.
+ */
+export type KpiInvoiceDetailRow = {
+  invoice: string
+  sale_date: string | null
+  sale_datetime: string | null
+  location_id: string | null
+  customer_name: string | null
+  product_service_name: string | null
+  product_type_actual: string | null
+  price_ex_gst: number | string | null
+  commission_owner_candidate_id: string | null
+  commission_owner_candidate_name: string | null
+  staff_work_id: string | null
+  staff_work_name: string | null
+  staff_work_display_name: string | null
+  staff_work_full_name: string | null
+  staff_work_primary_role: string | null
+  assistant_redirect_candidate: boolean | null
+}
+
+export type KpiInvoiceDetailArgs = {
+  invoice: string
+  locationId: string | null
+  saleDate: string | null
+}
+
+/**
+ * Fetch every line on an invoice tuple. The KPI drilldown popup calls
+ * this with (invoice, location_id, sale_date) copied verbatim from the
+ * drilldown row's raw_payload. The backend RPC is SECURITY DEFINER so
+ * non-elevated users who can see the row in the drilldown can also
+ * open its invoice popup.
+ */
+export async function rpcGetInvoiceDetailLive(
+  args: KpiInvoiceDetailArgs,
+): Promise<KpiInvoiceDetailRow[]> {
+  const { data, error } = await requireSupabaseClient().rpc(
+    'get_invoice_detail_live',
+    {
+      p_invoice: args.invoice,
+      p_location_id: args.locationId,
+      p_sale_date: args.saleDate,
+    },
+  )
+  if (error) throw toError('get_invoice_detail_live', error)
+  if (data == null) return []
+  return Array.isArray(data)
+    ? (data as KpiInvoiceDetailRow[])
+    : [data as KpiInvoiceDetailRow]
+}

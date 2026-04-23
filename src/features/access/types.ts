@@ -8,6 +8,18 @@ export type AccessProfile = {
   staff_member_id?: string | null
   staff_display_name?: string | null
   staff_full_name?: string | null
+  /**
+   * `staff_members.primary_role` for the mapped staff member. Added
+   * so the desktop header can show the Kitomba-side job title
+   * (e.g. "Senior Stylist") alongside the access_role pill.
+   */
+  staff_primary_role?: string | null
+  /**
+   * `staff_members.fte` for the mapped staff member. Supabase-js
+   * serialises `numeric` as string, so normalization coerces to
+   * `number` and falls back to `null` for non-finite values.
+   */
+  staff_fte?: number | string | null
   access_role?: string | null
   is_active?: boolean | null
   /** Optional extras if the RPC exposes them — normalization prefers access_role. */
@@ -23,6 +35,10 @@ export type NormalizedAccess = {
   staffMemberId: string | null
   staffDisplayName: string | null
   staffFullName: string | null
+  /** `staff_members.primary_role`; null when missing / no mapping. */
+  staffPrimaryRole: string | null
+  /** `staff_members.fte` coerced to `number`; null when missing / no mapping. */
+  staffFte: number | null
   accessRole: string | null
   isActive: boolean
   /** True when access_role is admin or legacy superadmin (or optional is_admin flag). */

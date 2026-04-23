@@ -38,12 +38,30 @@ export type KpiFormat =
  * label left undefined falls back to the generic column name
  * ("Primary", "Secondary", "Metric 1", "Metric 2") so the table
  * still reads sensibly for KPIs without bespoke wording.
+ *
+ * `guestNameColumn` marks the column that holds the guest identity.
+ * The drilldown renderer title-cases that cell (e.g. `janet russel`
+ * → `Janet Russel`) and, if no explicit label override is set, uses
+ * the shared "Guest Name" column title instead of "Primary" /
+ * "Secondary". Only `'primary'` is used today — the backend always
+ * surfaces the client name in `primary_label` — but the shape is
+ * kept open in case a future KPI needs the guest in `secondary`.
+ *
+ * `hideSecondary` drops the secondary column from the generic table
+ * entirely. Used to collapse KPIs whose `secondary_label` is just a
+ * duplicate of the primary guest name (e.g. Guests, New clients,
+ * Average client spend, Client frequency — where the backend sends
+ * the raw-name sample in `secondary_label` alongside the normalised
+ * name in `primary_label`). Ignored by the retention table which has
+ * its own bespoke column layout.
  */
 export type KpiDrilldownColumnOverrides = {
   primary?: string
   secondary?: string
   metric1?: string
   metric2?: string
+  guestNameColumn?: 'primary'
+  hideSecondary?: boolean
 }
 
 export type KpiMeta = {
@@ -63,103 +81,103 @@ export const KPI_DISPLAY_META: Record<string, KpiMeta> = {
     format: 'currency',
     order: 10,
     drilldown: {
-      primary: 'Client',
       secondary: 'Stylist',
       metric1: 'Sales ex GST',
+      guestNameColumn: 'primary',
     },
   },
   guests_per_month: {
     label: 'Guests',
-    description: 'Distinct clients seen in the selected period.',
+    description: 'Distinct guests seen in the selected period.',
     format: 'count',
     order: 20,
     drilldown: {
-      primary: 'Client',
-      secondary: 'Normalised name',
       metric1: 'Counted',
+      guestNameColumn: 'primary',
+      hideSecondary: true,
     },
   },
   new_clients_per_month: {
-    label: 'New clients',
+    label: 'New guests',
     description:
-      'Clients first seen in the business during the selected period.',
+      'Guests first seen in the business during the selected period.',
     format: 'count',
     order: 30,
     drilldown: {
-      primary: 'Client',
-      secondary: 'First seen context',
       metric1: 'Counted',
+      guestNameColumn: 'primary',
+      hideSecondary: true,
     },
   },
   average_client_spend: {
-    label: 'Average client spend',
+    label: 'Average guest spend',
     description: 'Average sales ex GST per guest in the selected period.',
     format: 'nzd_per_guest',
     order: 40,
     drilldown: {
-      primary: 'Client',
-      secondary: 'Revenue context',
       metric1: 'Guest sales ex GST',
       metric2: 'Visit count',
+      guestNameColumn: 'primary',
+      hideSecondary: true,
     },
   },
   client_frequency: {
-    label: 'Client frequency',
-    description: 'Average visits per distinct client over the trailing 12 months.',
+    label: 'Guest frequency',
+    description: 'Average visits per distinct guest over the past 12 months.',
     format: 'decimal',
     order: 50,
     drilldown: {
-      primary: 'Client',
-      secondary: 'Normalised name',
       metric1: 'Visits',
+      guestNameColumn: 'primary',
+      hideSecondary: true,
     },
   },
   client_retention_6m: {
-    label: 'Client retention (6m)',
+    label: 'Guest retention (6m)',
     description:
-      'Share of clients from the first half of the trailing 6 months who returned and were served by anyone in the second half.',
+      'Share of guests from the first half of the past 6 months who returned and were served by anyone in the second.',
     format: 'percent',
     order: 60,
     drilldown: {
-      primary: 'Client',
       secondary: 'Retention status',
       metric1: 'Retained',
+      guestNameColumn: 'primary',
     },
   },
   client_retention_12m: {
-    label: 'Client retention (12m)',
+    label: 'Guest retention (12m)',
     description:
-      'Share of clients from the first half of the trailing 12 months who returned and were served by anyone in the second half.',
+      'Share of guests from the first half of the past 12 months who returned and were served by anyone in the second.',
     format: 'percent',
     order: 70,
     drilldown: {
-      primary: 'Client',
       secondary: 'Retention status',
       metric1: 'Retained',
+      guestNameColumn: 'primary',
     },
   },
   new_client_retention_6m: {
-    label: 'New-client retention (6m)',
+    label: 'New-guest retention (6m)',
     description:
-      'Share of new clients from the base month who returned within the next 6 months.',
+      'Share of guests who were new to Oscar & Co and served in the first half of the past 6 months, who returned and were served by anyone in the second.',
     format: 'percent',
     order: 80,
     drilldown: {
-      primary: 'Client',
       secondary: 'Retention status',
       metric1: 'Retained',
+      guestNameColumn: 'primary',
     },
   },
   new_client_retention_12m: {
-    label: 'New-client retention (12m)',
+    label: 'New-guest retention (12m)',
     description:
-      'Share of new clients from the base month who returned within the next 12 months.',
+      'Share of guests who were new to Oscar & Co and served in the first half of the past 12 months, who returned and were served by anyone in the second.',
     format: 'percent',
     order: 90,
     drilldown: {
-      primary: 'Client',
       secondary: 'Retention status',
       metric1: 'Retained',
+      guestNameColumn: 'primary',
     },
   },
   assistant_utilisation_ratio: {
@@ -169,10 +187,10 @@ export const KPI_DISPLAY_META: Record<string, KpiMeta> = {
     format: 'assist_ratio',
     order: 100,
     drilldown: {
-      primary: 'Client',
       secondary: 'Assistant / owner context',
       metric1: 'Sales ex GST',
       metric2: 'Counted in numerator',
+      guestNameColumn: 'primary',
     },
   },
   stylist_profitability: {
@@ -269,7 +287,7 @@ export function formatKpiSupporting(
       return null
     case 'percent': {
       if (den == null) return null
-      if (den === 0) return 'No clients in base cohort'
+      if (den === 0) return 'No guests in base cohort'
       const retained = num ?? 0
       return `Retained ${wholeNumberFormatter.format(
         Math.round(retained),
@@ -277,12 +295,12 @@ export function formatKpiSupporting(
     }
     case 'decimal': {
       if (num == null && den == null) return null
-      if (den === 0 || den == null) return 'No clients in window'
+      if (den === 0 || den == null) return 'No guests in window'
       return `${wholeNumberFormatter.format(
         Math.round(num ?? 0),
       )} visits across ${wholeNumberFormatter.format(
         Math.round(den),
-      )} clients`
+      )} guests`
     }
     case 'nzd_per_guest': {
       if (den == null) return null
@@ -319,28 +337,66 @@ export type KpiDrilldownColumns = {
   secondary: string
   metric1: string
   metric2: string
+  /** Which column holds the guest name (drives title-casing + header). */
+  guestNameColumn: 'primary' | null
+  /** True when the generic drilldown should drop the secondary column. */
+  hideSecondary: boolean
 }
 
-const DEFAULT_DRILLDOWN_COLUMNS: KpiDrilldownColumns = {
+const DEFAULT_DRILLDOWN_COLUMNS = {
   primary: 'Primary',
   secondary: 'Secondary',
   metric1: 'Metric 1',
   metric2: 'Metric 2',
-}
+} as const
+
+/** Shared column title for any guest-identity column across the drilldowns. */
+const GUEST_NAME_HEADER = 'Guest Name'
 
 /**
  * Resolve the drilldown table headers for a KPI. Per-KPI overrides
  * win where defined; missing fields fall back to the generic column
  * names so an unmapped or partially-mapped KPI still renders cleanly.
+ *
+ * When `guestNameColumn` is set, the matching column's header
+ * defaults to the shared "Guest Name" title unless the KPI supplies
+ * an explicit override.
  */
 export function drilldownColumnsFor(kpiCode: string): KpiDrilldownColumns {
   const overrides = metaFor(kpiCode).drilldown ?? {}
+  const guestNameColumn = overrides.guestNameColumn ?? null
+  const primary =
+    overrides.primary ??
+    (guestNameColumn === 'primary'
+      ? GUEST_NAME_HEADER
+      : DEFAULT_DRILLDOWN_COLUMNS.primary)
+  const secondary = overrides.secondary ?? DEFAULT_DRILLDOWN_COLUMNS.secondary
   return {
-    primary: overrides.primary ?? DEFAULT_DRILLDOWN_COLUMNS.primary,
-    secondary: overrides.secondary ?? DEFAULT_DRILLDOWN_COLUMNS.secondary,
+    primary,
+    secondary,
     metric1: overrides.metric1 ?? DEFAULT_DRILLDOWN_COLUMNS.metric1,
     metric2: overrides.metric2 ?? DEFAULT_DRILLDOWN_COLUMNS.metric2,
+    guestNameColumn,
+    hideSecondary: overrides.hideSecondary === true,
   }
+}
+
+/**
+ * Title-case a guest name for display in the drilldown tables. Handles
+ * simple whitespace-separated names and common intra-word boundaries
+ * (`-`, `'`) so both "janet russel" → "Janet Russel" and "o'brien" →
+ * "O'Brien" come out right. Passes through the em-dash placeholder the
+ * backend uses for missing identities unchanged. Returns `null` for
+ * nullish/empty inputs so callers can render their own "—" fallback.
+ */
+export function titleCaseGuestName(
+  v: string | null | undefined,
+): string | null {
+  if (v == null) return null
+  const t = v.trim()
+  if (t === '') return null
+  if (t === '—') return t
+  return t.toLowerCase().replace(/\b([a-z])/g, (m) => m.toUpperCase())
 }
 
 /**

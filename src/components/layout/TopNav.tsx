@@ -24,11 +24,25 @@ export function TopNav({
   // RPC has not returned an `email` of its own yet — which keeps the
   // header populated during the brief access-profile load on first
   // paint instead of flashing an empty slot.
+  //
+  // Desktop richer identity block (≥ sm): shows the Kitomba display
+  // name + email on line 1 and "<primary_role> (Role: <access_role>/
+  // <fte> FTE)" on line 2. Mobile (< sm) is unchanged — only the
+  // access-role pill renders there to keep the bar tight.
   const { normalized } = useAccessProfile()
   const email = normalized?.email ?? user?.email ?? null
   const roleLabel = normalized?.accessRole
     ? accessRoleDisplayLabel(normalized.accessRole)
     : null
+  const displayName =
+    normalized?.staffDisplayName?.trim() ||
+    normalized?.staffFullName?.trim() ||
+    null
+  const primaryRoleLabel = normalized?.staffPrimaryRole?.trim() || null
+  const fteLabel =
+    normalized?.staffFte != null && Number.isFinite(normalized.staffFte)
+      ? `${normalized.staffFte.toFixed(1)} FTE`
+      : null
 
   async function onSignOut() {
     await signOut()
@@ -81,30 +95,52 @@ export function TopNav({
           data-testid="top-nav-user"
         >
           {/*
-            Compact identity block. On `sm`+ both lines render: email on
-            top, role beneath in smaller muted text. On mobile only the
-            role pill is shown — the email is hidden (it's already in
-            view on the Access page) so Sign out stays comfortably
-            visible alongside the hamburger and logo, and the recent
-            Guest Quote mobile tightening is not disturbed.
+            Compact identity block. On `sm`+ the richer two-line block
+            renders:
+              line 1 — "<Kitomba display name> (<email>)"
+                       with the display name bold and the email in the
+                       same line weight but wrapped in brackets;
+              line 2 — "<staff primary_role> (Role: <access role>/<fte> FTE)"
+                       smaller and muted.
+            On mobile only the access-role pill is shown — the rest is
+            hidden (it's already surfaced on the Access page) so Sign
+            out stays comfortably visible alongside the hamburger and
+            logo, and the Guest Quote mobile tightening is not disturbed.
           */}
-          {email || roleLabel ? (
+          {email || roleLabel || displayName ? (
             <div className="flex min-w-0 items-center gap-2">
-              {email ? (
+              {email || displayName ? (
                 <div className="hidden min-w-0 text-right leading-tight sm:block">
                   <div
-                    className="max-w-[16rem] truncate text-xs font-medium text-slate-800 lg:max-w-[22rem]"
-                    title={email}
+                    className="max-w-[18rem] truncate text-xs text-slate-800 lg:max-w-[26rem]"
+                    title={
+                      displayName && email
+                        ? `${displayName} (${email})`
+                        : displayName ?? email ?? ''
+                    }
                     data-testid="top-nav-user-email"
                   >
-                    {email}
+                    {displayName ? (
+                      <span className="font-semibold">{displayName}</span>
+                    ) : null}
+                    {displayName && email ? ' ' : null}
+                    {email ? (
+                      <span className="font-normal text-slate-700">
+                        {displayName ? `(${email})` : email}
+                      </span>
+                    ) : null}
                   </div>
-                  {roleLabel ? (
+                  {primaryRoleLabel || roleLabel || fteLabel ? (
                     <div
-                      className="text-[11px] text-slate-500"
+                      className="truncate text-[11px] text-slate-500"
                       data-testid="top-nav-user-role-sub"
                     >
-                      Role: {roleLabel}
+                      {primaryRoleLabel ?? '—'}
+                      {' (Role: '}
+                      {roleLabel ?? '—'}
+                      {'/'}
+                      {fteLabel ?? '—'}
+                      {')'}
                     </div>
                   ) : null}
                 </div>

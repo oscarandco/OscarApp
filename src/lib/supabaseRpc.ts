@@ -36,6 +36,21 @@ export async function rpcGetMyAccessProfile(): Promise<AccessProfile | null> {
   return firstRow(data as AccessProfile | AccessProfile[] | null)
 }
 
+/**
+ * Returns the logged-in user's `staff_members.fte` or `null`. Scalar
+ * SECURITY DEFINER RPC — Supabase serialises numeric as string, so
+ * we coerce to `number` here and treat any non-finite result as
+ * `null` (same as "no fte recorded"). Consumed by the KPI dashboard
+ * to normalise self/staff KPI cards for sub-1.0-FTE stylists.
+ */
+export async function rpcGetMyFte(): Promise<number | null> {
+  const { data, error } = await requireSupabaseClient().rpc('get_my_fte')
+  if (error) throw toError('get_my_fte', error)
+  if (data == null) return null
+  const n = typeof data === 'number' ? data : Number(data as string)
+  return Number.isFinite(n) ? n : null
+}
+
 export async function rpcGetMyCommissionSummaryWeekly(): Promise<
   WeeklyCommissionSummaryRow[]
 > {

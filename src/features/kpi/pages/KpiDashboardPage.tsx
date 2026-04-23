@@ -20,6 +20,7 @@ import type {
 } from '@/features/kpi/data/kpiApi'
 import { useKpiSnapshot } from '@/features/kpi/hooks/useKpiSnapshot'
 import { useKpiStylistComparisons } from '@/features/kpi/hooks/useKpiStylistComparisons'
+import { useMyFte } from '@/features/kpi/hooks/useMyFte'
 import { kpiSortComparator } from '@/features/kpi/kpiLabels'
 import { formatShortDate } from '@/lib/formatters'
 import { queryErrorDetail } from '@/lib/queryError'
@@ -49,10 +50,14 @@ import { rpcListActiveLocationsForImport } from '@/lib/supabaseRpc'
  * admin views are unaffected — this is a display-only filter and
  * the backend still returns the rows so elevated users can switch
  * scopes without a reload.
+ *
+ * `new_client_retention_6m` / `new_client_retention_12m` were
+ * previously hidden here while their math was being reworked; they
+ * now follow the split-window rule (see migration
+ * `20260501520000_kpi_new_client_retention_split_window_rule.sql`)
+ * and are visible in self view again.
  */
 const SELF_VIEW_HIDDEN_KPI_CODES: ReadonlySet<string> = new Set([
-  'new_client_retention_6m',
-  'new_client_retention_12m',
   'stylist_profitability',
 ])
 
@@ -142,6 +147,16 @@ export function KpiDashboardPage() {
     for (const r of comparisonRows ?? []) map.set(r.kpi_code, r)
     return map
   }, [comparisonRows])
+
+  // FTE-based normalisation for self/staff cards. Only fetched for
+  // non-elevated (stylist / assistant) callers — elevated users keep
+  // the raw per-stylist numbers in every staff scope they pick so
+  // manager / admin comparisons stay apples-to-apples. The KPI card
+  // itself also gates on which KPIs accept normalisation (raw volume
+  // metrics only; see `NORMALISABLE_KPI_CODES` in `KpiCard.tsx`).
+  const fteEnabled = !elevated && effectiveScope === 'staff' && snapshotEnabled
+  const { data: myFte } = useMyFte({ enabled: fteEnabled })
+  const cardFte = fteEnabled ? myFte ?? null : null
 
   const sortedRows = useMemo(() => {
     const rows = data ?? []
@@ -314,11 +329,24 @@ export function KpiDashboardPage() {
       <PageHeader title="KPIs" description={description} />
       {filtersBar}
       <div
-        className="flex flex-col gap-4 lg:grid lg:items-start lg:gap-5 lg:grid-cols-[minmax(0,1fr)_22rem]"
+        className={
+          // Elevated users (manager / admin) keep the two-column
+          // split with the Selected KPI side panel. Stylist /
+          // assistant views drop the side column entirely and let
+          // the card grid span the full page width — see the card
+          // grid class below for the matching wider breakpoints.
+          elevated
+            ? 'flex flex-col gap-4 lg:grid lg:items-start lg:gap-5 lg:grid-cols-[minmax(0,1fr)_22rem]'
+            : 'flex flex-col gap-4'
+        }
         data-testid="kpi-dashboard-layout"
       >
         <div
-          className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3"
+          className={
+            elevated
+              ? 'grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3'
+              : 'grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
+          }
           data-testid="kpi-dashboard-grid"
         >
           {sortedRows.map((row) => (
@@ -332,10 +360,11 @@ export function KpiDashboardPage() {
                   ? comparisonByKpiCode.get(row.kpi_code) ?? null
                   : null
               }
+              fte={cardFte}
             />
           ))}
         </div>
-        {selectedRow ? <KpiDetailPanel row={selectedRow} /> : null}
+        {elevated && selectedRow ? <KpiDetailPanel row={selectedRow} /> : null}
       </div>
       {selectedRow ? (
         <KpiDrilldownTable
