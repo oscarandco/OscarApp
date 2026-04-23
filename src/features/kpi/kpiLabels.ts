@@ -117,7 +117,7 @@ export const KPI_DISPLAY_META: Record<string, KpiMeta> = {
   client_retention_6m: {
     label: 'Client retention (6m)',
     description:
-      'Share of earlier-period clients who returned within the trailing 6 month window.',
+      'Share of clients from the first half of the trailing 6 months who returned in the second half. At stylist view, returns count anywhere at Oscar & Co.',
     format: 'percent',
     order: 60,
     drilldown: {
@@ -129,7 +129,7 @@ export const KPI_DISPLAY_META: Record<string, KpiMeta> = {
   client_retention_12m: {
     label: 'Client retention (12m)',
     description:
-      'Share of earlier-period clients who returned within the trailing 12 month window.',
+      'Share of clients from the first half of the trailing 12 months who returned in the second half. At stylist view, returns count anywhere at Oscar & Co.',
     format: 'percent',
     order: 70,
     drilldown: {

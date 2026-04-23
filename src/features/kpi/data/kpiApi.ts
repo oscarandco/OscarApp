@@ -45,6 +45,41 @@ export type KpiDrilldownRow = {
   raw_payload: Record<string, unknown> | null
 }
 
+/**
+ * One row returned by `public.get_kpi_stylist_comparisons_live`. Drives
+ * the optional comparison note + value tint on KPI cards in staff/self
+ * view. Numeric columns may arrive as `number` or `string` depending
+ * on PostgREST encoding — normalise at the call site via `Number(...)`.
+ */
+export type KpiStylistComparisonRow = {
+  kpi_code: string
+  period_start: string
+  period_end: string
+  mtd_through: string
+  is_current_open_month: boolean
+  staff_member_id: string | null
+  current_value: number | string | null
+  highest_value: number | string | null
+  average_value: number | string | null
+  cohort_size: number | string
+  is_highest: boolean
+  is_above_average: boolean
+}
+
+export type KpiStylistComparisonsArgs = {
+  /** ISO `YYYY-MM-01` — backend rejects non-month-starts. */
+  periodStart: string
+  /** Backend currently only returns rows for `'staff'`. */
+  scope: KpiSnapshotScope
+  locationId: string | null
+  /**
+   * For elevated callers, required when `scope === 'staff'`. For
+   * non-elevated callers, pass `null` and the backend resolves the
+   * caller's own staff id from `auth.uid()`.
+   */
+  staffMemberId: string | null
+}
+
 export type KpiDrilldownArgs = {
   kpiCode: string
   periodStart: string
@@ -110,6 +145,35 @@ export async function rpcGetKpiSnapshotLive(
  * to the shared `private.debug_kpi_drilldown` body. The return shape
  * is generic so the table renderer does not need per-KPI branches.
  */
+/**
+ * Fetch the stylist comparison set for the staff/self KPI dashboard
+ * via `public.get_kpi_stylist_comparisons_live`. Returns one row per
+ * supported KPI (the comparison-eligible subset only — see the
+ * migration for the locked list) with `current_value`, `highest_value`,
+ * `average_value` plus `is_highest` / `is_above_average` flags.
+ *
+ * Returns `[]` when the resolved scope is not staff (the backend
+ * RPC explicitly returns zero rows in that case).
+ */
+export async function rpcGetKpiStylistComparisonsLive(
+  args: KpiStylistComparisonsArgs,
+): Promise<KpiStylistComparisonRow[]> {
+  const { data, error } = await requireSupabaseClient().rpc(
+    'get_kpi_stylist_comparisons_live',
+    {
+      p_period_start: args.periodStart,
+      p_scope: args.scope,
+      p_location_id: args.locationId,
+      p_staff_member_id: args.staffMemberId,
+    },
+  )
+  if (error) throw toError('get_kpi_stylist_comparisons_live', error)
+  if (data == null) return []
+  return Array.isArray(data)
+    ? (data as KpiStylistComparisonRow[])
+    : [data as KpiStylistComparisonRow]
+}
+
 export async function rpcGetKpiDrilldownLive(
   args: KpiDrilldownArgs,
 ): Promise<KpiDrilldownRow[]> {

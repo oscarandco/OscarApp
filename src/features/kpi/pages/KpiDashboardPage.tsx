@@ -14,8 +14,12 @@ import {
   KpiFiltersBar,
   type KpiFiltersValue,
 } from '@/features/kpi/components/KpiFiltersBar'
-import type { KpiSnapshotScope } from '@/features/kpi/data/kpiApi'
+import type {
+  KpiSnapshotScope,
+  KpiStylistComparisonRow,
+} from '@/features/kpi/data/kpiApi'
 import { useKpiSnapshot } from '@/features/kpi/hooks/useKpiSnapshot'
+import { useKpiStylistComparisons } from '@/features/kpi/hooks/useKpiStylistComparisons'
 import { kpiSortComparator } from '@/features/kpi/kpiLabels'
 import { formatShortDate } from '@/lib/formatters'
 import { queryErrorDetail } from '@/lib/queryError'
@@ -104,6 +108,27 @@ export function KpiDashboardPage() {
       staffMemberId: effectiveStaffId,
       enabled: snapshotEnabled,
     })
+
+  // Stylist comparison layer is staff/self-only. Gate strictly so we
+  // never fire the RPC on business / location views (the backend
+  // would just return zero rows, but skipping the round-trip keeps
+  // the elevated-user dashboards quiet). The comparison query is
+  // intentionally separate from the snapshot — comparison values are
+  // additive UI metadata, not part of the locked KPI return shape.
+  const comparisonsEnabled = snapshotEnabled && effectiveScope === 'staff'
+  const { data: comparisonRows } = useKpiStylistComparisons({
+    periodStart: filters.periodStart,
+    scope: effectiveScope,
+    locationId: effectiveLocationId,
+    staffMemberId: effectiveStaffId,
+    enabled: comparisonsEnabled,
+  })
+
+  const comparisonByKpiCode = useMemo(() => {
+    const map = new Map<string, KpiStylistComparisonRow>()
+    for (const r of comparisonRows ?? []) map.set(r.kpi_code, r)
+    return map
+  }, [comparisonRows])
 
   const sortedRows = useMemo(() => {
     const rows = data ?? []
@@ -276,6 +301,11 @@ export function KpiDashboardPage() {
               row={row}
               selected={row.kpi_code === selectedRow?.kpi_code}
               onSelect={setSelectedKpiCode}
+              comparison={
+                effectiveScope === 'staff'
+                  ? comparisonByKpiCode.get(row.kpi_code) ?? null
+                  : null
+              }
             />
           ))}
         </div>
