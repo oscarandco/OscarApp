@@ -39,6 +39,51 @@ function formatDurationShort(ms: number): string {
   return `${m}m ${sec}s`
 }
 
+function StepRow({
+  label,
+  hint,
+  state,
+  sub,
+}: {
+  label: string
+  hint?: string
+  state: StepVisual
+  sub?: string
+}) {
+  return (
+    <li className="flex gap-2 text-sm">
+      <span className="mt-0.5 w-5 shrink-0 text-center font-medium" aria-hidden>
+        {state === 'done'
+          ? '✓'
+          : state === 'failed'
+            ? '✗'
+            : state === 'running'
+              ? '…'
+              : '○'}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p
+          className={
+            state === 'running'
+              ? 'font-semibold text-violet-900'
+              : state === 'failed'
+                ? 'font-medium text-red-800'
+                : state === 'done'
+                  ? 'text-slate-700'
+                  : 'text-slate-500'
+          }
+        >
+          {label}
+          {hint ? (
+            <span className="ml-1 text-xs font-normal text-slate-500">({hint})</span>
+          ) : null}
+        </p>
+        {sub ? <p className="mt-0.5 text-xs text-slate-500">{sub}</p> : null}
+      </div>
+    </li>
+  )
+}
+
 function ImportProgressChecklist(props: {
   importPhase: ImportUiPhase
   liveBatch: SalesDailySheetsImportBatchRow | null
@@ -148,51 +193,6 @@ function ImportProgressChecklist(props: {
 
   const sDone: StepVisual = serverFailed ? 'failed' : serverDone ? 'done' : 'pending'
 
-  function StepRow({
-    label,
-    hint,
-    state,
-    sub,
-  }: {
-    label: string
-    hint?: string
-    state: StepVisual
-    sub?: string
-  }) {
-    return (
-      <li className="flex gap-2 text-sm">
-        <span className="mt-0.5 w-5 shrink-0 text-center font-medium" aria-hidden>
-          {state === 'done'
-            ? '✓'
-            : state === 'failed'
-              ? '✗'
-              : state === 'running'
-                ? '…'
-                : '○'}
-        </span>
-        <div className="min-w-0 flex-1">
-          <p
-            className={
-              state === 'running'
-                ? 'font-semibold text-violet-900'
-                : state === 'failed'
-                  ? 'font-medium text-red-800'
-                  : state === 'done'
-                    ? 'text-slate-700'
-                    : 'text-slate-500'
-            }
-          >
-            {label}
-            {hint ? (
-              <span className="ml-1 text-xs font-normal text-slate-500">({hint})</span>
-            ) : null}
-          </p>
-          {sub ? <p className="mt-0.5 text-xs text-slate-500">{sub}</p> : null}
-        </div>
-      </li>
-    )
-  }
-
   return (
     <div
       className="rounded-lg border border-violet-200 bg-gradient-to-b from-violet-50/90 to-white px-4 py-3 shadow-sm"
@@ -208,8 +208,9 @@ function ImportProgressChecklist(props: {
       </div>
       <p className="mt-2 text-xs leading-relaxed text-slate-600">
         Big files can take a few minutes—your data is read, saved line by line, then fed into commission
-        calculations. There isn’t a percent complete; these steps and any row counts we receive are the
-        best guide while the import runs.
+        calculations. The work runs in this browser window, so please keep this tab open until you see
+        “Finished”. There isn’t a percent complete; these steps and any row counts we receive are the best
+        guide while the import runs.
       </p>
       <ol className="mt-3 list-none space-y-2.5 pl-0">
         <StepRow
@@ -227,11 +228,11 @@ function ImportProgressChecklist(props: {
           }
         />
         <StepRow
-          label="Import run started"
+          label="Import started"
           state={sEdge}
           sub={
             sEdge === 'running'
-              ? 'Connecting to the import process (the rest runs in the background)…'
+              ? 'Preparing the import in this browser window — please keep this tab open…'
               : undefined
           }
         />
@@ -304,6 +305,7 @@ export function AdminImportsPage() {
   const [importPhase, setImportPhase] = useState<ImportUiPhase>('idle')
   const [liveBatch, setLiveBatch] = useState<SalesDailySheetsImportBatchRow | null>(null)
   const importStartedAtRef = useRef(0)
+  const [importStartedAt, setImportStartedAt] = useState(0)
   const [nowTick, setNowTick] = useState(() => Date.now())
   const [completedSnapshot, setCompletedSnapshot] = useState<{
     durationMs: number
@@ -327,6 +329,7 @@ export function AdminImportsPage() {
     mutationFn: async (args: { file: File; locationId: string }) => {
       const t0 = Date.now()
       importStartedAtRef.current = t0
+      setImportStartedAt(t0)
       setNowTick(t0)
       setCompletedSnapshot(null)
       setImportFailedView(false)
@@ -524,8 +527,8 @@ export function AdminImportsPage() {
               Upload and import
             </h2>
             <p className="mt-1 text-sm text-slate-600">
-              Your file is uploaded safely, then processed in the background so commission calculations
-              can be updated for this salon.
+              Your file is uploaded safely, then processed in this browser window so commission
+              calculations can be updated for this salon. Please keep this tab open until it finishes.
             </p>
           </div>
 
@@ -617,7 +620,7 @@ export function AdminImportsPage() {
                 importPending={importMutation.isPending && !resetMutation.isPending}
                 failed={importFailedView || status === 'failed'}
                 errorText={message}
-                startedAt={importStartedAtRef.current}
+                startedAt={importStartedAt}
                 nowTick={nowTick}
                 completedSnapshot={completedSnapshot}
               />

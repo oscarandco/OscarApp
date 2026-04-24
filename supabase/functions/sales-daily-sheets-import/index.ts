@@ -2,11 +2,35 @@
  * Sales Daily Sheets import — invoked from the browser with JWT or with INTERNAL_IMPORT_SECRET.
  * Heavy work runs in EdgeRuntime.waitUntil so the HTTP response returns immediately (202);
  * the client polls sales_daily_sheets_import_batches for completion (avoids long-held invoke/fetch).
+ *
+ * Memory model
+ * ------------
+ * The CSV is processed STREAMING. We never materialise the full file as
+ * a string and we never build a full `records` or `rowsToInsert`
+ * array. Instead we:
+ *   1. Pipe `dl.stream()` through `TextDecoderStream`.
+ *   2. Run a tiny custom CSV parser (`parseCsvStream`) that yields one
+ *      row of cells at a time, properly handling RFC-4180-style quoted
+ *      fields with embedded commas, quotes (`""`), and newlines.
+ *   3. Map each row to its staged-row shape and push it into a bounded
+ *      buffer of size `STAGED_INSERT_CHUNK_SIZE`. When the buffer is
+ *      full we flush via `insert_sales_daily_sheets_staged_rows_chunk`
+ *      and clear the buffer.
+ *
+ * This keeps peak memory bounded by `STAGED_INSERT_CHUNK_SIZE` mapped
+ * rows + a small parser buffer (a few decoded chunks of the source
+ * blob), regardless of how large the CSV is. The previous flow held
+ * the whole CSV text + parsed Papa records + filtered records + mapped
+ * `rowsToInsert` array all in memory at once and tipped the 269 MB
+ * Edge memory ceiling for larger files.
+ *
+ * Everything else (batch status flow, RPC names, auth rules,
+ * cleanup_storage_only behaviour, CORS, request body shape) is
+ * preserved verbatim.
  */
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.8"
-import Papa from "https://esm.sh/papaparse@5.4.1"
 
 const BUCKET = "sales-daily-sheets"
 
@@ -74,6 +98,127 @@ function logEdgeTiming(payload: Record<string, unknown>): void {
   console.log(JSON.stringify({ tag: "sds_timing_edge", ...payload }))
 }
 
+/**
+ * Streaming CSV parser. Consumes a UTF-8 byte stream and yields one
+ * row's worth of cell strings at a time. Handles RFC-4180-style quoted
+ * fields with embedded `,`, `\n`, `\r\n`, and escaped quotes (`""`).
+ * The internal text buffer is compacted as rows are consumed so peak
+ * memory stays bounded by the size of the largest single row plus a
+ * small read-ahead window — never the whole file.
+ *
+ * Tolerant by design: malformed CSV does not throw; trailing
+ * whitespace-only rows just yield empty arrays which the caller can
+ * skip. This matches the previous Papa-based behaviour where
+ * `skipEmptyLines: "greedy"` quietly dropped blank rows.
+ *
+ * Strips a leading UTF-8 BOM (`\uFEFF`) if present so the first
+ * header cell is not silently mis-keyed.
+ */
+async function* parseCsvStream(
+  byteStream: ReadableStream<Uint8Array>,
+): AsyncGenerator<string[]> {
+  const reader = byteStream
+    .pipeThrough(new TextDecoderStream("utf-8"))
+    .getReader()
+
+  let buf = ""
+  let pos = 0
+  let eof = false
+  let strippedBom = false
+
+  // Pull more text from the stream when we don't have at least
+  // `need` characters available beyond `pos`. Compacts `buf` after
+  // each pull so processed prefix doesn't accumulate.
+  const ensure = async (need: number): Promise<void> => {
+    while (!eof && buf.length - pos < need) {
+      const r = await reader.read()
+      if (r.done) {
+        eof = true
+        return
+      }
+      let chunk = r.value
+      if (!strippedBom) {
+        if (chunk.length > 0 && chunk.charCodeAt(0) === 0xfeff) {
+          chunk = chunk.slice(1)
+        }
+        strippedBom = true
+      }
+      // Drop processed prefix; keep only the unread tail + new chunk.
+      if (pos > 0) {
+        buf = buf.slice(pos) + chunk
+        pos = 0
+      } else {
+        buf += chunk
+      }
+    }
+  }
+
+  let row: string[] = []
+  let field = ""
+  let inQuotes = false
+
+  while (true) {
+    // Two-character lookahead lets us correctly distinguish `""`
+    // (escaped quote inside a quoted field) from `"` (end of field)
+    // and `\r\n` from a lone `\r`.
+    await ensure(2)
+
+    if (pos >= buf.length) {
+      // EOF — flush any half-built field/row.
+      if (inQuotes || field.length > 0 || row.length > 0) {
+        row.push(field)
+        yield row
+      }
+      return
+    }
+
+    const ch = buf.charCodeAt(pos)
+
+    if (inQuotes) {
+      if (ch === 34 /* " */) {
+        if (pos + 1 < buf.length && buf.charCodeAt(pos + 1) === 34) {
+          field += '"'
+          pos += 2
+        } else {
+          inQuotes = false
+          pos += 1
+        }
+      } else {
+        field += buf[pos]
+        pos += 1
+      }
+      continue
+    }
+
+    if (ch === 34 /* " */) {
+      inQuotes = true
+      pos += 1
+    } else if (ch === 44 /* , */) {
+      row.push(field)
+      field = ""
+      pos += 1
+    } else if (ch === 10 /* \n */) {
+      row.push(field)
+      field = ""
+      yield row
+      row = []
+      pos += 1
+    } else if (ch === 13 /* \r */) {
+      row.push(field)
+      field = ""
+      yield row
+      row = []
+      pos += 1
+      if (pos < buf.length && buf.charCodeAt(pos) === 10) {
+        pos += 1
+      }
+    } else {
+      field += buf[pos]
+      pos += 1
+    }
+  }
+}
+
 async function authorizeRequest(
   req: Request,
   body: ImportBody,
@@ -111,6 +256,78 @@ async function authorizeRequest(
   return { ok: true, userId: user.id }
 }
 
+/**
+ * Map a single raw CSV record into the staged-row shape consumed by
+ * `insert_sales_daily_sheets_staged_rows_chunk`. Pulled out so the
+ * streaming loop can call it once per row without keeping a giant
+ * mapped array around. Mapping logic is preserved verbatim from the
+ * original whole-file `records.map(...)`.
+ */
+function mapRowToStagedRow(args: {
+  row: Record<string, string>
+  lineNumber: number
+  batchId: string
+  forcedLocation: string
+}): Record<string, unknown> {
+  const { row, lineNumber, batchId, forcedLocation } = args
+
+  const invoice = pick(row, "invoice", "invoice #", "invoice_no", "invoice number")
+  const saleDate = pick(row, "sale date", "sale_date", "date")
+  const payWeekStart = pick(row, "pay week start", "pay_week_start")
+  const payWeekEnd = pick(row, "pay week end", "pay_week_end")
+  const payDate = pick(row, "pay date", "pay_date")
+  const customerName = pick(row, "customer", "customer name", "customer_name")
+  const productService = pick(
+    row,
+    "product service name",
+    "product_service_name",
+    "service",
+    "product",
+  )
+  const quantity = pick(row, "quantity", "qty")
+  const priceExGst = pick(row, "price ex gst", "price_ex_gst", "price ex gst ($)", "price")
+  const staffPaid = pick(
+    row,
+    "derived_staff_paid_display_name",
+    "staff paid",
+    "stylist",
+    "staff",
+  )
+  const actualComm = pick(
+    row,
+    "actual_commission_amount",
+    "actual commission",
+    "commission",
+  )
+  const asstComm = pick(row, "assistant_commission_amount", "assistant commission")
+  const payrollStatus = pick(row, "payroll status", "payroll_status")
+  const stylistNote = pick(row, "stylist visible note", "stylist_visible_note", "note")
+  const locationId = pick(row, "location_id", "location id")
+
+  return {
+    batch_id: batchId,
+    line_number: lineNumber,
+    invoice: invoice ?? null,
+    sale_date: saleDate ?? null,
+    pay_week_start: parseDate(payWeekStart),
+    pay_week_end: parseDate(payWeekEnd),
+    pay_date: parseDate(payDate),
+    customer_name: customerName ?? null,
+    product_service_name: productService ?? null,
+    quantity: parseNum(quantity),
+    price_ex_gst: parseNum(priceExGst),
+    derived_staff_paid_display_name: staffPaid ?? null,
+    actual_commission_amount: parseNum(actualComm),
+    assistant_commission_amount: parseNum(asstComm),
+    payroll_status: payrollStatus ?? null,
+    stylist_visible_note: stylistNote ?? null,
+    location_id:
+      forcedLocation ??
+      (locationId && UUID_RE.test(locationId) ? locationId : null),
+    extras: row as unknown as Record<string, unknown>,
+  }
+}
+
 async function processSalesDailySheetsImport(args: {
   body: ImportBody
   supabaseUrl: string
@@ -143,33 +360,6 @@ async function processSalesDailySheetsImport(args: {
   }
 
   t0 = performance.now()
-  const text = await dl.text()
-  const ms_blob_text = msSince(t0)
-
-  t0 = performance.now()
-  const parsed = Papa.parse<Record<string, string>>(text, {
-    header: true,
-    skipEmptyLines: "greedy",
-  })
-
-  if (parsed.errors.length > 0 && parsed.data.length === 0) {
-    const msg = parsed.errors.map((e) => e.message).join("; ")
-    await failBatch(msg)
-    return
-  }
-
-  const records = parsed.data.filter((r) =>
-    Object.keys(r).some((k) => String(r[k] ?? "").trim() !== ""),
-  )
-
-  if (records.length === 0) {
-    await failBatch("No data rows in CSV")
-    return
-  }
-
-  const ms_csv_parse = msSince(t0)
-
-  t0 = performance.now()
   const { error: delErr } = await supabase.rpc(
     "delete_sales_daily_sheets_staged_rows_for_batch",
     { p_batch_id: body.batch_id },
@@ -184,92 +374,117 @@ async function processSalesDailySheetsImport(args: {
 
   const forcedLocation = body.location_id!
 
-  t0 = performance.now()
-  const rowsToInsert = records.map((row, idx) => {
-    const invoice = pick(row, "invoice", "invoice #", "invoice_no", "invoice number")
-    const saleDate = pick(row, "sale date", "sale_date", "date")
-    const payWeekStart = pick(row, "pay week start", "pay_week_start")
-    const payWeekEnd = pick(row, "pay week end", "pay_week_end")
-    const payDate = pick(row, "pay date", "pay_date")
-    const customerName = pick(row, "customer", "customer name", "customer_name")
-    const productService = pick(
-      row,
-      "product service name",
-      "product_service_name",
-      "service",
-      "product",
-    )
-    const quantity = pick(row, "quantity", "qty")
-    const priceExGst = pick(row, "price ex gst", "price_ex_gst", "price ex gst ($)", "price")
-    const staffPaid = pick(
-      row,
-      "derived_staff_paid_display_name",
-      "staff paid",
-      "stylist",
-      "staff",
-    )
-    const actualComm = pick(
-      row,
-      "actual_commission_amount",
-      "actual commission",
-      "commission",
-    )
-    const asstComm = pick(row, "assistant_commission_amount", "assistant commission")
-    const payrollStatus = pick(row, "payroll status", "payroll_status")
-    const stylistNote = pick(row, "stylist visible note", "stylist_visible_note", "note")
-    const locationId = pick(row, "location_id", "location id")
-
-    return {
-      batch_id: body.batch_id,
-      line_number: idx + 1,
-      invoice: invoice ?? null,
-      sale_date: saleDate ?? null,
-      pay_week_start: parseDate(payWeekStart),
-      pay_week_end: parseDate(payWeekEnd),
-      pay_date: parseDate(payDate),
-      customer_name: customerName ?? null,
-      product_service_name: productService ?? null,
-      quantity: parseNum(quantity),
-      price_ex_gst: parseNum(priceExGst),
-      derived_staff_paid_display_name: staffPaid ?? null,
-      actual_commission_amount: parseNum(actualComm),
-      assistant_commission_amount: parseNum(asstComm),
-      payroll_status: payrollStatus ?? null,
-      stylist_visible_note: stylistNote ?? null,
-      location_id:
-        forcedLocation ??
-        (locationId && UUID_RE.test(locationId) ? locationId : null),
-      extras: row as unknown as Record<string, unknown>,
-    }
-  })
-
-  const ms_csv_map_rows = msSince(t0)
-
-  t0 = performance.now()
   // Balance: larger chunks = fewer round trips; very large single INSERTs can hit statement_timeout on Postgres.
   const STAGED_INSERT_CHUNK_SIZE = 500
-  for (let i = 0; i < rowsToInsert.length; i += STAGED_INSERT_CHUNK_SIZE) {
-    const slice = rowsToInsert.slice(i, i + STAGED_INSERT_CHUNK_SIZE)
+
+  let headers: string[] | null = null
+  let lineNumber = 0
+  let nStaged = 0
+  let buffer: Record<string, unknown>[] = []
+  let ms_staged_row_insert_total = 0
+
+  const flushBuffer = async (): Promise<{ ok: boolean; err?: string }> => {
+    if (buffer.length === 0) return { ok: true }
+    const tIns = performance.now()
     const { error: insErr } = await supabase.rpc(
       "insert_sales_daily_sheets_staged_rows_chunk",
-      { p_rows: slice },
+      { p_rows: buffer },
     )
+    ms_staged_row_insert_total += msSince(tIns)
     if (insErr) {
       console.error("sds_timing_edge staged_insert_chunk_failed", {
         tag: "sds_timing_edge",
         batch_id: body.batch_id,
-        chunk_start_row: i,
-        chunk_len: slice.length,
+        chunk_first_line_number: buffer[0]?.line_number,
+        chunk_len: buffer.length,
         error: insErr.message,
       })
-      await failBatch(insErr.message)
-      return
+      return { ok: false, err: insErr.message }
     }
+    nStaged += buffer.length
+    buffer = []
+    return { ok: true }
   }
 
-  const ms_staged_row_insert = msSince(t0)
+  // ms_stream_and_stage measures wall-clock time spent in the
+  // stream/parse/map loop INCLUDING the chunk-insert RPCs that fire
+  // inside it. ms_staged_row_insert is then tracked separately so we
+  // can see the parse-only fraction implicitly (= total - insert).
+  t0 = performance.now()
+  try {
+    const byteStream = dl.stream()
+    for await (const fields of parseCsvStream(byteStream)) {
+      // Header row first.
+      if (headers === null) {
+        headers = fields.map((h) => h ?? "")
+        continue
+      }
 
-  const nStaged = rowsToInsert.length
+      // skipEmptyLines: "greedy" — drop rows whose every cell is blank.
+      let allBlank = true
+      for (const f of fields) {
+        if (f != null && String(f).trim() !== "") {
+          allBlank = false
+          break
+        }
+      }
+      if (allBlank) continue
+
+      lineNumber += 1
+
+      // Re-key into the Record<string, string> shape `pick()` expects.
+      // Extra trailing fields beyond the header row get dropped, matching
+      // the previous Papa `header: true` behaviour.
+      const row: Record<string, string> = {}
+      const cols = Math.min(headers.length, fields.length)
+      for (let i = 0; i < cols; i += 1) {
+        row[headers[i]] = fields[i] ?? ""
+      }
+
+      const staged = mapRowToStagedRow({
+        row,
+        lineNumber,
+        batchId: body.batch_id,
+        forcedLocation,
+      })
+      buffer.push(staged)
+
+      if (buffer.length >= STAGED_INSERT_CHUNK_SIZE) {
+        const flush = await flushBuffer()
+        if (!flush.ok) {
+          await failBatch(flush.err ?? "Staged chunk insert failed")
+          return
+        }
+      }
+    }
+
+    // Flush the final partial chunk.
+    const finalFlush = await flushBuffer()
+    if (!finalFlush.ok) {
+      await failBatch(finalFlush.err ?? "Staged chunk insert failed")
+      return
+    }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    console.error("sds_timing_edge stream_parse_failed", {
+      tag: "sds_timing_edge",
+      batch_id: body.batch_id,
+      line_number: lineNumber,
+      error: msg,
+    })
+    await failBatch(`CSV parse failed: ${msg}`)
+    return
+  }
+  const ms_stream_and_stage = msSince(t0)
+
+  if (headers === null) {
+    await failBatch("CSV is empty")
+    return
+  }
+  if (nStaged === 0) {
+    await failBatch("No data rows in CSV")
+    return
+  }
 
   t0 = performance.now()
   const { error: applyErr } = await supabase.rpc("apply_sales_daily_sheets_to_payroll", {
@@ -317,11 +532,9 @@ async function processSalesDailySheetsImport(args: {
     batch_id: body.batch_id,
     row_count: nStaged,
     ms_storage_download,
-    ms_blob_text,
-    ms_csv_parse,
     ms_staged_row_delete,
-    ms_csv_map_rows,
-    ms_staged_row_insert,
+    ms_stream_and_stage,
+    ms_staged_row_insert: ms_staged_row_insert_total,
     ms_apply_sales_daily_sheets_to_payroll_rpc,
     ms_final_batch_select_and_update,
     ms_process_total: msSince(tRun0),

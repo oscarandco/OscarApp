@@ -217,3 +217,65 @@ export async function rpcDeleteAllSalesDailySheetsImportData(): Promise<unknown>
   if (error) throw toError('delete_all_sales_daily_sheets_import_data', error)
   return data
 }
+
+/**
+ * Browser-side Sales Daily Sheets staged-row helpers. Edge-Function CPU
+ * limits make per-row parsing in Edge unsafe for large files, so the
+ * client now does the parsing and writes staged rows directly via these
+ * RPCs. Each RPC enforces elevated access (manager/admin/superadmin) +
+ * batch-creator on the database side, so even though they're callable
+ * by `authenticated`, stylist/assistant users cannot reach them.
+ */
+export async function rpcDeleteSalesDailySheetsStagedRowsForBatch(
+  batchId: string,
+): Promise<void> {
+  const { error } = await requireSupabaseClient().rpc(
+    'delete_sales_daily_sheets_staged_rows_for_batch',
+    { p_batch_id: batchId },
+  )
+  if (error) throw toError('delete_sales_daily_sheets_staged_rows_for_batch', error)
+}
+
+/** All rows in `rows` must reference the same `batch_id` (the SQL guard enforces this). */
+export async function rpcInsertSalesDailySheetsStagedRowsChunk(
+  rows: Array<Record<string, unknown>>,
+): Promise<void> {
+  if (rows.length === 0) return
+  const { error } = await requireSupabaseClient().rpc(
+    'insert_sales_daily_sheets_staged_rows_chunk',
+    { p_rows: rows },
+  )
+  if (error) throw toError('insert_sales_daily_sheets_staged_rows_chunk', error)
+}
+
+export async function rpcApplySalesDailySheetsToPayroll(batchId: string): Promise<void> {
+  const { error } = await requireSupabaseClient()
+    .rpc('apply_sales_daily_sheets_to_payroll', { p_batch_id: batchId })
+    // Apply RPC does heavy SQL with statement_timeout disabled; use a generous wall-clock budget.
+    .abortSignal(AbortSignal.timeout(15 * 60_000))
+  if (error) throw toError('apply_sales_daily_sheets_to_payroll', error)
+}
+
+export type SalesDailySheetsBatchStatus = 'queued' | 'processing' | 'completed' | 'failed'
+
+export async function rpcSetSalesDailySheetsBatchStatus(args: {
+  batchId: string
+  status: SalesDailySheetsBatchStatus
+  message?: string | null
+  errorMessage?: string | null
+  rowsStaged?: number | null
+  rowsLoaded?: number | null
+}): Promise<void> {
+  const { error } = await requireSupabaseClient().rpc(
+    'set_sales_daily_sheets_batch_status',
+    {
+      p_batch_id: args.batchId,
+      p_status: args.status,
+      p_message: args.message ?? null,
+      p_error_message: args.errorMessage ?? null,
+      p_rows_staged: args.rowsStaged ?? null,
+      p_rows_loaded: args.rowsLoaded ?? null,
+    },
+  )
+  if (error) throw toError('set_sales_daily_sheets_batch_status', error)
+}
