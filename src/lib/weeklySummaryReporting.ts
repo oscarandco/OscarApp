@@ -1,9 +1,18 @@
 import type { WeeklySummaryExtraTile } from '@/features/payroll/components/WeeklySummaryStats'
 import type { SalesDailySheetsDataSourceRow } from '@/features/payroll/types'
 
-/** Rows that expose `pay_week_start` for date-range filtering. */
+/** Normalise API date / timestamptz to `YYYY-MM-DD` for comparisons. */
+export function isoDateOnly(value: string | null | undefined): string {
+  if (value == null) return ''
+  const t = String(value).trim()
+  if (t.length >= 10 && /^\d{4}-\d{2}-\d{2}/.test(t)) return t.slice(0, 10)
+  return t
+}
+
+/** Rows that expose pay week bounds for date-range filtering. */
 export type PayWeekDatedRow = {
   pay_week_start?: string | null
+  pay_week_end?: string | null
 }
 
 export type SalesExGstByLocationRow = PayWeekDatedRow & {
@@ -11,9 +20,23 @@ export type SalesExGstByLocationRow = PayWeekDatedRow & {
   total_sales_ex_gst?: number | string | null
 }
 
+function rowWeekStartIso(r: PayWeekDatedRow): string {
+  return isoDateOnly(r.pay_week_start ?? null)
+}
+
+function rowWeekEndIso(r: PayWeekDatedRow): string {
+  const end = isoDateOnly(r.pay_week_end ?? null)
+  const start = rowWeekStartIso(r)
+  return end || start
+}
+
 /**
- * ISO `YYYY-MM-DD` for the earliest and latest `pay_week_start` across
- * the loaded summary rows.
+ * Extents for date controls and filtering, aligned with underlying week
+ * rows:
+ * - `min` = earliest `pay_week_start` (Monday / start of first week).
+ * - `max` = latest calendar day in the data: max of
+ *   `coalesce(pay_week_end, pay_week_start)` so the default "to" date
+ *   matches the newest week end (e.g. Sunday), not only the Monday.
  */
 export function computeDateExtents(rows: PayWeekDatedRow[]): {
   min: string | null
@@ -22,23 +45,25 @@ export function computeDateExtents(rows: PayWeekDatedRow[]): {
   let min: string | null = null
   let max: string | null = null
   for (const r of rows) {
-    const w = r.pay_week_start ? String(r.pay_week_start).trim() : ''
-    if (!w) continue
-    if (min == null || w < min) min = w
-    if (max == null || w > max) max = w
+    const ws = rowWeekStartIso(r)
+    if (!ws) continue
+    if (min == null || ws < min) min = ws
+    const we = rowWeekEndIso(r)
+    if (max == null || we > max) max = we
   }
   return { min, max }
 }
 
 /**
- * Default `dateFrom` = one year before `dateMax`, clamped up to `dateMin`.
+ * Default `dateFrom` = one calendar year before `dateMax`, clamped up to
+ * `min` (first available week start).
  */
 export function defaultDateFromForRange(
   min: string | null,
   max: string | null,
 ): string {
   if (!max) return ''
-  const m = new Date(`${max}T00:00:00Z`)
+  const m = new Date(`${max}T12:00:00Z`)
   if (Number.isNaN(m.getTime())) return min ?? ''
   m.setUTCFullYear(m.getUTCFullYear() - 1)
   let candidate = m.toISOString().slice(0, 10)
@@ -46,6 +71,11 @@ export function defaultDateFromForRange(
   return candidate
 }
 
+/**
+ * Include a row if its pay week overlaps `[dateFrom, dateTo]` (inclusive
+ * ISO dates). Uses `pay_week_end` when present so the range aligns with
+ * the same basis as {@link computeDateExtents}'s `max`.
+ */
 export function filterRowsByPayWeekDateRange<T extends PayWeekDatedRow>(
   rows: T[],
   dateFrom: string,
@@ -53,19 +83,17 @@ export function filterRowsByPayWeekDateRange<T extends PayWeekDatedRow>(
 ): T[] {
   if (!dateFrom && !dateTo) return rows
   return rows.filter((r) => {
-    const w = r.pay_week_start ? String(r.pay_week_start).trim() : ''
-    if (!w) return true
-    if (dateFrom && w < dateFrom) return false
-    if (dateTo && w > dateTo) return false
+    const ws = rowWeekStartIso(r)
+    const we = rowWeekEndIso(r)
+    if (!ws && !we) return true
+    const wstart = ws || we
+    const wend = we || ws
+    if (dateFrom && wend < dateFrom) return false
+    if (dateTo && wstart > dateTo) return false
     return true
   })
 }
 
-/**
- * Per-location SALES (EX GST) tiles from SDS data sources + date-scoped
- * summary rows. Totals use `total_sales_ex_gst` summed by
- * `location_id`; labels use `locations.name` from the RPC (uppercased).
- */
 export function buildPerLocationSalesExtraTiles(
   dataSources: SalesDailySheetsDataSourceRow[] | undefined,
   dateScopedRows: SalesExGstByLocationRow[],

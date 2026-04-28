@@ -29,23 +29,6 @@ type SummaryFiltersBarProps = {
    * reason. Stylist / assistant My Sales hides it by passing `false`.
    */
   showLocation?: boolean
-  /**
-   * Optional date-range filter (YYYY-MM-DD strings). Renders to the
-   * LEFT of the Location dropdown when both `dateFrom` / `dateTo`
-   * setters are provided. `dateMin` / `dateMax` are applied as the
-   * input `min` / `max` attributes so the picker is bounded by the
-   * data extents — users can extend back to `dateMin` to see the
-   * full available range.
-   *
-   * Used by My Sales to scope the displayed weekly summary rows
-   * (and the per-location sales tiles) to the selected window.
-   */
-  dateFrom?: string
-  dateTo?: string
-  onDateFromChange?: (value: string) => void
-  onDateToChange?: (value: string) => void
-  dateMin?: string
-  dateMax?: string
 }
 
 /**
@@ -68,12 +51,6 @@ export function SummaryFiltersBar({
   onSplitByLocationChange,
   showSearch = true,
   showLocation = true,
-  dateFrom,
-  dateTo,
-  onDateFromChange,
-  onDateToChange,
-  dateMin,
-  dateMax,
 }: SummaryFiltersBarProps) {
   const testId =
     variant === 'admin' ? 'admin-summary-filters' : 'payroll-summary-filters'
@@ -81,44 +58,12 @@ export function SummaryFiltersBar({
     weekBeginningOptions != null &&
     onWeekBeginningFilter != null &&
     (variant === 'stylist' || variant === 'admin')
-  const showDateRange =
-    onDateFromChange != null && onDateToChange != null
 
   return (
     <div
       className="mb-4 flex flex-col gap-2 rounded-lg border border-slate-200 bg-slate-50/80 px-2.5 py-2.5 sm:mb-5 sm:flex-row sm:flex-wrap sm:items-end sm:gap-4 sm:px-3 sm:py-3"
       data-testid={testId}
     >
-      {showDateRange ? (
-        <div className="min-w-0 flex-1 sm:max-w-md">
-          <span className="block text-xs font-medium text-slate-600">
-            Date range
-          </span>
-          <div className="mt-1 flex items-center gap-2">
-            <input
-              type="date"
-              value={dateFrom ?? ''}
-              min={dateMin || undefined}
-              max={dateMax || undefined}
-              onChange={(e) => onDateFromChange(e.target.value)}
-              aria-label="From date"
-              className="w-full rounded-md border border-slate-300 bg-white px-2 py-2 text-sm text-slate-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
-              data-testid={`${testId}-date-from`}
-            />
-            <span className="text-xs text-slate-500">to</span>
-            <input
-              type="date"
-              value={dateTo ?? ''}
-              min={dateMin || undefined}
-              max={dateMax || undefined}
-              onChange={(e) => onDateToChange(e.target.value)}
-              aria-label="To date"
-              className="w-full rounded-md border border-slate-300 bg-white px-2 py-2 text-sm text-slate-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
-              data-testid={`${testId}-date-to`}
-            />
-          </div>
-        </div>
-      ) : null}
       {showLocation ? (
         <div className="min-w-0 flex-1 sm:max-w-xs">
           <label

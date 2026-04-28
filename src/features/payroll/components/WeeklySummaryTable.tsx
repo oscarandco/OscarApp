@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 
@@ -18,6 +19,22 @@ import { formatNzd, formatShortDate } from '@/lib/formatters'
 
 type WeeklySummaryTableProps = {
   rows: WeeklyCommissionSummaryRow[]
+  /**
+   * When `rows` is empty (e.g. filters exclude everything) but the table
+   * should still render headers + toolbar, supply a representative row
+   * for column resolution (typically `sourceRows[0]` from the page).
+   */
+  tableStructureSample?: WeeklyCommissionSummaryRow | null
+  /**
+   * Shown in the table body when `rows` is empty. Toolbar + column
+   * picker still render when applicable.
+   */
+  emptyBodyMessage?: string
+  /**
+   * Renders to the left of the Columns control: date range + data
+   * source lines (My Sales / Sales summary reporting toolbar).
+   */
+  toolbarBeforeColumns?: ReactNode
   /**
    * Middle column ids that must always be hidden, layered on top of
    * the user's saved column-picker preferences. Owned by the page so
@@ -150,6 +167,9 @@ const DND_TYPE = 'application/x-payroll-middle-column'
 
 export function WeeklySummaryTable({
   rows,
+  tableStructureSample = null,
+  emptyBodyMessage,
+  toolbarBeforeColumns,
   forceHiddenColumnIds,
   showColumnPicker = true,
   columnLabelOverrides,
@@ -163,7 +183,7 @@ export function WeeklySummaryTable({
   const [draggingId, setDraggingId] = useState<MiddleColumnId | null>(null)
   const [dropTargetId, setDropTargetId] = useState<MiddleColumnId | null>(null)
 
-  const sample = rows[0]
+  const sample = rows[0] ?? tableStructureSample ?? null
 
   const visibleMiddle = useMemo(
     () =>
@@ -173,9 +193,8 @@ export function WeeklySummaryTable({
     [sample, prefs, forceHiddenColumnIds],
   )
 
-  if (!rows.length) {
-    return null
-  }
+  const showToolbarRow =
+    toolbarBeforeColumns != null || showColumnPicker === true
 
   function onDragStart(e: React.DragEvent, id: MiddleColumnId) {
     e.dataTransfer.setData(DND_TYPE, id)
@@ -210,15 +229,28 @@ export function WeeklySummaryTable({
     setDropTargetId(null)
   }
 
+  const colSpanEmpty = 1 + visibleMiddle.length + 1
+
   return (
     <div className="space-y-2">
-      {showColumnPicker ? (
-        <div className="flex justify-end">
-          <WeeklySummaryColumnPicker
-            prefs={prefs}
-            onChange={setPrefs}
-            onReset={reset}
-          />
+      {showToolbarRow ? (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+          {toolbarBeforeColumns != null ? (
+            <div className="flex min-w-0 flex-1 flex-col gap-3 md:flex-row md:items-start md:gap-6 lg:gap-8">
+              {toolbarBeforeColumns}
+            </div>
+          ) : (
+            <div className="min-w-0 flex-1" />
+          )}
+          {showColumnPicker ? (
+            <div className="flex shrink-0 justify-start sm:justify-end sm:pt-0.5">
+              <WeeklySummaryColumnPicker
+                prefs={prefs}
+                onChange={setPrefs}
+                onReset={reset}
+              />
+            </div>
+          ) : null}
         </div>
       ) : null}
       <TableScrollArea testId="weekly-summary-table">
@@ -285,6 +317,16 @@ export function WeeklySummaryTable({
             </tr>
           </thead>
           <tbody>
+            {!rows.length && emptyBodyMessage ? (
+              <tr>
+                <td
+                  colSpan={colSpanEmpty}
+                  className="border-b border-slate-100 px-4 py-8 text-center text-sm text-slate-600"
+                >
+                  {emptyBodyMessage}
+                </td>
+              </tr>
+            ) : null}
             {rows.map((row, idx) => {
               const weekRaw = row.pay_week_start
               const weekStart =

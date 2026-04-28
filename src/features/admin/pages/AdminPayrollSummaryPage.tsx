@@ -8,6 +8,7 @@ import { AdminSummaryTable } from '@/features/admin/components/AdminSummaryTable
 import { useAdminPayrollSummaryWeekly } from '@/features/admin/hooks/useAdminPayrollSummaryWeekly'
 import { SummaryFiltersBar } from '@/features/payroll/components/SummaryFiltersBar'
 import { WeeklySummaryDataSourceLines } from '@/features/payroll/components/WeeklySummaryDataSourceLines'
+import { WeeklySummaryDateRangeInputs } from '@/features/payroll/components/WeeklySummaryDateRangeInputs'
 import { WeeklySummaryStats } from '@/features/payroll/components/WeeklySummaryStats'
 import { useSalesDailySheetsDataSources } from '@/features/payroll/hooks/useSalesDailySheetsDataSources'
 import { aggregateWeeklyCommissionSummaryByStaffWeek } from '@/lib/aggregateWeeklyCommissionSummaryByStaffWeek'
@@ -115,6 +116,27 @@ export function AdminPayrollSummaryPage() {
     setDateToOverride(null)
   }
 
+  const tableToolbar = (
+    <>
+      <WeeklySummaryDateRangeInputs
+        dateFrom={dateFrom}
+        dateTo={dateTo}
+        onDateFromChange={(v) => setDateFromOverride(v)}
+        onDateToChange={(v) => setDateToOverride(v)}
+        dateMin={dateExtents.min ?? undefined}
+        dateMax={dateExtents.max ?? undefined}
+        dateFromTestId="admin-summary-toolbar-date-from"
+        dateToTestId="admin-summary-toolbar-date-to"
+      />
+      <WeeklySummaryDataSourceLines
+        sources={dataSources}
+        listTestId="admin-summary-data-sources"
+        lineTestIdPrefix="admin-summary-data-source"
+        variant="toolbar"
+      />
+    </>
+  )
+
   if (isLoading) {
     return (
       <div data-testid="admin-summary-page">
@@ -171,45 +193,31 @@ export function AdminPayrollSummaryPage() {
             showReset={showReset}
             splitByLocation={splitByLocation}
             onSplitByLocationChange={setSplitByLocation}
-            dateFrom={dateFrom}
-            dateTo={dateTo}
-            onDateFromChange={(v) => setDateFromOverride(v)}
-            onDateToChange={(v) => setDateToOverride(v)}
-            dateMin={dateExtents.min ?? undefined}
-            dateMax={dateExtents.max ?? undefined}
           />
-          <WeeklySummaryDataSourceLines
-            sources={dataSources}
-            listTestId="admin-summary-data-sources"
-            lineTestIdPrefix="admin-summary-data-source"
+          <WeeklySummaryStats
+            rows={displayRows}
+            weeksCardLabel="Number of weeks shown"
+            unconfiguredFilterProps={{
+              active: unconfiguredOnly,
+              onToggle: () => setUnconfiguredOnly((v) => !v),
+            }}
+            showSalesCard={false}
+            showRowsShownCard={false}
+            extraTiles={perLocationSalesTiles}
           />
-          {filteredRows.length === 0 ? (
-            <EmptyState
-              title="No rows match your filters"
-              description="Clear filters or adjust location and search to see admin summary rows."
-              testId="admin-summary-filtered-empty"
+          <div className="mt-4">
+            <AdminSummaryTable
+              rows={displayRows}
+              splitByLocation={splitByLocation}
+              tableStructureSample={sourceRows[0] ?? null}
+              emptyBodyMessage={
+                displayRows.length === 0
+                  ? 'No rows match your filters.'
+                  : undefined
+              }
+              toolbarBeforeColumns={tableToolbar}
             />
-          ) : (
-            <>
-              <WeeklySummaryStats
-                rows={displayRows}
-                weeksCardLabel="Number of weeks shown"
-                unconfiguredFilterProps={{
-                  active: unconfiguredOnly,
-                  onToggle: () => setUnconfiguredOnly((v) => !v),
-                }}
-                showSalesCard={false}
-                showRowsShownCard={false}
-                extraTiles={perLocationSalesTiles}
-              />
-              <div className="mt-4">
-                <AdminSummaryTable
-                  rows={displayRows}
-                  splitByLocation={splitByLocation}
-                />
-              </div>
-            </>
-          )}
+          </div>
         </>
       )}
     </div>

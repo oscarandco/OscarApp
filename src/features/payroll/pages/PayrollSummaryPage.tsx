@@ -8,6 +8,7 @@ import { useAccessProfile } from '@/features/access/accessContext'
 import { resolveRole } from '@/features/access/pageAccess'
 import { SummaryFiltersBar } from '@/features/payroll/components/SummaryFiltersBar'
 import { WeeklySummaryDataSourceLines } from '@/features/payroll/components/WeeklySummaryDataSourceLines'
+import { WeeklySummaryDateRangeInputs } from '@/features/payroll/components/WeeklySummaryDateRangeInputs'
 import { WeeklySummaryStats } from '@/features/payroll/components/WeeklySummaryStats'
 import { WeeklySummaryTable } from '@/features/payroll/components/WeeklySummaryTable'
 import { useMyWeeklyCommissionSummary } from '@/features/payroll/hooks/useMyWeeklyCommissionSummary'
@@ -33,10 +34,6 @@ export function PayrollSummaryPage() {
     useMyWeeklyCommissionSummary()
   const { data: dataSources } = useSalesDailySheetsDataSources()
 
-  // Resolve the user's role once and feed it through the centralised
-  // My Sales visibility helper. Every role-based filter / card / column
-  // decision below reads from `visibility` so the matrix lives in one
-  // place — see `payrollSummaryPageVisibility.ts`.
   const { normalized } = useAccessProfile()
   const role = useMemo(() => resolveRole(normalized), [normalized])
   const visibility = useMemo(() => mySalesVisibilityForRole(role), [role])
@@ -46,19 +43,11 @@ export function PayrollSummaryPage() {
   const [search, setSearch] = useState('')
   const [splitByLocation, setSplitByLocation] = useState(false)
 
-  // Date range filter — defaults to "exactly the latest 1 year of
-  // available data" derived from the loaded rows. User edits drop into
-  // override state so they persist across re-renders; clearing both
-  // overrides via the Reset button restores the 1-year default.
   const [dateFromOverride, setDateFromOverride] = useState<string | null>(
     null,
   )
   const [dateToOverride, setDateToOverride] = useState<string | null>(null)
 
-  // Force-hidden table columns: role-driven hides from the visibility
-  // helper, plus the filter-driven hide for `location` whenever the
-  // Summary rows toggle is set to "Combined" (one row per staff +
-  // week, regardless of site).
   const forceHiddenColumnIds = useMemo(() => {
     const next = new Set(visibility.hiddenTableColumnIds)
     if (!splitByLocation) next.add('location')
@@ -70,9 +59,6 @@ export function PayrollSummaryPage() {
     return sortSummaryRowsNewestFirst(raw)
   }, [data])
 
-  // Earliest / latest pay-week start across the loaded summary rows.
-  // Drives both the date-range input bounds (so the picker can extend
-  // back to the first available row) and the default 1-year window.
   const dateExtents = useMemo(() => computeDateExtents(sourceRows), [
     sourceRows,
   ])
@@ -86,10 +72,6 @@ export function PayrollSummaryPage() {
   const dateFrom = dateFromOverride ?? defaultDateFrom
   const dateTo = dateToOverride ?? defaultDateTo
 
-  // Date-range scope is applied BEFORE the existing client-side
-  // filters. Per-location sales tiles read from this set so they
-  // respect the date range without being narrowed by Location / Week /
-  // Search filters (per requirements).
   const dateScopedRows = useMemo(
     () => filterRowsByPayWeekDateRange(sourceRows, dateFrom, dateTo),
     [sourceRows, dateFrom, dateTo],
@@ -120,11 +102,6 @@ export function PayrollSummaryPage() {
     return aggregateWeeklyCommissionSummaryByStaffWeek(filteredRows)
   }, [filteredRows, splitByLocation])
 
-  // Per-location SALES (EX GST) tiles for My Sales. One tile per data
-  // source (typically TAKAPUNA + OREWA). Totals come from the
-  // date-scoped rows so they reflect the date range only — Location /
-  // Week / Search filters do not narrow them. Hidden completely if the
-  // data sources RPC returned nothing.
   const perLocationSalesTiles = useMemo(
     () => buildPerLocationSalesExtraTiles(dataSources, dateScopedRows),
     [dataSources, dateScopedRows],
@@ -143,6 +120,27 @@ export function PayrollSummaryPage() {
     setDateFromOverride(null)
     setDateToOverride(null)
   }
+
+  const tableToolbar = (
+    <>
+      <WeeklySummaryDateRangeInputs
+        dateFrom={dateFrom}
+        dateTo={dateTo}
+        onDateFromChange={(v) => setDateFromOverride(v)}
+        onDateToChange={(v) => setDateToOverride(v)}
+        dateMin={dateExtents.min ?? undefined}
+        dateMax={dateExtents.max ?? undefined}
+        dateFromTestId="payroll-summary-toolbar-date-from"
+        dateToTestId="payroll-summary-toolbar-date-to"
+      />
+      <WeeklySummaryDataSourceLines
+        sources={dataSources}
+        listTestId="payroll-summary-data-sources"
+        lineTestIdPrefix="payroll-summary-data-source"
+        variant="toolbar"
+      />
+    </>
+  )
 
   if (isLoading) {
     return (
@@ -202,50 +200,36 @@ export function PayrollSummaryPage() {
             onSplitByLocationChange={setSplitByLocation}
             showSearch={visibility.showSearchFilter}
             showLocation={visibility.showLocationFilter}
-            dateFrom={dateFrom}
-            dateTo={dateTo}
-            onDateFromChange={(v) => setDateFromOverride(v)}
-            onDateToChange={(v) => setDateToOverride(v)}
-            dateMin={dateExtents.min ?? undefined}
-            dateMax={dateExtents.max ?? undefined}
           />
-          <WeeklySummaryDataSourceLines
-            sources={dataSources}
-            listTestId="payroll-summary-data-sources"
-            lineTestIdPrefix="payroll-summary-data-source"
+          <WeeklySummaryStats
+            rows={displayRows}
+            weeksCardLabel="Number of weeks shown"
+            commissionCardLabel="Commission"
+            showCommissionCard={visibility.showCommissionCard}
+            showSalesCard={visibility.showSalesCard}
+            showRowsShownCard={visibility.showRowsShownCard}
+            extraTiles={perLocationSalesTiles}
           />
-          {filteredRows.length === 0 ? (
-            <EmptyState
-              title="No rows match your filters"
-              description="Clear filters or adjust location and search to see summary rows."
-              testId="payroll-summary-filtered-empty"
+          <div className="mt-4">
+            <WeeklySummaryTable
+              rows={displayRows}
+              tableStructureSample={sourceRows[0] ?? null}
+              emptyBodyMessage={
+                displayRows.length === 0
+                  ? 'No rows match your filters.'
+                  : undefined
+              }
+              toolbarBeforeColumns={tableToolbar}
+              forceHiddenColumnIds={forceHiddenColumnIds}
+              showColumnPicker={visibility.showColumnPicker}
+              columnLabelOverrides={visibility.columnLabelOverrides}
+              mobileHiddenColumnIds={visibility.mobileHiddenColumnIds}
+              mobileColumnLabelOverrides={
+                visibility.mobileColumnLabelOverrides
+              }
+              mobileDetailLabel={visibility.mobileDetailLabel}
             />
-          ) : (
-            <>
-              <WeeklySummaryStats
-                rows={displayRows}
-                weeksCardLabel="Number of weeks shown"
-                commissionCardLabel="Commission"
-                showCommissionCard={visibility.showCommissionCard}
-                showSalesCard={visibility.showSalesCard}
-                showRowsShownCard={visibility.showRowsShownCard}
-                extraTiles={perLocationSalesTiles}
-              />
-              <div className="mt-4">
-                <WeeklySummaryTable
-                  rows={displayRows}
-                  forceHiddenColumnIds={forceHiddenColumnIds}
-                  showColumnPicker={visibility.showColumnPicker}
-                  columnLabelOverrides={visibility.columnLabelOverrides}
-                  mobileHiddenColumnIds={visibility.mobileHiddenColumnIds}
-                  mobileColumnLabelOverrides={
-                    visibility.mobileColumnLabelOverrides
-                  }
-                  mobileDetailLabel={visibility.mobileDetailLabel}
-                />
-              </div>
-            </>
-          )}
+          </div>
         </>
       )}
     </div>

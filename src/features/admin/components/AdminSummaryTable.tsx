@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 
@@ -24,6 +25,9 @@ type AdminSummaryTableProps = {
   rows: AdminPayrollSummaryRow[]
   /** When true, line detail links scope to one location; when false, staff across all locations. */
   splitByLocation: boolean
+  tableStructureSample?: AdminPayrollSummaryRow | null
+  emptyBodyMessage?: string
+  toolbarBeforeColumns?: ReactNode
 }
 
 function adminDetailLinesHref(
@@ -124,6 +128,9 @@ const DND_TYPE = 'application/x-admin-payroll-middle-column'
 export function AdminSummaryTable({
   rows,
   splitByLocation,
+  tableStructureSample = null,
+  emptyBodyMessage,
+  toolbarBeforeColumns,
 }: AdminSummaryTableProps) {
   const { prefs, setPrefs, reset } = useAdminPayrollSummaryColumnPreferences()
   const [draggingId, setDraggingId] = useState<AdminMiddleColumnId | null>(null)
@@ -131,7 +138,7 @@ export function AdminSummaryTable({
     null,
   )
 
-  const sample = rows[0]
+  const sample = rows[0] ?? tableStructureSample ?? null
 
   const keys = useMemo(
     () => (sample ? adminMiddleRowKeysForPreferences(sample, prefs) : []),
@@ -143,9 +150,7 @@ export function AdminSummaryTable({
     [sample, prefs],
   )
 
-  if (!rows.length) {
-    return null
-  }
+  const colSpanEmpty = 2 + visibleMiddle.length + 1
 
   function onDragStart(e: React.DragEvent, id: AdminMiddleColumnId) {
     e.dataTransfer.setData(DND_TYPE, id)
@@ -182,8 +187,17 @@ export function AdminSummaryTable({
 
   return (
     <div className="space-y-2">
-      <div className="flex justify-end">
-        <AdminSummaryColumnPicker prefs={prefs} onChange={setPrefs} onReset={reset} />
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+        {toolbarBeforeColumns != null ? (
+          <div className="flex min-w-0 flex-1 flex-col gap-3 md:flex-row md:items-start md:gap-6 lg:gap-8">
+            {toolbarBeforeColumns}
+          </div>
+        ) : (
+          <div className="min-w-0 flex-1" />
+        )}
+        <div className="flex shrink-0 justify-start sm:justify-end sm:pt-0.5">
+          <AdminSummaryColumnPicker prefs={prefs} onChange={setPrefs} onReset={reset} />
+        </div>
       </div>
       <TableScrollArea testId="admin-summary-table">
         <table className="min-w-[760px] w-full border-collapse text-left text-sm">
@@ -231,6 +245,16 @@ export function AdminSummaryTable({
             </tr>
           </thead>
           <tbody>
+            {!rows.length && emptyBodyMessage ? (
+              <tr>
+                <td
+                  colSpan={colSpanEmpty}
+                  className="border-b border-slate-100 px-4 py-8 text-center text-sm text-slate-600"
+                >
+                  {emptyBodyMessage}
+                </td>
+              </tr>
+            ) : null}
             {rows.map((row, idx) => {
               const weekRaw = row.pay_week_start
               const weekStart =
