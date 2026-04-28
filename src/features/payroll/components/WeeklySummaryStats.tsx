@@ -1,6 +1,18 @@
 import type { WeeklyCommissionSummaryRow } from '@/features/payroll/types'
 import { formatNzd } from '@/lib/formatters'
 
+/**
+ * Pre-computed extra tile rendered after the built-in cards. Used by My
+ * Sales to add per-location SALES (EX GST) tiles alongside the existing
+ * Pay Weeks / Commission cards while keeping the same responsive grid.
+ */
+export type WeeklySummaryExtraTile = {
+  key: string
+  label: string
+  /** Already-summed money value (NZD ex GST) or `null` when unknown. */
+  value: number | null
+}
+
 type WeeklySummaryStatsProps = {
   /** Rows currently shown in the table (after client-side filters). */
   rows: WeeklyCommissionSummaryRow[]
@@ -33,6 +45,14 @@ type WeeklySummaryStatsProps = {
    * already in the diagnostics line above the table.
    */
   showRowsShownCard?: boolean
+  /**
+   * Optional pre-computed money tiles rendered after the built-in
+   * cards. My Sales uses this to add per-location `SALES (EX GST) -
+   * <LOCATION>` tiles. Each tile is already summed by the caller (so
+   * the math reflects whatever scope the page deems correct, e.g.
+   * date-range only). Empty / undefined = no extra tiles.
+   */
+  extraTiles?: WeeklySummaryExtraTile[]
 }
 
 function sumActualCommission(rows: WeeklyCommissionSummaryRow[]): number | null {
@@ -90,6 +110,7 @@ export function WeeklySummaryStats({
   showCommissionCard = true,
   showSalesCard = true,
   showRowsShownCard = true,
+  extraTiles,
 }: WeeklySummaryStatsProps) {
   const weeks = distinctPayWeeks(rows)
   const commission = sumActualCommission(rows)
@@ -143,6 +164,20 @@ export function WeeklySummaryStats({
             </p>
           </div>
         ) : null}
+        {extraTiles?.map((tile) => (
+          <div
+            key={tile.key}
+            className="rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm sm:px-4 sm:py-3"
+            data-testid={`weekly-summary-extra-tile-${tile.key}`}
+          >
+            <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500 sm:text-xs">
+              {tile.label}
+            </p>
+            <p className="mt-0.5 text-lg font-semibold tabular-nums text-slate-900 sm:mt-1 sm:text-2xl">
+              {tile.value != null ? formatNzd(tile.value) : '—'}
+            </p>
+          </div>
+        ))}
       </div>
       {warnUnconfigured ? (
         <div

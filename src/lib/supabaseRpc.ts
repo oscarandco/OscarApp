@@ -10,7 +10,11 @@ import type {
   StaffMemberSearchRow,
 } from '@/features/admin/types/accessManagement'
 import type { AdminPayrollLineRow, AdminPayrollSummaryRow } from '@/features/admin/types'
-import type { WeeklyCommissionLineRow, WeeklyCommissionSummaryRow } from '@/features/payroll/types'
+import type {
+  SalesDailySheetsDataSourceRow,
+  WeeklyCommissionLineRow,
+  WeeklyCommissionSummaryRow,
+} from '@/features/payroll/types'
 import { requireSupabaseClient } from '@/lib/supabase'
 
 function toError(op: string, err: PostgrestError): Error {
@@ -49,6 +53,22 @@ export async function rpcGetMyFte(): Promise<number | null> {
   if (data == null) return null
   const n = typeof data === 'number' ? data : Number(data as string)
   return Number.isFinite(n) ? n : null
+}
+
+/**
+ * My Sales metadata: one row per active SalesDailySheets
+ * `sales_import_batches` row (source filename + location +
+ * row_count + first/last sale date). Drives the "Data source N"
+ * line and the per-location sales tiles.
+ */
+export async function rpcGetSalesDailySheetsDataSources(): Promise<
+  SalesDailySheetsDataSourceRow[]
+> {
+  const { data, error } = await requireSupabaseClient().rpc(
+    'get_sales_daily_sheets_data_sources',
+  )
+  if (error) throw toError('get_sales_daily_sheets_data_sources', error)
+  return asRows(data as SalesDailySheetsDataSourceRow[])
 }
 
 export async function rpcGetMyCommissionSummaryWeekly(): Promise<

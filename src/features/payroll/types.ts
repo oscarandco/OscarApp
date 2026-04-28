@@ -37,6 +37,24 @@ export interface WeeklyCommissionSummaryRow {
 }
 
 /**
+ * Rows from `get_sales_daily_sheets_data_sources` — one per active
+ * SalesDailySheets `sales_import_batches` row (typically one per
+ * salon location). Used by My Sales to render the "Data source N"
+ * line and per-location sales tile labels.
+ */
+export interface SalesDailySheetsDataSourceRow {
+  batch_id?: string | null
+  location_id?: string | null
+  location_code?: string | null
+  location_name?: string | null
+  source_file_name?: string | null
+  row_count?: number | string | null
+  first_sale_date?: string | null
+  last_sale_date?: string | null
+  imported_at?: string | null
+}
+
+/**
  * Rows from `get_my_commission_lines_weekly` — line-level commission detail.
  */
 export interface WeeklyCommissionLineRow {

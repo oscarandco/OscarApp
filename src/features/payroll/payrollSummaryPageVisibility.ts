@@ -105,8 +105,16 @@ export function mySalesVisibilityForRole(
         showSearchFilter: true,
         showLocationFilter: true,
         showCommissionCard: true,
-        showSalesCard: true,
-        showRowsShownCard: true,
+        // The combined "Sales (ex GST)" card is replaced on My Sales by
+        // the per-location SALES (EX GST) tiles rendered next to the
+        // existing summary cards (see `MySalesPerLocationSalesCards`),
+        // so hide the combined one for every role on My Sales. Admin
+        // payroll page passes its own props and is unaffected.
+        showSalesCard: false,
+        // Rows-shown KPI tile removed on My Sales for every role —
+        // the same figure already appears in the diagnostics line and
+        // the new per-location data-source rows.
+        showRowsShownCard: false,
         showColumnPicker: true,
         // Manager/Admin see all role-gated middle columns (Staff Paid,
         // Potential Commission, Commission payable). `pay_date` is the
