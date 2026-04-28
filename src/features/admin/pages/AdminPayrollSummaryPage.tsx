@@ -6,9 +6,11 @@ import { LoadingState } from '@/components/feedback/LoadingState'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { AdminSummaryTable } from '@/features/admin/components/AdminSummaryTable'
 import { useAdminPayrollSummaryWeekly } from '@/features/admin/hooks/useAdminPayrollSummaryWeekly'
-import { aggregateWeeklyCommissionSummaryByStaffWeek } from '@/lib/aggregateWeeklyCommissionSummaryByStaffWeek'
 import { SummaryFiltersBar } from '@/features/payroll/components/SummaryFiltersBar'
+import { WeeklySummaryDataSourceLines } from '@/features/payroll/components/WeeklySummaryDataSourceLines'
 import { WeeklySummaryStats } from '@/features/payroll/components/WeeklySummaryStats'
+import { useSalesDailySheetsDataSources } from '@/features/payroll/hooks/useSalesDailySheetsDataSources'
+import { aggregateWeeklyCommissionSummaryByStaffWeek } from '@/lib/aggregateWeeklyCommissionSummaryByStaffWeek'
 import {
   filterAdminSummaryRows,
   uniqueLocationOptions,
@@ -16,10 +18,17 @@ import {
 } from '@/lib/payrollSummaryFilters'
 import { queryErrorDetail } from '@/lib/queryError'
 import { sortSummaryRowsNewestFirst } from '@/lib/payrollSorting'
+import {
+  buildPerLocationSalesExtraTiles,
+  computeDateExtents,
+  defaultDateFromForRange,
+  filterRowsByPayWeekDateRange,
+} from '@/lib/weeklySummaryReporting'
 
 export function AdminPayrollSummaryPage() {
   const { data, isLoading, isError, error, refetch } =
     useAdminPayrollSummaryWeekly()
+  const { data: dataSources } = useSalesDailySheetsDataSources()
 
   const [locationId, setLocationId] = useState('')
   const [payWeekStart, setPayWeekStart] = useState('')
@@ -27,30 +36,53 @@ export function AdminPayrollSummaryPage() {
   const [unconfiguredOnly, setUnconfiguredOnly] = useState(false)
   const [splitByLocation, setSplitByLocation] = useState(false)
 
+  const [dateFromOverride, setDateFromOverride] = useState<string | null>(
+    null,
+  )
+  const [dateToOverride, setDateToOverride] = useState<string | null>(null)
+
   const sourceRows = useMemo(() => {
     const raw = data ?? []
     return sortSummaryRowsNewestFirst(raw)
   }, [data])
 
+  const dateExtents = useMemo(() => computeDateExtents(sourceRows), [
+    sourceRows,
+  ])
+
+  const defaultDateFrom = useMemo(
+    () => defaultDateFromForRange(dateExtents.min, dateExtents.max),
+    [dateExtents.min, dateExtents.max],
+  )
+  const defaultDateTo = dateExtents.max ?? ''
+
+  const dateFrom = dateFromOverride ?? defaultDateFrom
+  const dateTo = dateToOverride ?? defaultDateTo
+
+  const dateScopedRows = useMemo(
+    () => filterRowsByPayWeekDateRange(sourceRows, dateFrom, dateTo),
+    [sourceRows, dateFrom, dateTo],
+  )
+
   const locationOptions = useMemo(
-    () => uniqueLocationOptions(sourceRows),
-    [sourceRows],
+    () => uniqueLocationOptions(dateScopedRows),
+    [dateScopedRows],
   )
 
   const weekBeginningOptions = useMemo(
-    () => uniquePayWeekStartOptions(sourceRows),
-    [sourceRows],
+    () => uniquePayWeekStartOptions(dateScopedRows),
+    [dateScopedRows],
   )
 
   const filteredRows = useMemo(
     () =>
-      filterAdminSummaryRows(sourceRows, {
+      filterAdminSummaryRows(dateScopedRows, {
         locationId,
         search,
         payWeekStart,
         unconfiguredPaidStaffOnly: unconfiguredOnly,
       }),
-    [sourceRows, locationId, search, payWeekStart, unconfiguredOnly],
+    [dateScopedRows, locationId, search, payWeekStart, unconfiguredOnly],
   )
 
   const displayRows = useMemo(() => {
@@ -58,8 +90,19 @@ export function AdminPayrollSummaryPage() {
     return aggregateWeeklyCommissionSummaryByStaffWeek(filteredRows)
   }, [filteredRows, splitByLocation])
 
+  const perLocationSalesTiles = useMemo(
+    () => buildPerLocationSalesExtraTiles(dataSources, dateScopedRows),
+    [dataSources, dateScopedRows],
+  )
+
+  const dateRangeChanged =
+    dateFromOverride != null || dateToOverride != null
   const hasFilters = Boolean(
-    locationId || payWeekStart || search.trim() || unconfiguredOnly,
+    locationId ||
+      payWeekStart ||
+      search.trim() ||
+      unconfiguredOnly ||
+      dateRangeChanged,
   )
   const showReset = hasFilters
 
@@ -68,6 +111,8 @@ export function AdminPayrollSummaryPage() {
     setPayWeekStart('')
     setSearch('')
     setUnconfiguredOnly(false)
+    setDateFromOverride(null)
+    setDateToOverride(null)
   }
 
   if (isLoading) {
@@ -101,7 +146,8 @@ export function AdminPayrollSummaryPage() {
       <PageHeader
         title="Sales summary"
         description="Pay weeks run Monday - Sunday. Commission is finalized after Sunday; pay is the following Thursday. 
-        By default, rows combine sales and commission across locations for each pay week; use the Summary rows button to split by site. Filter to narrow the list."      />
+        By default, rows combine sales and commission across locations for each pay week; use the Summary rows button to split by site. Filter to narrow the list."
+      />
       {sourceRows.length === 0 ? (
         <EmptyState
           title="No admin payroll rows"
@@ -125,34 +171,18 @@ export function AdminPayrollSummaryPage() {
             showReset={showReset}
             splitByLocation={splitByLocation}
             onSplitByLocationChange={setSplitByLocation}
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            onDateFromChange={(v) => setDateFromOverride(v)}
+            onDateToChange={(v) => setDateToOverride(v)}
+            dateMin={dateExtents.min ?? undefined}
+            dateMax={dateExtents.max ?? undefined}
           />
-          {hasFilters ? (
-            <p
-              className="mb-4 text-xs text-slate-500"
-              data-testid="admin-summary-diagnostics"
-            >
-              Showing {displayRows.length} of {filteredRows.length} row
-              {filteredRows.length === 1 ? '' : 's'} (filters on).
-            </p>
-          ) : splitByLocation ? (
-            <p
-              className="mb-4 text-xs text-slate-500"
-              data-testid="admin-summary-diagnostics"
-            >
-              Showing {sourceRows.length} row
-              {sourceRows.length === 1 ? '' : 's'} from the admin reporting
-              function.
-            </p>
-          ) : (
-            <p
-              className="mb-4 text-xs text-slate-500"
-              data-testid="admin-summary-diagnostics"
-            >
-              Showing {displayRows.length} row
-              {displayRows.length === 1 ? '' : 's'} (one per staff member and pay
-              week, commission combined across locations).
-            </p>
-          )}
+          <WeeklySummaryDataSourceLines
+            sources={dataSources}
+            listTestId="admin-summary-data-sources"
+            lineTestIdPrefix="admin-summary-data-source"
+          />
           {filteredRows.length === 0 ? (
             <EmptyState
               title="No rows match your filters"
@@ -163,10 +193,14 @@ export function AdminPayrollSummaryPage() {
             <>
               <WeeklySummaryStats
                 rows={displayRows}
+                weeksCardLabel="Number of weeks shown"
                 unconfiguredFilterProps={{
                   active: unconfiguredOnly,
                   onToggle: () => setUnconfiguredOnly((v) => !v),
                 }}
+                showSalesCard={false}
+                showRowsShownCard={false}
+                extraTiles={perLocationSalesTiles}
               />
               <div className="mt-4">
                 <AdminSummaryTable

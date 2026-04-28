@@ -7,17 +7,13 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { useAccessProfile } from '@/features/access/accessContext'
 import { resolveRole } from '@/features/access/pageAccess'
 import { SummaryFiltersBar } from '@/features/payroll/components/SummaryFiltersBar'
-import {
-  WeeklySummaryStats,
-  type WeeklySummaryExtraTile,
-} from '@/features/payroll/components/WeeklySummaryStats'
+import { WeeklySummaryDataSourceLines } from '@/features/payroll/components/WeeklySummaryDataSourceLines'
+import { WeeklySummaryStats } from '@/features/payroll/components/WeeklySummaryStats'
 import { WeeklySummaryTable } from '@/features/payroll/components/WeeklySummaryTable'
 import { useMyWeeklyCommissionSummary } from '@/features/payroll/hooks/useMyWeeklyCommissionSummary'
 import { useSalesDailySheetsDataSources } from '@/features/payroll/hooks/useSalesDailySheetsDataSources'
 import { mySalesVisibilityForRole } from '@/features/payroll/payrollSummaryPageVisibility'
-import type { WeeklyCommissionSummaryRow } from '@/features/payroll/types'
 import { aggregateWeeklyCommissionSummaryByStaffWeek } from '@/lib/aggregateWeeklyCommissionSummaryByStaffWeek'
-import { formatDateLabel } from '@/lib/formatters'
 import {
   filterStylistSummaryRows,
   uniqueLocationOptions,
@@ -25,44 +21,12 @@ import {
 } from '@/lib/payrollSummaryFilters'
 import { queryErrorDetail } from '@/lib/queryError'
 import { sortSummaryRowsNewestFirst } from '@/lib/payrollSorting'
-
-/**
- * ISO `YYYY-MM-DD` for the earliest available pay-week start across the
- * loaded summary rows, and for the latest pay-week start. Both are
- * `null` when the rows array is empty / has no parseable dates.
- */
-function computeDateExtents(rows: WeeklyCommissionSummaryRow[]): {
-  min: string | null
-  max: string | null
-} {
-  let min: string | null = null
-  let max: string | null = null
-  for (const r of rows) {
-    const w = r.pay_week_start ? String(r.pay_week_start).trim() : ''
-    if (!w) continue
-    if (min == null || w < min) min = w
-    if (max == null || w > max) max = w
-  }
-  return { min, max }
-}
-
-/**
- * Default `dateFrom` = exactly one year before `dateMax` clamped up to
- * `dateMin` so we never serve a placeholder before the first available
- * data point. Returns `''` if no max is known.
- */
-function defaultDateFromForRange(
-  min: string | null,
-  max: string | null,
-): string {
-  if (!max) return ''
-  const m = new Date(`${max}T00:00:00Z`)
-  if (Number.isNaN(m.getTime())) return min ?? ''
-  m.setUTCFullYear(m.getUTCFullYear() - 1)
-  let candidate = m.toISOString().slice(0, 10)
-  if (min && candidate < min) candidate = min
-  return candidate
-}
+import {
+  buildPerLocationSalesExtraTiles,
+  computeDateExtents,
+  defaultDateFromForRange,
+  filterRowsByPayWeekDateRange,
+} from '@/lib/weeklySummaryReporting'
 
 export function PayrollSummaryPage() {
   const { data, isLoading, isError, error, refetch } =
@@ -126,16 +90,10 @@ export function PayrollSummaryPage() {
   // filters. Per-location sales tiles read from this set so they
   // respect the date range without being narrowed by Location / Week /
   // Search filters (per requirements).
-  const dateScopedRows = useMemo(() => {
-    if (!dateFrom && !dateTo) return sourceRows
-    return sourceRows.filter((r) => {
-      const w = r.pay_week_start ? String(r.pay_week_start).trim() : ''
-      if (!w) return true
-      if (dateFrom && w < dateFrom) return false
-      if (dateTo && w > dateTo) return false
-      return true
-    })
-  }, [sourceRows, dateFrom, dateTo])
+  const dateScopedRows = useMemo(
+    () => filterRowsByPayWeekDateRange(sourceRows, dateFrom, dateTo),
+    [sourceRows, dateFrom, dateTo],
+  )
 
   const locationOptions = useMemo(
     () => uniqueLocationOptions(dateScopedRows),
@@ -167,36 +125,10 @@ export function PayrollSummaryPage() {
   // date-scoped rows so they reflect the date range only — Location /
   // Week / Search filters do not narrow them. Hidden completely if the
   // data sources RPC returned nothing.
-  const perLocationSalesTiles = useMemo<WeeklySummaryExtraTile[]>(() => {
-    const sources = dataSources ?? []
-    if (sources.length === 0) return []
-    const sumByLocationId = new Map<string, number>()
-    let foundAny = false
-    for (const r of dateScopedRows) {
-      const id = r.location_id ? String(r.location_id).trim() : ''
-      if (!id) continue
-      const v = r.total_sales_ex_gst
-      if (v == null || v === '') continue
-      const n = typeof v === 'number' ? v : Number(v)
-      if (!Number.isFinite(n)) continue
-      sumByLocationId.set(id, (sumByLocationId.get(id) ?? 0) + n)
-      foundAny = true
-    }
-    return sources
-      .filter((s) => s.location_id && String(s.location_id).trim() !== '')
-      .map((s) => {
-        const id = String(s.location_id).trim()
-        const labelLocation =
-          s.location_name && String(s.location_name).trim() !== ''
-            ? String(s.location_name).trim().toUpperCase()
-            : (s.location_code ?? id).toUpperCase()
-        return {
-          key: `sales-ex-gst-${id}`,
-          label: `Sales (ex GST) - ${labelLocation}`,
-          value: foundAny ? sumByLocationId.get(id) ?? 0 : null,
-        }
-      })
-  }, [dataSources, dateScopedRows])
+  const perLocationSalesTiles = useMemo(
+    () => buildPerLocationSalesExtraTiles(dataSources, dateScopedRows),
+    [dataSources, dateScopedRows],
+  )
 
   const dateRangeChanged =
     dateFromOverride != null || dateToOverride != null
@@ -277,38 +209,11 @@ export function PayrollSummaryPage() {
             dateMin={dateExtents.min ?? undefined}
             dateMax={dateExtents.max ?? undefined}
           />
-          {(dataSources ?? []).length > 0 ? (
-            <ul
-              className="mb-4 space-y-1 text-xs text-slate-600"
-              data-testid="payroll-summary-data-sources"
-            >
-              {(dataSources ?? []).map((src, idx) => {
-                const name =
-                  (src.source_file_name &&
-                    String(src.source_file_name).trim()) ||
-                  'Unknown source file'
-                const rowCount =
-                  src.row_count == null ? 0 : Number(src.row_count)
-                const first = formatDateLabel(src.first_sale_date ?? null)
-                const last = formatDateLabel(src.last_sale_date ?? null)
-                return (
-                  <li
-                    key={src.batch_id ?? `${name}-${idx}`}
-                    data-testid={`payroll-summary-data-source-${idx + 1}`}
-                  >
-                    <span className="font-medium text-slate-700">
-                      Data source {idx + 1}:
-                    </span>{' '}
-                    {name} —{' '}
-                    {Number.isFinite(rowCount)
-                      ? rowCount.toLocaleString()
-                      : '0'}{' '}
-                    rows, first row {first}, last row {last}
-                  </li>
-                )
-              })}
-            </ul>
-          ) : null}
+          <WeeklySummaryDataSourceLines
+            sources={dataSources}
+            listTestId="payroll-summary-data-sources"
+            lineTestIdPrefix="payroll-summary-data-source"
+          />
           {filteredRows.length === 0 ? (
             <EmptyState
               title="No rows match your filters"
