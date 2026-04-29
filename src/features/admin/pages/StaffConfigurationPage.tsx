@@ -125,12 +125,12 @@ function StaffNavRow({
             : 'border-transparent bg-slate-50/80 text-slate-800 hover:border-slate-200 hover:bg-white'
         }`}
       >
-        <span className="flex min-w-0 flex-1 items-center gap-2 text-left">
-          {/* Fixed slot so names line up whether O, T, or no primary location */}
-          <span className="flex h-5 w-6 shrink-0 items-center justify-center">
+        <span className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
+          {/* Fixed 16px slot so names line up whether O, T, or no primary location */}
+          <span className="flex h-4 w-4 shrink-0 items-center justify-center">
             {locBadge === 'O' ? (
               <span
-                className="inline-flex h-5 w-6 items-center justify-center rounded-md bg-violet-800 text-[10px] font-bold leading-none text-white shadow-sm ring-1 ring-inset ring-violet-950/25"
+                className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-violet-950/90 text-[9px] font-semibold leading-none text-violet-50"
                 title="Orewa"
                 aria-label="Primary location: Orewa"
               >
@@ -138,7 +138,7 @@ function StaffNavRow({
               </span>
             ) : locBadge === 'T' ? (
               <span
-                className="inline-flex h-5 w-6 items-center justify-center rounded-md bg-sky-500 text-[10px] font-bold leading-none text-white shadow-sm ring-1 ring-inset ring-sky-800/30"
+                className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-sky-800 text-[9px] font-semibold leading-none text-sky-100"
                 title="Takapuna"
                 aria-label="Primary location: Takapuna"
               >
