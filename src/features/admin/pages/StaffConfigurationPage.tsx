@@ -130,7 +130,7 @@ function StaffNavRow({
           <span className="flex h-4 w-4 shrink-0 items-center justify-center">
             {locBadge === 'O' ? (
               <span
-                className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-violet-950/90 text-[9px] font-semibold leading-none text-violet-50"
+                className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-violet-600 text-[9px] font-semibold leading-none text-white"
                 title="Orewa"
                 aria-label="Primary location: Orewa"
               >
