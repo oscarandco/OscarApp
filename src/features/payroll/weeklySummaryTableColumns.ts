@@ -138,7 +138,7 @@ export function ensureWorkPerformedByLeftOfStylistPaid(
   const without = order.filter((id) => id !== wp)
   const insertAt = without.indexOf(sp)
   if (insertAt < 0) return order
-  const next = [...without]
+  const next: MiddleColumnId[] = [...without]
   next.splice(insertAt, 0, wp)
   return next
 }
