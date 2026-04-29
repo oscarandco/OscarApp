@@ -45,11 +45,9 @@ import { rpcListActiveLocationsForImport } from '@/lib/supabaseRpc'
  * a picked id).
  */
 /**
- * KPIs that are intentionally hidden from the self/staff dashboard
- * view for non-elevated callers (stylist / assistant). Manager /
- * admin views are unaffected — this is a display-only filter and
- * the backend still returns the rows so elevated users can switch
- * scopes without a reload.
+ * KPIs hidden from the compact individual-staff card view (non-elevated
+ * self/staff, and elevated admin/manager when scope is Staff with a
+ * specific member selected). Display-only; snapshot RPCs unchanged.
  *
  * `new_client_retention_6m` / `new_client_retention_12m` were
  * previously hidden here while their math was being reworked; they
@@ -119,6 +117,10 @@ export function KpiDashboardPage() {
     (effectiveScope !== 'location' || !!effectiveLocationId) &&
     (effectiveScope !== 'staff' || !elevated || !!effectiveStaffId)
 
+  /** Staff scope with a concrete subject: self (non-elevated) or picked staff (elevated). */
+  const isIndividualStaffKpiView =
+    effectiveScope === 'staff' && (!elevated || !!effectiveStaffId)
+
   const { data, isLoading, isFetching, isError, error, refetch } =
     useKpiSnapshot({
       periodStart: filters.periodStart,
@@ -187,18 +189,13 @@ export function KpiDashboardPage() {
     const sorted = [...rows].sort((a, b) =>
       kpiSortComparator(a.kpi_code, b.kpi_code),
     )
-    // Non-elevated users (stylist / assistant) are always pinned to
-    // self/staff scope on this page, so hiding here is equivalent to
-    // "hide on self/staff view for stylist + assistant" and never
-    // affects manager / admin views. The detail-panel + drilldown
-    // reconciliation below already reselects the first surviving
-    // KPI when the prior selection drops out of the set, so no
-    // extra wiring is needed.
-    if (!elevated) {
+    // Hide stylist_profitability (and any future set members) on the
+    // compact individual-staff card grid only.
+    if (isIndividualStaffKpiView) {
       return sorted.filter((r) => !SELF_VIEW_HIDDEN_KPI_CODES.has(r.kpi_code))
     }
     return sorted
-  }, [data, elevated])
+  }, [data, isIndividualStaffKpiView])
 
   const first = sortedRows[0]
 
@@ -354,12 +351,10 @@ export function KpiDashboardPage() {
       {filtersBar}
       <div
         className={
-          // Elevated users (manager / admin) keep the two-column
-          // split with the Selected KPI side panel. Stylist /
-          // assistant views drop the side column entirely. Self/staff
-          // grid uses up to five columns at xl so all KPI cards fit one
-          // row on typical laptop/desktop widths (see kpi-dashboard-grid).
-          elevated
+          // Elevated business/location: two-column layout + detail panel.
+          // Individual staff view (self or picked staff): same single
+          // column as stylist/assistant — five cards wide at xl.
+          elevated && !isIndividualStaffKpiView
             ? 'flex flex-col gap-4 lg:grid lg:items-start lg:gap-5 lg:grid-cols-[minmax(0,1fr)_22rem]'
             : 'flex flex-col gap-4'
         }
@@ -375,7 +370,7 @@ export function KpiDashboardPage() {
         ) : null}
         <div
           className={
-            elevated
+            elevated && !isIndividualStaffKpiView
               ? 'grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3'
               : 'grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5'
           }
@@ -396,7 +391,9 @@ export function KpiDashboardPage() {
             />
           ))}
         </div>
-        {elevated && selectedRow ? <KpiDetailPanel row={selectedRow} /> : null}
+        {elevated && selectedRow && !isIndividualStaffKpiView ? (
+          <KpiDetailPanel row={selectedRow} />
+        ) : null}
       </div>
       {selectedRow ? (
         <KpiDrilldownTable
