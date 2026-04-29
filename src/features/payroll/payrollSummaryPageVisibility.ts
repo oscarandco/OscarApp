@@ -10,7 +10,7 @@ import type { MiddleColumnId } from '@/features/payroll/weeklySummaryTableColumn
  *   • which filters render (Search, Location)
  *   • which summary cards render (Commission earnt, Sales)
  *   • which table middle columns are force-hidden regardless of the
- *     stored column-picker preferences (Staff Paid, Potential
+ *     stored column-picker preferences (Stylist Paid, Potential
  *     Commission, Commission payable)
  *
  * Role mapping note — the spec uses the label "apprentice" but the
@@ -116,7 +116,7 @@ export function mySalesVisibilityForRole(
         // the new per-location data-source rows.
         showRowsShownCard: false,
         showColumnPicker: true,
-        // Manager/Admin see all role-gated middle columns (Staff Paid,
+        // Manager/Admin see all role-gated middle columns (Stylist Paid,
         // Potential Commission, Commission payable). `pay_date` is the
         // only column hard-removed across every role on My Sales (see
         // requirements: "remove these columns entirely: Pay Week, Pay
@@ -142,7 +142,7 @@ export function mySalesVisibilityForRole(
         showSalesCard: false,
         showRowsShownCard: false,
         showColumnPicker: false,
-        // Stylists hide Pay Date, Staff Paid AND Potential Commission;
+        // Stylists hide Pay Date, Stylist Paid AND Potential Commission;
         // their Commission Payable column is then renamed to just
         // `Commission` via the overrides below.
         hiddenTableColumnIds: new Set<MiddleColumnId>([
@@ -176,7 +176,7 @@ export function mySalesVisibilityForRole(
         showRowsShownCard: false,
         showColumnPicker: false,
         // Assistant now sees Potential Commission (renamed via override
-        // below) but still hides Commission Payable + Staff Paid + Pay
+        // below) but still hides Commission Payable + Stylist Paid + Pay
         // Date.
         hiddenTableColumnIds: new Set<MiddleColumnId>([
           'pay_date',

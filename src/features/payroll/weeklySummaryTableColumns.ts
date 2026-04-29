@@ -9,6 +9,7 @@ export type MiddleColumnId =
   | 'location'
   | 'derived_staff_paid_id'
   | 'derived_staff_paid_display_name'
+  | 'work_performed_by'
   | 'derived_staff_paid_full_name'
   | 'derived_staff_paid_remuneration_plan'
   | 'total_sales_ex_gst'
@@ -32,6 +33,7 @@ const ALL_MIDDLE_IDS: readonly MiddleColumnId[] = [
   'location',
   'derived_staff_paid_id',
   'derived_staff_paid_display_name',
+  'work_performed_by',
   'derived_staff_paid_full_name',
   'derived_staff_paid_remuneration_plan',
   'row_count',
@@ -65,7 +67,8 @@ export const COLUMN_LABEL: Record<MiddleColumnId, string> = {
   location: 'Location',
   derived_staff_paid_id: 'Derived staff paid ID',
   derived_staff_paid_display_name: 'Derived staff paid display name',
-  derived_staff_paid_full_name: 'Staff Paid',
+  work_performed_by: 'Work Performed By',
+  derived_staff_paid_full_name: 'Stylist Paid',
   derived_staff_paid_remuneration_plan: 'Rem Plan',
   total_sales_ex_gst: 'Total Sales (ex GST)',
   row_count: 'Line count',
@@ -94,6 +97,7 @@ export const COLUMN_LABEL: Record<MiddleColumnId, string> = {
 const DEFAULT_VISIBLE_MIDDLE: readonly MiddleColumnId[] = [
   'pay_week_end',
   'location',
+  'work_performed_by',
   'derived_staff_paid_full_name',
   'derived_staff_paid_remuneration_plan',
   'total_sales_ex_gst',
@@ -118,9 +122,30 @@ export type ColumnPreferences = {
   hidden: MiddleColumnId[]
 }
 
+/**
+ * When both columns exist in the saved order, keep Work Performed By
+ * immediately left of Stylist Paid (`derived_staff_paid_full_name`).
+ */
+export function ensureWorkPerformedByLeftOfStylistPaid(
+  order: MiddleColumnId[],
+): MiddleColumnId[] {
+  const wp: MiddleColumnId = 'work_performed_by'
+  const sp: MiddleColumnId = 'derived_staff_paid_full_name'
+  if (!order.includes(wp) || !order.includes(sp)) return order
+  const iWp = order.indexOf(wp)
+  const iSp = order.indexOf(sp)
+  if (iWp === iSp - 1) return order
+  const without = order.filter((id) => id !== wp)
+  const insertAt = without.indexOf(sp)
+  if (insertAt < 0) return order
+  const next = [...without]
+  next.splice(insertAt, 0, wp)
+  return next
+}
+
 export function defaultColumnPreferences(): ColumnPreferences {
   return {
-    order: [...DEFAULT_MIDDLE_ORDER],
+    order: ensureWorkPerformedByLeftOfStylistPaid([...DEFAULT_MIDDLE_ORDER]),
     hidden: [...DEFAULT_HIDDEN_MIDDLE],
   }
 }
@@ -161,7 +186,10 @@ export function parseStoredPreferences(raw: string | null): ColumnPreferences | 
       }
     }
     const hiddenSet = new Set(hidden.filter((id) => !MIDDLE_LOCKED_VISIBLE.has(id)))
-    return { order: deduped, hidden: [...hiddenSet] }
+    return {
+      order: ensureWorkPerformedByLeftOfStylistPaid(deduped),
+      hidden: [...hiddenSet],
+    }
   } catch {
     return null
   }
@@ -221,7 +249,7 @@ export type VisibleMiddleColumn = { id: MiddleColumnId; rowKey: string }
 /**
  * `extraHidden` is a set of middle column ids that must always be
  * filtered out, *layered on top of* the user's saved preferences. Use
- * it for role-based hides (e.g. stylists never see Staff Paid) and
+ * it for role-based hides (e.g. stylists never see Stylist Paid) and
  * filter-driven hides (e.g. Location hides when Summary rows = Combined)
  * — anything where the visibility decision is owned by the page rather
  * than by the column-picker preferences.

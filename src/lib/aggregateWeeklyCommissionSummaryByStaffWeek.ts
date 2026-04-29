@@ -112,6 +112,21 @@ function mergeGroup(group: WeeklyCommissionSummaryRow[]): WeeklyCommissionSummar
     (r) => r.has_unconfigured_paid_staff_rows === true,
   )
 
+  const workParts = new Set<string>()
+  for (const r of sorted) {
+    const w = r.work_performed_by
+    if (w == null || String(w).trim() === '') continue
+    for (const part of String(w).split(',')) {
+      const t = part.trim()
+      if (t !== '') workParts.add(t)
+    }
+  }
+  if (workParts.size > 0) {
+    base.work_performed_by = [...workParts].sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: 'base' }),
+    ).join(', ')
+  }
+
   return base
 }
 

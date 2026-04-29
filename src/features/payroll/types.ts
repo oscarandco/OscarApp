@@ -24,8 +24,9 @@ export interface WeeklyCommissionSummaryRow {
   review_line_count?: number | string | null
   total_sales_ex_gst?: number | string | null
   /**
-   * Admin summary only: distinct `work_display_name` values from line rows
-   * in this pay week × location × paid staff group (comma-separated).
+   * Distinct `work_display_name` values from line rows in this pay week ×
+   * location × paid staff group (comma-separated), from
+   * `v_admin_payroll_summary_weekly` via `v_stylist_commission_summary_weekly_final`.
    */
   work_performed_by?: string | null
   total_actual_commission_ex_gst?: number | string | null

@@ -41,7 +41,7 @@ type WeeklySummaryTableProps = {
   /**
    * Middle column ids that must always be hidden, layered on top of
    * the user's saved column-picker preferences. Owned by the page so
-   * role-based hides (Staff Paid, Potential Commission, Commission
+   * role-based hides (Stylist Paid, Potential Commission, Commission
    * payable) and filter-driven hides (Location when Summary rows =
    * Combined) stay in `PayrollSummaryPage` instead of leaking into the
    * shared column-preferences storage.
