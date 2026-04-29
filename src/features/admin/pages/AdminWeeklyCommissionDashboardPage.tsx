@@ -6,6 +6,7 @@ import { ErrorState } from '@/components/feedback/ErrorState'
 import { LoadingState } from '@/components/feedback/LoadingState'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { TableScrollArea } from '@/components/ui/TableScrollArea'
+import { TableColumnSortHeader } from '@/components/ui/TableColumnSortHeader'
 import { AdminPayrollLinesPreviewModal } from '@/features/admin/components/AdminPayrollLinesPreviewModal'
 import { StaffLocationNavBadge } from '@/features/admin/components/StaffLocationNavBadge'
 import { useAdminPayrollLinesWeekly } from '@/features/admin/hooks/useAdminPayrollLinesWeekly'
@@ -24,6 +25,11 @@ import {
   uniquePayWeekStartOptions,
 } from '@/lib/payrollSummaryFilters'
 import { queryErrorDetail } from '@/lib/queryError'
+import type { ColumnSortState } from '@/lib/tableSort'
+import {
+  sortWeeklyDashboardTableARows,
+  sortWeeklyDashboardTableBRows,
+} from '@/lib/weeklyDashboardTableSort'
 
 const thBase =
   'border-b border-slate-200 px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 sm:px-4 sm:py-3 sm:normal-case sm:text-sm sm:tracking-normal sm:text-slate-700'
@@ -67,6 +73,8 @@ export function AdminWeeklyCommissionDashboardPage() {
     staffPaidId: string | null
   } | null>(null)
   const [cardFilter, setCardFilter] = useState<DashboardCardFilter | null>(null)
+  const [tableASort, setTableASort] = useState<ColumnSortState>(null)
+  const [tableBSort, setTableBSort] = useState<ColumnSortState>(null)
 
   useEffect(() => {
     if (selectedWeek != null) return
@@ -78,6 +86,8 @@ export function AdminWeeklyCommissionDashboardPage() {
   useEffect(() => {
     setLinePreview(null)
     setCardFilter(null)
+    setTableASort(null)
+    setTableBSort(null)
   }, [selectedWeek])
 
   const linesQuery = useAdminPayrollLinesWeekly(selectedWeek ?? undefined)
@@ -105,6 +115,16 @@ export function AdminWeeklyCommissionDashboardPage() {
   const tableB = useMemo(
     () => aggregateTableBByStaff(linesForTables, locations),
     [linesForTables, locations],
+  )
+
+  const displayTableA = useMemo(
+    () => sortWeeklyDashboardTableARows(tableA, tableASort),
+    [tableA, tableASort],
+  )
+
+  const displayTableB = useMemo(
+    () => sortWeeklyDashboardTableBRows(tableB, tableBSort),
+    [tableB, tableBSort],
   )
 
   const totalsA = useMemo(
@@ -300,11 +320,50 @@ export function AdminWeeklyCommissionDashboardPage() {
               <table className="min-w-full border-collapse">
                 <thead>
                   <tr>
-                    <th className={thBase}>Stylist paid</th>
-                    <th className={`${thBase} text-right`}>Prof. Prod.</th>
-                    <th className={`${thBase} text-right`}>Retail Prod.</th>
-                    <th className={`${thBase} text-right`}>Services</th>
-                    <th className={`${thBase} text-right`}>Total</th>
+                    <th className={thBase} scope="col">
+                      <TableColumnSortHeader
+                        label="Stylist paid"
+                        columnKey="staffPaid"
+                        sortState={tableASort}
+                        onSortChange={setTableASort}
+                      />
+                    </th>
+                    <th className={`${thBase} text-right`} scope="col">
+                      <TableColumnSortHeader
+                        label="Prof. Prod."
+                        columnKey="profProd"
+                        sortState={tableASort}
+                        onSortChange={setTableASort}
+                        align="right"
+                      />
+                    </th>
+                    <th className={`${thBase} text-right`} scope="col">
+                      <TableColumnSortHeader
+                        label="Retail Prod."
+                        columnKey="retailProd"
+                        sortState={tableASort}
+                        onSortChange={setTableASort}
+                        align="right"
+                      />
+                    </th>
+                    <th className={`${thBase} text-right`} scope="col">
+                      <TableColumnSortHeader
+                        label="Services"
+                        columnKey="services"
+                        sortState={tableASort}
+                        onSortChange={setTableASort}
+                        align="right"
+                      />
+                    </th>
+                    <th className={`${thBase} text-right`} scope="col">
+                      <TableColumnSortHeader
+                        label="Total"
+                        columnKey="total"
+                        sortState={tableASort}
+                        onSortChange={setTableASort}
+                        align="right"
+                      />
+                    </th>
                     <th className={thAction} aria-hidden />
                   </tr>
                 </thead>
@@ -319,7 +378,7 @@ export function AdminWeeklyCommissionDashboardPage() {
                     </tr>
                   ) : (
                     <>
-                      {tableA.map((r) => (
+                      {displayTableA.map((r) => (
                         <tr key={r.staffPaid}>
                           <td className={tdName}>
                             <span className="flex min-w-0 items-center gap-1.5">
@@ -388,10 +447,41 @@ export function AdminWeeklyCommissionDashboardPage() {
               <table className="min-w-full border-collapse">
                 <thead>
                   <tr>
-                    <th className={thBase}>Stylist paid</th>
-                    <th className={`${thBase} text-right`}>Comm Products</th>
-                    <th className={`${thBase} text-right`}>Comm Services</th>
-                    <th className={`${thBase} text-right`}>Total</th>
+                    <th className={thBase} scope="col">
+                      <TableColumnSortHeader
+                        label="Stylist paid"
+                        columnKey="staffPaid"
+                        sortState={tableBSort}
+                        onSortChange={setTableBSort}
+                      />
+                    </th>
+                    <th className={`${thBase} text-right`} scope="col">
+                      <TableColumnSortHeader
+                        label="Comm Products"
+                        columnKey="commProducts"
+                        sortState={tableBSort}
+                        onSortChange={setTableBSort}
+                        align="right"
+                      />
+                    </th>
+                    <th className={`${thBase} text-right`} scope="col">
+                      <TableColumnSortHeader
+                        label="Comm Services"
+                        columnKey="commServices"
+                        sortState={tableBSort}
+                        onSortChange={setTableBSort}
+                        align="right"
+                      />
+                    </th>
+                    <th className={`${thBase} text-right`} scope="col">
+                      <TableColumnSortHeader
+                        label="Total"
+                        columnKey="total"
+                        sortState={tableBSort}
+                        onSortChange={setTableBSort}
+                        align="right"
+                      />
+                    </th>
                     <th className={thAction} aria-hidden />
                   </tr>
                 </thead>
@@ -406,7 +496,7 @@ export function AdminWeeklyCommissionDashboardPage() {
                     </tr>
                   ) : (
                     <>
-                      {tableB.map((r) => (
+                      {displayTableB.map((r) => (
                         <tr key={r.staffPaid}>
                           <td className={tdName}>
                             <span className="flex min-w-0 items-center gap-1.5">

@@ -1,12 +1,16 @@
 import { useQuery } from '@tanstack/react-query'
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+
+import { TableColumnSortHeader } from '@/components/ui/TableColumnSortHeader'
 
 import { PayrollLineStats } from '@/features/payroll/components/PayrollLineStats'
 import type { WeeklyCommissionLineRow, WeeklyCommissionSummaryRow } from '@/features/payroll/types'
 import { filterCommissionLinesForSummaryRow } from '@/lib/payrollSummaryFilters'
 import { stylistPaidFromLine, workPerformedByFromLine } from '@/lib/payrollLineDisplay'
 import { rpcGetMyCommissionLinesWeekly } from '@/lib/supabaseRpc'
+import type { ColumnSortState } from '@/lib/tableSort'
+import { sortCommissionLinePreviewRows } from '@/lib/payrollLineTableSort'
 import {
   formatCommissionRatePercent,
   formatNzd,
@@ -48,6 +52,17 @@ export function PayrollLinesPreviewModal({
     if (!summaryRow || !linesQuery.data) return []
     return filterCommissionLinesForSummaryRow(summaryRow, linesQuery.data)
   }, [summaryRow, linesQuery.data])
+
+  const [previewSort, setPreviewSort] = useState<ColumnSortState>(null)
+
+  const sortedPreview = useMemo(
+    () => sortCommissionLinePreviewRows(filtered, previewSort),
+    [filtered, previewSort],
+  )
+
+  useEffect(() => {
+    setPreviewSort(null)
+  }, [summaryRow])
 
   useEffect(() => {
     if (!open) return
@@ -140,19 +155,85 @@ export function PayrollLinesPreviewModal({
                   <table className="w-full min-w-[880px] border-collapse text-left text-sm">
                     <thead className="bg-slate-50">
                       <tr>
-                        <th className={th}>Invoice</th>
-                        <th className={th}>Sale date</th>
-                        <th className={th}>Customer</th>
-                        <th className={th}>Product / service</th>
-                        <th className={th}>Work performed by</th>
-                        <th className={th}>Stylist paid</th>
-                        <th className={th}>Price ex GST</th>
-                        <th className={th}>Rate</th>
-                        <th className={th}>Actual commission</th>
+                        <th className={th} scope="col">
+                          <TableColumnSortHeader
+                            label="Invoice"
+                            columnKey="invoice"
+                            sortState={previewSort}
+                            onSortChange={setPreviewSort}
+                          />
+                        </th>
+                        <th className={th} scope="col">
+                          <TableColumnSortHeader
+                            label="Sale date"
+                            columnKey="sale_date"
+                            sortState={previewSort}
+                            onSortChange={setPreviewSort}
+                          />
+                        </th>
+                        <th className={th} scope="col">
+                          <TableColumnSortHeader
+                            label="Customer"
+                            columnKey="customer_name"
+                            sortState={previewSort}
+                            onSortChange={setPreviewSort}
+                          />
+                        </th>
+                        <th className={th} scope="col">
+                          <TableColumnSortHeader
+                            label="Product / service"
+                            columnKey="product_service_name"
+                            sortState={previewSort}
+                            onSortChange={setPreviewSort}
+                          />
+                        </th>
+                        <th className={th} scope="col">
+                          <TableColumnSortHeader
+                            label="Work performed by"
+                            columnKey="work_performed_by"
+                            sortState={previewSort}
+                            onSortChange={setPreviewSort}
+                          />
+                        </th>
+                        <th className={th} scope="col">
+                          <TableColumnSortHeader
+                            label="Stylist paid"
+                            columnKey="stylist_paid"
+                            sortState={previewSort}
+                            onSortChange={setPreviewSort}
+                          />
+                        </th>
+                        <th className={`${th} text-right`} scope="col">
+                          <TableColumnSortHeader
+                            label="Price ex GST"
+                            columnKey="price_ex_gst"
+                            sortState={previewSort}
+                            onSortChange={setPreviewSort}
+                            align="right"
+                          />
+                        </th>
+                        <th className={`${th} text-right`} scope="col">
+                          <TableColumnSortHeader
+                            label="Rate"
+                            columnKey="actual_commission_rate"
+                            sortState={previewSort}
+                            onSortChange={setPreviewSort}
+                            align="right"
+                          />
+                        </th>
+                        <th className={`${th} text-right`} scope="col">
+                          <TableColumnSortHeader
+                            label="Actual commission"
+                            columnKey="actual_commission"
+                            sortState={previewSort}
+                            onSortChange={setPreviewSort}
+                            align="right"
+                          />
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
-                      {filtered.map((row, index) => {
+                      {sortedPreview.map((row, index) => {
                         const raw = row as Record<string, unknown>
                         const comm =
                           raw.actual_commission_amt_ex_gst ??

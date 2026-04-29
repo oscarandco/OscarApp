@@ -2,6 +2,10 @@ import type { ReactNode } from 'react'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 
+import {
+  ColumnReorderHandle,
+  TableColumnSortHeader,
+} from '@/components/ui/TableColumnSortHeader'
 import { PayrollLinesPreviewModal } from '@/features/payroll/components/PayrollLinesPreviewModal'
 import { WeeklySummaryColumnPicker } from '@/features/payroll/components/WeeklySummaryColumnPicker'
 import { usePayrollSummaryColumnPreferences } from '@/features/payroll/hooks/usePayrollSummaryColumnPreferences'
@@ -16,6 +20,11 @@ import { TableScrollArea } from '@/components/ui/TableScrollArea'
 import type { WeeklyCommissionSummaryRow } from '@/features/payroll/types'
 import { isEmptyish, formatScalarText } from '@/lib/cellValue'
 import { formatNzd, formatShortDate } from '@/lib/formatters'
+import type { ColumnSortState } from '@/lib/tableSort'
+import {
+  sortStylistCommissionSummaryRows,
+  STYLIST_SUMMARY_SORT_PAY_WEEK_START,
+} from '@/lib/weeklyCommissionSummarySort'
 
 type WeeklySummaryTableProps = {
   rows: WeeklyCommissionSummaryRow[]
@@ -186,8 +195,14 @@ export function WeeklySummaryTable({
     useState<WeeklyCommissionSummaryRow | null>(null)
   const [draggingId, setDraggingId] = useState<MiddleColumnId | null>(null)
   const [dropTargetId, setDropTargetId] = useState<MiddleColumnId | null>(null)
+  const [summarySort, setSummarySort] = useState<ColumnSortState>(null)
 
   const sample = rows[0] ?? tableStructureSample ?? null
+
+  const displayRows = useMemo(
+    () => sortStylistCommissionSummaryRows(rows, summarySort),
+    [rows, summarySort],
+  )
 
   const visibleMiddle = useMemo(
     () =>
@@ -265,7 +280,12 @@ export function WeeklySummaryTable({
                 scope="col"
                 className={`${thBase} sticky left-0 z-30 min-w-[5.25rem] bg-slate-50 sm:min-w-[8.5rem]`}
               >
-                Start of week
+                <TableColumnSortHeader
+                  label="Start of week"
+                  columnKey={STYLIST_SUMMARY_SORT_PAY_WEEK_START}
+                  sortState={summarySort}
+                  onSortChange={setSummarySort}
+                />
               </th>
               {visibleMiddle.map(({ id, rowKey: k }) => {
                 const isDragging = draggingId === id
@@ -279,29 +299,29 @@ export function WeeklySummaryTable({
                   <th
                     key={k}
                     scope="col"
-                    draggable
-                    onDragStart={(e) => onDragStart(e, id)}
-                    onDragOver={(e) => onDragOverCol(e, id)}
-                    onDrop={(e) => onDropOnCol(e, id)}
-                    onDragEnd={onDragEnd}
-                    title="Drag to reorder column"
-                    className={`${thBase} cursor-grab select-none active:cursor-grabbing ${
+                    className={`${thBase} ${
                       mobileHidden ? 'hidden lg:table-cell' : ''
-                    } ${isDragging ? 'opacity-50' : ''} ${
-                      isDropTarget
-                        ? 'bg-violet-100/90 ring-1 ring-inset ring-violet-300'
-                        : ''
                     }`}
-                    aria-grabbed={isDragging}
                   >
-                    {mobileLabel != null ? (
-                      <>
-                        <span className="lg:hidden">{mobileLabel}</span>
-                        <span className="hidden lg:inline">{desktopLabel}</span>
-                      </>
-                    ) : (
-                      desktopLabel
-                    )}
+                    <div className="flex min-w-0 items-center gap-0.5">
+                      <div className="min-w-0 flex-1">
+                        <TableColumnSortHeader
+                          label={desktopLabel}
+                          columnKey={k}
+                          sortState={summarySort}
+                          onSortChange={setSummarySort}
+                          mobileLabel={mobileLabel ?? undefined}
+                        />
+                      </div>
+                      <ColumnReorderHandle
+                        dragging={isDragging}
+                        isDropTarget={isDropTarget}
+                        onDragStart={(e) => onDragStart(e, id)}
+                        onDragOver={(e) => onDragOverCol(e, id)}
+                        onDrop={(e) => onDropOnCol(e, id)}
+                        onDragEnd={onDragEnd}
+                      />
+                    </div>
                   </th>
                 )
               })}
@@ -328,7 +348,7 @@ export function WeeklySummaryTable({
                 </td>
               </tr>
             ) : null}
-            {rows.map((row, idx) => {
+            {displayRows.map((row, idx) => {
               const weekRaw = row.pay_week_start
               const weekStart =
                 weekRaw != null && String(weekRaw).trim() !== ''

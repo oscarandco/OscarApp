@@ -1,5 +1,9 @@
 import { useMemo, useState } from 'react'
 
+import {
+  ColumnReorderHandle,
+  TableColumnSortHeader,
+} from '@/components/ui/TableColumnSortHeader'
 import { PayrollLineColumnPicker } from '@/features/payroll/components/PayrollLineColumnPicker'
 import { usePayrollLineColumnPreferences } from '@/features/payroll/hooks/usePayrollLineColumnPreferences'
 import {
@@ -20,6 +24,8 @@ import {
   tableColumnTitle,
 } from '@/lib/formatters'
 import { stylistPaidFromLine, workPerformedByFromLine } from '@/lib/payrollLineDisplay'
+import type { ColumnSortState } from '@/lib/tableSort'
+import { sortPayrollLineRows } from '@/lib/payrollLineTableSort'
 
 type PayrollLineTableProps = {
   rows: WeeklyCommissionLineRow[]
@@ -124,8 +130,14 @@ export function PayrollLineTable({ rows }: PayrollLineTableProps) {
   const { prefs, setPrefs, reset } = usePayrollLineColumnPreferences()
   const [draggingId, setDraggingId] = useState<LineColumnId | null>(null)
   const [dropTargetId, setDropTargetId] = useState<LineColumnId | null>(null)
+  const [lineSort, setLineSort] = useState<ColumnSortState>(null)
 
   const sample = rows[0]
+
+  const displayRows = useMemo(
+    () => sortPayrollLineRows(rows, lineSort),
+    [rows, lineSort],
+  )
 
   const keys = useMemo(
     () => (sample ? lineRowKeysForPreferences(sample, prefs) : []),
@@ -187,33 +199,44 @@ export function PayrollLineTable({ rows }: PayrollLineTableProps) {
                 const isDragging = draggingId === id
                 const isDropTarget =
                   dropTargetId === id && draggingId != null && draggingId !== id
+                const isNumeric =
+                  k.includes('amount') ||
+                  k.includes('commission') ||
+                  k.includes('price_ex_gst') ||
+                  k.includes('quantity') ||
+                  k === 'actual_commission_rate'
                 return (
                   <th
                     key={`${id}-${k}`}
                     scope="col"
-                    draggable
-                    onDragStart={(e) => onDragStart(e, id)}
-                    onDragOver={(e) => onDragOverCol(e, id)}
-                    onDrop={(e) => onDropOnCol(e, id)}
-                    onDragEnd={onDragEnd}
-                    title="Drag to reorder column"
-                    className={`${thBase} min-w-[6rem] cursor-grab select-none active:cursor-grabbing ${
-                      isDragging ? 'opacity-50' : ''
-                    } ${
-                      isDropTarget
-                        ? 'bg-violet-100/90 ring-1 ring-inset ring-violet-300'
-                        : ''
-                    }`}
-                    aria-grabbed={isDragging}
+                    className={`${thBase} min-w-[6rem] ${isNumeric ? 'text-right' : ''}`}
                   >
-                    {headerLabel(id, k)}
+                    <div className="flex min-w-0 items-center gap-0.5">
+                      <div className="min-w-0 flex-1">
+                        <TableColumnSortHeader
+                          label={headerLabel(id, k)}
+                          columnKey={k}
+                          sortState={lineSort}
+                          onSortChange={setLineSort}
+                          align={isNumeric ? 'right' : 'left'}
+                        />
+                      </div>
+                      <ColumnReorderHandle
+                        dragging={isDragging}
+                        isDropTarget={isDropTarget}
+                        onDragStart={(e) => onDragStart(e, id)}
+                        onDragOver={(e) => onDragOverCol(e, id)}
+                        onDrop={(e) => onDropOnCol(e, id)}
+                        onDragEnd={onDragEnd}
+                      />
+                    </div>
                   </th>
                 )
               })}
             </tr>
           </thead>
           <tbody>
-            {rows.map((row, idx) => (
+            {displayRows.map((row, idx) => (
               <tr
                 key={stableLineRowKey(row, idx)}
                 className="border-b border-slate-100 odd:bg-white even:bg-slate-50/90 hover:bg-violet-50/60"

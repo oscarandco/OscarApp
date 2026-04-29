@@ -64,6 +64,8 @@ export function PayrollSummaryPage() {
   const { normalized } = useAccessProfile()
   const role = useMemo(() => resolveRole(normalized), [normalized])
   const visibility = useMemo(() => mySalesVisibilityForRole(role), [role])
+  /** Access Management role (`resolveRole`): only managers/admins see KPI sales tiles. */
+  const canViewSalesSummaryCards = role === 'admin' || role === 'manager'
 
   const [locationId, setLocationId] = useState('')
   const [payWeekStart, setPayWeekStart] = useState('')
@@ -337,7 +339,7 @@ export function PayrollSummaryPage() {
             showCommissionCard={visibility.showCommissionCard}
             showSalesCard={visibility.showSalesCard}
             showRowsShownCard={visibility.showRowsShownCard}
-            extraTiles={salesExtraTiles}
+            extraTiles={canViewSalesSummaryCards ? salesExtraTiles : undefined}
           />
           <div className="mt-4">
             <WeeklySummaryTable

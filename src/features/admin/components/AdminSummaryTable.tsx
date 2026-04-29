@@ -2,6 +2,10 @@ import type { ReactNode } from 'react'
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
+import {
+  ColumnReorderHandle,
+  TableColumnSortHeader,
+} from '@/components/ui/TableColumnSortHeader'
 import { AdminPayrollLinesPreviewModal } from '@/features/admin/components/AdminPayrollLinesPreviewModal'
 import { AdminSummaryColumnPicker } from '@/features/admin/components/AdminSummaryColumnPicker'
 import { useAdminPayrollSummaryColumnPreferences } from '@/features/admin/hooks/useAdminPayrollSummaryColumnPreferences'
@@ -24,6 +28,11 @@ import {
   formatShortDate,
 } from '@/lib/formatters'
 import { filterCommissionLinesForSummaryRow } from '@/lib/payrollSummaryFilters'
+import type { ColumnSortState } from '@/lib/tableSort'
+import {
+  ADMIN_SUMMARY_SORT_PAY_WEEK_START,
+  sortAdminCommissionSummaryRows,
+} from '@/lib/adminCommissionSummarySort'
 import { rpcGetAdminPayrollLinesWeekly } from '@/lib/supabaseRpc'
 
 const thBase =
@@ -125,8 +134,14 @@ export function AdminSummaryTable({
   )
   const [previewSummaryRow, setPreviewSummaryRow] =
     useState<AdminPayrollSummaryRow | null>(null)
+  const [summarySort, setSummarySort] = useState<ColumnSortState>(null)
 
   const sample = rows[0] ?? tableStructureSample ?? null
+
+  const displayRows = useMemo(
+    () => sortAdminCommissionSummaryRows(rows, summarySort),
+    [rows, summarySort],
+  )
 
   const payWeekForPreview =
     previewSummaryRow != null &&
@@ -213,32 +228,37 @@ export function AdminSummaryTable({
                 scope="col"
                 className={`${thBase} sticky left-0 z-30 min-w-[8.5rem] bg-slate-50`}
               >
-                Pay week start
+                <TableColumnSortHeader
+                  label="Pay week start"
+                  columnKey={ADMIN_SUMMARY_SORT_PAY_WEEK_START}
+                  sortState={summarySort}
+                  onSortChange={setSummarySort}
+                />
               </th>
               {visibleMiddle.map(({ id, rowKey: k }) => {
                 const isDragging = draggingId === id
                 const isDropTarget =
                   dropTargetId === id && draggingId != null && draggingId !== id
                 return (
-                  <th
-                    key={`${id}-${k}`}
-                    scope="col"
-                    draggable
-                    onDragStart={(e) => onDragStart(e, id)}
-                    onDragOver={(e) => onDragOverCol(e, id)}
-                    onDrop={(e) => onDropOnCol(e, id)}
-                    onDragEnd={onDragEnd}
-                    title="Drag to reorder column"
-                    className={`${thBase} cursor-grab select-none active:cursor-grabbing ${
-                      isDragging ? 'opacity-50' : ''
-                    } ${
-                      isDropTarget
-                        ? 'bg-violet-100/90 ring-1 ring-inset ring-violet-300'
-                        : ''
-                    }`}
-                    aria-grabbed={isDragging}
-                  >
-                    {adminMiddleColumnLabel(id)}
+                  <th key={`${id}-${k}`} scope="col" className={thBase}>
+                    <div className="flex min-w-0 items-center gap-0.5">
+                      <div className="min-w-0 flex-1">
+                        <TableColumnSortHeader
+                          label={adminMiddleColumnLabel(id)}
+                          columnKey={k}
+                          sortState={summarySort}
+                          onSortChange={setSummarySort}
+                        />
+                      </div>
+                      <ColumnReorderHandle
+                        dragging={isDragging}
+                        isDropTarget={isDropTarget}
+                        onDragStart={(e) => onDragStart(e, id)}
+                        onDragOver={(e) => onDragOverCol(e, id)}
+                        onDrop={(e) => onDropOnCol(e, id)}
+                        onDragEnd={onDragEnd}
+                      />
+                    </div>
                   </th>
                 )
               })}
@@ -258,7 +278,7 @@ export function AdminSummaryTable({
                 </td>
               </tr>
             ) : null}
-            {rows.map((row, idx) => {
+            {displayRows.map((row, idx) => {
               const weekRaw = row.pay_week_start
               const weekStart =
                 weekRaw != null && String(weekRaw).trim() !== ''
