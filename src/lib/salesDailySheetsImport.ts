@@ -107,6 +107,52 @@ function normHeader(s: string): string {
   return s.trim().toLowerCase().replace(/\s+/g, ' ')
 }
 
+/** First physical row of CSV may start with a UTF-8 BOM on column 0. */
+function stripBomFromFirstCell(cells: string[]): void {
+  if (cells.length === 0) return
+  const c0 = cells[0]
+  if (c0.length > 0 && c0.charCodeAt(0) === 0xfeff) {
+    cells[0] = c0.slice(1)
+  }
+}
+
+/**
+ * Build stable column keys when the CSV repeats header names (e.g. multiple
+ * "Internal" columns). PowerShell's Import-Csv errors on duplicates; plain
+ * objects would also collapse duplicates — we keep every column by suffixing.
+ */
+function makeUniqueHeaderLabels(rawHeaders: string[]): string[] {
+  const counts = new Map<string, number>()
+  return rawHeaders.map((h, idx) => {
+    const trimmed = h.trim()
+    const base =
+      trimmed !== '' ? trimmed : `Column_${String(idx + 1).padStart(2, '0')}`
+    const n = (counts.get(base) ?? 0) + 1
+    counts.set(base, n)
+    return n === 1 ? base : `${base}__${n}`
+  })
+}
+
+function rowCellsToRecord(
+  cells: unknown[],
+  columnKeys: string[],
+): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (let i = 0; i < columnKeys.length; i++) {
+    const v = cells[i]
+    out[columnKeys[i]] = v == null ? '' : String(v)
+  }
+  for (let i = columnKeys.length; i < cells.length; i++) {
+    const v = cells[i]
+    out[`__extra_col_${i}`] = v == null ? '' : String(v)
+  }
+  return out
+}
+
+function isBlankRowCells(cells: unknown[]): boolean {
+  return cells.every((c) => c == null || String(c).trim() === '')
+}
+
 function pick(row: Record<string, string>, ...keys: string[]): string | undefined {
   const lower = new Map<string, string>()
   for (const [k, v] of Object.entries(row)) {
@@ -147,27 +193,66 @@ function mapRowToStagedRow(args: {
 }): Record<string, unknown> {
   const { row, lineNumber, batchId, forcedLocation } = args
 
-  const invoice = pick(row, 'invoice', 'invoice #', 'invoice_no', 'invoice number')
-  const saleDate = pick(row, 'sale date', 'sale_date', 'date')
+  const invoice = pick(
+    row,
+    'invoice',
+    'invoice #',
+    'invoice_no',
+    'invoice number',
+    'source_document_number',
+    'SOURCE_DOCUMENT_NUMBER',
+  )
+  const saleDate = pick(row, 'sale date', 'sale_date', 'date', 'DATE')
   const payWeekStart = pick(row, 'pay week start', 'pay_week_start')
   const payWeekEnd = pick(row, 'pay week end', 'pay_week_end')
   const payDate = pick(row, 'pay date', 'pay_date')
-  const customerName = pick(row, 'customer', 'customer name', 'customer_name')
+  const customerName = pick(
+    row,
+    'customer',
+    'customer name',
+    'customer_name',
+    'whole_name',
+    'WHOLE_NAME',
+    'first_name',
+    'FIRST_NAME',
+    'name',
+    'NAME',
+  )
   const productService = pick(
     row,
     'product service name',
     'product_service_name',
     'service',
     'product',
+    'description',
+    'DESCRIPTION',
+    'product_type',
+    'PRODUCT_TYPE',
+    'parent_prod_type',
+    'PARENT_PROD_TYPE',
+    'prod_cat',
+    'PROD_CAT',
+    'category',
+    'CATEGORY',
   )
-  const quantity = pick(row, 'quantity', 'qty')
-  const priceExGst = pick(row, 'price ex gst', 'price_ex_gst', 'price ex gst ($)', 'price')
+  const quantity = pick(row, 'quantity', 'qty', 'QTY')
+  const priceExGst = pick(
+    row,
+    'price ex gst',
+    'price_ex_gst',
+    'price ex gst ($)',
+    'price',
+    'prod_total',
+    'PROD_TOTAL',
+  )
   const staffPaid = pick(
     row,
     'derived_staff_paid_display_name',
     'staff paid',
     'stylist',
     'staff',
+    'whole_name',
+    'WHOLE_NAME',
   )
   const actualComm = pick(
     row,
@@ -214,14 +299,19 @@ function isAllBlank(row: Record<string, string>): boolean {
   return true
 }
 
+function debugImport(message: string, payload?: unknown): void {
+  if (import.meta.env.DEV) {
+    console.info(`[salesDailySheetsImport] ${message}`, payload ?? '')
+  }
+}
+
 /**
- * Parse the CSV with PapaParse in `chunk` mode and stage rows directly
- * against the existing staging RPCs. Headers come from PapaParse's
- * `header: true` option; we coerce field names by trimming/lower-casing
- * inside `pick` so the existing column-name tolerance is preserved.
- *
- * `worker: true` keeps parsing off the main thread for large files
- * without changing the public contract here.
+ * Parse CSV with PapaParse using `header: false`: the first row supplies
+ * header labels; duplicates become `Internal`, `Internal__2`, … so each
+ * physical column maps to a distinct key (object mode would collapse
+ * duplicates like PowerShell's Import-Csv). Data rows are built with
+ * {@link rowCellsToRecord} then {@link mapRowToStagedRow}.
+ * Uses `worker: false` so array-shaped chunks are handled reliably.
  */
 async function parseAndStageCsvInBrowser(args: {
   file: File
@@ -239,6 +329,10 @@ async function parseAndStageCsvInBrowser(args: {
   let inflight: Promise<void> = Promise.resolve()
   let aborted = false
   let firstError: Error | null = null
+
+  let totalParserRows = 0
+  let blankRowsSkipped = 0
+  let detectedHeaders: string[] | null = null
 
   const flushBuffer = (): void => {
     if (buffer.length === 0) return
@@ -259,22 +353,58 @@ async function parseAndStageCsvInBrowser(args: {
   }
 
   await new Promise<void>((resolve, reject) => {
-    Papa.parse<Record<string, string>>(file, {
-      header: true,
+    let columnKeys: string[] | null = null
+
+    Papa.parse<unknown>(file, {
+      header: false,
       skipEmptyLines: 'greedy',
-      worker: true,
+      worker: false,
       chunkSize: 1024 * 1024, // 1 MiB chunks of source bytes; tunes parser memory only.
-      chunk: (results: ParseResult<Record<string, string>>, parser) => {
+      chunk: (results: ParseResult<unknown>, parser) => {
         if (aborted) {
           parser.abort()
           return
         }
+        const batchRows = results.data
+        if (!Array.isArray(batchRows)) return
+
         try {
-          for (const raw of results.data) {
-            if (!raw || isAllBlank(raw)) continue
+          for (const rowUnknown of batchRows) {
+            if (aborted) {
+              parser.abort()
+              return
+            }
+            if (!Array.isArray(rowUnknown)) continue
+
+            totalParserRows += 1
+
+            const cells = rowUnknown.map((c) => (c == null ? '' : String(c)))
+
+            if (columnKeys === null) {
+              stripBomFromFirstCell(cells)
+              columnKeys = makeUniqueHeaderLabels(cells)
+              detectedHeaders = columnKeys
+              debugImport('headers detected', {
+                columnCount: columnKeys.length,
+                names: columnKeys,
+              })
+              continue
+            }
+
+            if (isBlankRowCells(cells)) {
+              blankRowsSkipped += 1
+              continue
+            }
+
+            const row = rowCellsToRecord(cells, columnKeys)
+            if (isAllBlank(row)) {
+              blankRowsSkipped += 1
+              continue
+            }
+
             lineNumber += 1
             const staged = mapRowToStagedRow({
-              row: raw,
+              row,
               lineNumber,
               batchId,
               forcedLocation: locationId,
@@ -304,6 +434,14 @@ async function parseAndStageCsvInBrowser(args: {
   })
 
   if (firstError) throw firstError
+
+  debugImport('import row summary', {
+    detectedHeaders,
+    totalCsvRowsSeen: totalParserRows,
+    blankRowsSkipped,
+    stagedRowsInserted: totalStaged,
+    dataRowsStagedWithLineNumbers: lineNumber,
+  })
 
   return { rowsStaged: totalStaged }
 }
