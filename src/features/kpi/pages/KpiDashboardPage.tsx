@@ -163,8 +163,11 @@ export function KpiDashboardPage() {
     locationId: effectiveLocationId,
     staffMemberId: comparisonStaffMemberId,
     enabled: comparisonsRpcEnabled,
+    includeComparisonLeaders: elevated && isIndividualStaffKpiView,
   })
   const comparisonRows = comparisonPayload?.rows
+  const topStylistDisplayNameByKpi =
+    comparisonPayload?.topStylistDisplayNameByKpi ?? {}
   const comparisonUnavailable =
     comparisonsRpcEnabled && !comparisonsPending && comparisonPayload?.unavailable
 
@@ -382,6 +385,14 @@ export function KpiDashboardPage() {
               row={row}
               selected={row.kpi_code === selectedRow?.kpi_code}
               onSelect={setSelectedKpiCode}
+              useNamedTopComparisonStylist={
+                elevated && isIndividualStaffKpiView
+              }
+              comparisonTopStylistDisplayName={
+                elevated && isIndividualStaffKpiView
+                  ? topStylistDisplayNameByKpi[row.kpi_code]
+                  : undefined
+              }
               comparison={
                 effectiveScope === 'staff'
                   ? comparisonByKpiCode.get(row.kpi_code) ?? null

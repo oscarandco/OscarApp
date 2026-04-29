@@ -66,6 +66,17 @@ export type KpiStylistComparisonRow = {
   is_above_average: boolean
 }
 
+/**
+ * One row from `public.get_kpi_stylist_comparison_leaders_live` — cohort
+ * member who achieves the comparison maximum for each KPI (same
+ * normalisation rules as stylist comparisons).
+ */
+export type KpiStylistComparisonLeaderRow = {
+  kpi_code: string
+  top_staff_member_id: string | null
+  top_staff_display_name: string | null
+}
+
 export type KpiStylistComparisonsArgs = {
   /** ISO `YYYY-MM-01` — backend rejects non-month-starts. */
   periodStart: string
@@ -150,13 +161,6 @@ export async function rpcGetKpiSnapshotLive(
 }
 
 /**
- * Fetch the raw rows behind a specific KPI via
- * `public.get_kpi_drilldown_live`. Same auth / scope rules as the
- * snapshot dispatcher — the backend resolves scope once and delegates
- * to the shared `private.debug_kpi_drilldown` body. The return shape
- * is generic so the table renderer does not need per-KPI branches.
- */
-/**
  * Fetch the stylist comparison set for the staff/self KPI dashboard
  * via `public.get_kpi_stylist_comparisons_live`. Returns one row per
  * supported KPI (revenue, guests_per_month, new_clients_per_month,
@@ -190,6 +194,37 @@ export async function rpcGetKpiStylistComparisonsLive(
     : [data as KpiStylistComparisonRow]
 }
 
+/**
+ * Cohort top stylist per KPI for staff scope. Same auth and cohort logic
+ * as `get_kpi_stylist_comparisons_live`; intended for admin/manager
+ * staff-on-member badge labels only.
+ */
+export async function rpcGetKpiStylistComparisonLeadersLive(
+  args: KpiStylistComparisonsArgs,
+): Promise<KpiStylistComparisonLeaderRow[]> {
+  const { data, error } = await requireSupabaseClient().rpc(
+    'get_kpi_stylist_comparison_leaders_live',
+    {
+      p_period_start: args.periodStart,
+      p_scope: args.scope,
+      p_location_id: args.locationId,
+      p_staff_member_id: args.staffMemberId,
+    },
+  )
+  if (error) throw toError('get_kpi_stylist_comparison_leaders_live', error)
+  if (data == null) return []
+  return Array.isArray(data)
+    ? (data as KpiStylistComparisonLeaderRow[])
+    : [data as KpiStylistComparisonLeaderRow]
+}
+
+/**
+ * Fetch the raw rows behind a specific KPI via
+ * `public.get_kpi_drilldown_live`. Same auth / scope rules as the
+ * snapshot dispatcher — the backend resolves scope once and delegates
+ * to the shared `private.debug_kpi_drilldown` body. The return shape
+ * is generic so the table renderer does not need per-KPI branches.
+ */
 export async function rpcGetKpiDrilldownLive(
   args: KpiDrilldownArgs,
 ): Promise<KpiDrilldownRow[]> {

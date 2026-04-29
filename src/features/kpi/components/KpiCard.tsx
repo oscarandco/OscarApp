@@ -68,6 +68,12 @@ type KpiCardProps = {
    */
   comparison?: KpiStylistComparisonRow | null
   /**
+   * When set with `useNamedTopComparisonStylist`, used as the parenthetical
+   * in `Top Stylist (…): …` instead of "all salons". From
+   * `get_kpi_stylist_comparison_leaders_live` (admin/manager staff view only).
+   */
+  comparisonTopStylistDisplayName?: string | null
+  /**
    * Optional FTE for the current self/staff caller. When `fte` is a
    * finite number strictly between 0 and 1 AND the KPI is in
    * `NORMALISABLE_KPI_CODES`, the card displays the raw metric scaled
@@ -80,6 +86,11 @@ type KpiCardProps = {
    * and are never normalised.
    */
   fte?: number | null
+  /**
+   * When true (elevated staff-on-member view), the Top Stylist pill uses
+   * `comparisonTopStylistDisplayName` when non-empty; otherwise "all salons".
+   */
+  useNamedTopComparisonStylist?: boolean
 }
 
 /**
@@ -95,7 +106,9 @@ export function KpiCard({
   selected = false,
   onSelect,
   comparison = null,
+  comparisonTopStylistDisplayName = null,
   fte = null,
+  useNamedTopComparisonStylist = false,
 }: KpiCardProps) {
   const meta = metaFor(row.kpi_code)
 
@@ -207,6 +220,13 @@ export function KpiCard({
     .filter(Boolean)
     .join(' ')
 
+  const topStylistLabel =
+    useNamedTopComparisonStylist &&
+    comparisonTopStylistDisplayName != null &&
+    String(comparisonTopStylistDisplayName).trim() !== ''
+      ? String(comparisonTopStylistDisplayName).trim()
+      : 'all salons'
+
   const body = (
     <>
       <div className="flex min-w-0 items-center gap-1.5">
@@ -248,7 +268,7 @@ export function KpiCard({
           data-testid={`kpi-card-comparison-${row.kpi_code}`}
         >
           <span className="block w-full truncate rounded-full bg-amber-50 px-3 py-0.5 text-center text-[11px] font-medium text-slate-700 ring-1 ring-inset ring-amber-100">
-            {`Top Stylist (all salons): ${formatKpiValue(
+            {`Top Stylist (${topStylistLabel}): ${formatKpiValue(
               meta.format,
               comparison.highest_value,
             )}`}

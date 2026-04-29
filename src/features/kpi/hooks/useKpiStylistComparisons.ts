@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useAccessProfile } from '@/features/access/accessContext'
 import { useAuth } from '@/features/auth/authContext'
 import {
+  rpcGetKpiStylistComparisonLeadersLive,
   rpcGetKpiStylistComparisonsLive,
   type KpiStylistComparisonRow,
   type KpiStylistComparisonsArgs,
@@ -12,6 +13,12 @@ import { requireSupabaseClient } from '@/lib/supabase'
 
 export type KpiStylistComparisonsQueryPayload = {
   rows: KpiStylistComparisonRow[]
+  /**
+   * Top cohort stylist display name per `kpi_code` (admin/manager staff
+   * view only). Empty when not requested, the leader RPC failed, or the
+   * backend returned no usable name.
+   */
+  topStylistDisplayNameByKpi: Record<string, string>
   /** True when the RPC failed — UI can show a soft message without breaking the page. */
   unavailable: boolean
 }
@@ -23,6 +30,11 @@ type UseKpiStylistComparisonsArgs = KpiStylistComparisonsArgs & {
    * mirroring the gating used by `useKpiSnapshot`.
    */
   enabled?: boolean
+  /**
+   * When true, also calls `get_kpi_stylist_comparison_leaders_live` in
+   * parallel (same args). Failures are swallowed so comparison rows still load.
+   */
+  includeComparisonLeaders?: boolean
 }
 
 /**
@@ -48,7 +60,14 @@ function logPostgrestRpcFailure(op: string, err: unknown) {
 export function useKpiStylistComparisons(args: UseKpiStylistComparisonsArgs) {
   const { accessState } = useAccessProfile()
   const { session, user, loading: authLoading } = useAuth()
-  const { periodStart, scope, locationId, staffMemberId, enabled = true } = args
+  const {
+    periodStart,
+    scope,
+    locationId,
+    staffMemberId,
+    enabled = true,
+    includeComparisonLeaders = false,
+  } = args
 
   const sessionReady =
     !authLoading &&
@@ -71,6 +90,7 @@ export function useKpiStylistComparisons(args: UseKpiStylistComparisonsArgs) {
       scope,
       locationId,
       staffMemberId,
+      includeComparisonLeaders,
     ] as const,
     queryFn: async (): Promise<KpiStylistComparisonsQueryPayload> => {
       const client = requireSupabaseClient()
@@ -81,27 +101,55 @@ export function useKpiStylistComparisons(args: UseKpiStylistComparisonsArgs) {
           name: sessErr.name,
           status: sessErr.status,
         })
-        return { rows: [], unavailable: true }
+        return { rows: [], topStylistDisplayNameByKpi: {}, unavailable: true }
       }
       if (!sessWrap.session?.access_token) {
         console.warn(
           '[get_kpi_stylist_comparisons_live] skipping RPC: no session access_token after getSession()',
         )
-        return { rows: [], unavailable: true }
+        return { rows: [], topStylistDisplayNameByKpi: {}, unavailable: true }
       }
 
       try {
-        const rows = await rpcGetKpiStylistComparisonsLive({
+        const rpcArgs = {
           periodStart,
           scope,
           locationId,
           staffMemberId,
-        })
-        return { rows, unavailable: false }
+        }
+        const leadersPromise =
+          includeComparisonLeaders
+            ? rpcGetKpiStylistComparisonLeadersLive(rpcArgs).catch((e) => {
+                const cause = e instanceof Error ? e.cause : null
+                logPostgrestRpcFailure(
+                  'get_kpi_stylist_comparison_leaders_live',
+                  cause ?? e,
+                )
+                return null
+              })
+            : Promise.resolve(null)
+
+        const [rows, leaderRows] = await Promise.all([
+          rpcGetKpiStylistComparisonsLive(rpcArgs),
+          leadersPromise,
+        ])
+
+        const topStylistDisplayNameByKpi: Record<string, string> = {}
+        if (leaderRows != null) {
+          for (const lr of leaderRows) {
+            const name =
+              lr.top_staff_display_name != null
+                ? String(lr.top_staff_display_name).trim()
+                : ''
+            if (name !== '') topStylistDisplayNameByKpi[lr.kpi_code] = name
+          }
+        }
+
+        return { rows, topStylistDisplayNameByKpi, unavailable: false }
       } catch (e) {
         const cause = e instanceof Error ? e.cause : null
         logPostgrestRpcFailure('get_kpi_stylist_comparisons_live', cause ?? e)
-        return { rows: [], unavailable: true }
+        return { rows: [], topStylistDisplayNameByKpi: {}, unavailable: true }
       }
     },
     enabled:
