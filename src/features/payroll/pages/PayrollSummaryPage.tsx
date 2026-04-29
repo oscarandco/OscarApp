@@ -30,6 +30,8 @@ import {
   computeDateExtents,
   defaultDateFromForRange,
   filterRowsByPayWeekDateRange,
+  payWeekInclusiveEndForStart,
+  payWeekStartIfRangeIsExactlyOnePayWeek,
   sumTotalSalesExGstFromRows,
 } from '@/lib/weeklySummaryReporting'
 
@@ -73,13 +75,43 @@ export function PayrollSummaryPage() {
   )
   const defaultDateTo = dateExtents.max ?? ''
 
-  const dateFrom = dateFromOverride ?? defaultDateFrom
-  const dateTo = dateToOverride ?? defaultDateTo
+  const manualDateFrom = dateFromOverride ?? defaultDateFrom
+  const manualDateTo = dateToOverride ?? defaultDateTo
+
+  const payWeekTrim = payWeekStart.trim()
+  const weekEndResolved = payWeekTrim
+    ? payWeekInclusiveEndForStart(sourceRows, payWeekTrim) || payWeekTrim
+    : ''
+
+  const resolvedDateFrom = payWeekTrim ? payWeekTrim : manualDateFrom
+  const resolvedDateTo = payWeekTrim ? weekEndResolved : manualDateTo
+
+  const dateFrom = resolvedDateFrom
+  const dateTo = resolvedDateTo
 
   const dateScopedRows = useMemo(
-    () => filterRowsByPayWeekDateRange(sourceRows, dateFrom, dateTo),
-    [sourceRows, dateFrom, dateTo],
+    () => filterRowsByPayWeekDateRange(sourceRows, resolvedDateFrom, resolvedDateTo),
+    [sourceRows, resolvedDateFrom, resolvedDateTo],
   )
+
+  const rowsForWeekBeginningOptions = useMemo(() => {
+    if (payWeekTrim) {
+      return filterRowsByPayWeekDateRange(
+        sourceRows,
+        dateFromOverride ?? defaultDateFrom,
+        dateToOverride ?? defaultDateTo,
+      )
+    }
+    return dateScopedRows
+  }, [
+    payWeekTrim,
+    sourceRows,
+    dateFromOverride,
+    dateToOverride,
+    defaultDateFrom,
+    defaultDateTo,
+    dateScopedRows,
+  ])
 
   const locationOptions = useMemo(
     () => uniqueLocationOptions(dateScopedRows),
@@ -87,8 +119,8 @@ export function PayrollSummaryPage() {
   )
 
   const weekBeginningOptions = useMemo(
-    () => uniquePayWeekStartOptions(dateScopedRows),
-    [dateScopedRows],
+    () => uniquePayWeekStartOptions(rowsForWeekBeginningOptions),
+    [rowsForWeekBeginningOptions],
   )
 
   const filteredRows = useMemo(
@@ -135,6 +167,38 @@ export function PayrollSummaryPage() {
     setDateToOverride(null)
   }
 
+  function handleWeekBeginningFilter(next: string) {
+    if (next.trim() === '') {
+      setPayWeekStart('')
+      setDateFromOverride(null)
+      setDateToOverride(null)
+    } else {
+      setPayWeekStart(next)
+      setDateFromOverride(null)
+      setDateToOverride(null)
+    }
+  }
+
+  function applyToolbarDateRange(nextFrom: string, nextTo: string) {
+    const fromNorm =
+      nextFrom.trim() !== '' ? nextFrom.trim() : defaultDateFrom
+    const toNorm = nextTo.trim() !== '' ? nextTo.trim() : defaultDateTo
+    const match = payWeekStartIfRangeIsExactlyOnePayWeek(
+      sourceRows,
+      fromNorm,
+      toNorm,
+    )
+    if (match) {
+      setPayWeekStart(match)
+      setDateFromOverride(null)
+      setDateToOverride(null)
+    } else {
+      setPayWeekStart('')
+      setDateFromOverride(nextFrom.trim() !== '' ? nextFrom.trim() : null)
+      setDateToOverride(nextTo.trim() !== '' ? nextTo.trim() : null)
+    }
+  }
+
   const toolbarDataSources = (
     <WeeklySummaryDataSourceLines
       sources={dataSources}
@@ -148,8 +212,15 @@ export function PayrollSummaryPage() {
     <WeeklySummaryDateRangeInputs
       dateFrom={dateFrom}
       dateTo={dateTo}
-      onDateFromChange={(v) => setDateFromOverride(v)}
-      onDateToChange={(v) => setDateToOverride(v)}
+      onDateFromChange={(v) =>
+        applyToolbarDateRange(v, payWeekTrim ? weekEndResolved : manualDateTo)
+      }
+      onDateToChange={(v) =>
+        applyToolbarDateRange(
+          payWeekTrim ? payWeekTrim : manualDateFrom,
+          v,
+        )
+      }
       dateMin={dateExtents.min ?? undefined}
       dateMax={dateExtents.max ?? undefined}
       dateFromTestId="payroll-summary-toolbar-date-from"
@@ -204,7 +275,7 @@ export function PayrollSummaryPage() {
             onLocationId={setLocationId}
             locationOptions={locationOptions}
             weekBeginningFilter={payWeekStart}
-            onWeekBeginningFilter={setPayWeekStart}
+            onWeekBeginningFilter={handleWeekBeginningFilter}
             weekBeginningOptions={weekBeginningOptions}
             search={search}
             onSearch={setSearch}

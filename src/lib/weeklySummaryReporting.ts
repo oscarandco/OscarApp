@@ -94,6 +94,45 @@ export function filterRowsByPayWeekDateRange<T extends PayWeekDatedRow>(
   })
 }
 
+/**
+ * Latest inclusive `pay_week_end` among rows for this `pay_week_start`
+ * (falls back to start when end is missing).
+ */
+export function payWeekInclusiveEndForStart<T extends PayWeekDatedRow>(
+  rows: T[],
+  payWeekStartIso: string,
+): string {
+  const want = isoDateOnly(payWeekStartIso)
+  if (!want) return ''
+  let bestEnd = ''
+  for (const r of rows) {
+    const ws = rowWeekStartIso(r)
+    if (ws !== want) continue
+    const we = rowWeekEndIso(r)
+    if (we > bestEnd || bestEnd === '') bestEnd = we
+  }
+  return bestEnd || want
+}
+
+/**
+ * If `[fromIso, toIso]` equals some row's pay week window exactly,
+ * return that week's `pay_week_start`; otherwise `null`.
+ */
+export function payWeekStartIfRangeIsExactlyOnePayWeek<
+  T extends PayWeekDatedRow,
+>(rows: T[], fromIso: string, toIso: string): string | null {
+  const a = isoDateOnly(fromIso)
+  const b = isoDateOnly(toIso)
+  if (!a || !b) return null
+  for (const r of rows) {
+    const ws = rowWeekStartIso(r)
+    const we = rowWeekEndIso(r)
+    if (!ws) continue
+    if (ws === a && we === b) return ws
+  }
+  return null
+}
+
 export function buildPerLocationSalesExtraTiles(
   dataSources: SalesDailySheetsDataSourceRow[] | undefined,
   dateScopedRows: SalesExGstByLocationRow[],
