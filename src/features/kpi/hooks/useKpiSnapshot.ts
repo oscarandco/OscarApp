@@ -22,10 +22,22 @@ type UseKpiSnapshotArgs = KpiSnapshotArgs & {
  * fire an initial request before the caller's role is known. The
  * scope + ids + period are part of the query key so cached rows
  * never cross boundaries between months or scopes.
+ *
+ * By default `includeExtended` is false (six core KPIs) so the dashboard
+ * stays within DB statement timeouts; pass `includeExtended: true` for
+ * the full 11-KPI snapshot when needed.
  */
 export function useKpiSnapshot(args: UseKpiSnapshotArgs) {
   const { accessState } = useAccessProfile()
-  const { periodStart, scope, locationId, staffMemberId, enabled = true } = args
+  const {
+    periodStart,
+    scope,
+    locationId,
+    staffMemberId,
+    includeExtended,
+    enabled = true,
+  } = args
+  const resolvedIncludeExtended = includeExtended ?? false
 
   return useQuery({
     queryKey: [
@@ -34,6 +46,7 @@ export function useKpiSnapshot(args: UseKpiSnapshotArgs) {
       scope,
       locationId,
       staffMemberId,
+      resolvedIncludeExtended,
     ] as const,
     queryFn: () =>
       rpcGetKpiSnapshotLive({
@@ -41,6 +54,7 @@ export function useKpiSnapshot(args: UseKpiSnapshotArgs) {
         scope,
         locationId,
         staffMemberId,
+        includeExtended: resolvedIncludeExtended,
       }),
     enabled: accessState === 'ready' && enabled,
   })

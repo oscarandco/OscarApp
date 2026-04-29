@@ -35,21 +35,21 @@ import {
  */
 const dashTable = 'w-max min-w-full border-collapse text-xs'
 const dashTh =
-  'border-b border-slate-200 px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-600 sm:px-3 sm:py-2 sm:normal-case sm:text-xs sm:tracking-normal sm:text-slate-700'
+  'border-b border-slate-200 px-2 py-1.5 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-600 sm:px-2.5 sm:py-1.5 sm:normal-case sm:text-xs sm:tracking-normal sm:text-slate-700'
 const dashThRight = `${dashTh} text-right`
 const dashThAction = `${dashTh} w-px`
 const dashTdNum =
-  'whitespace-nowrap border-b border-slate-100 px-2 py-1.5 tabular-nums text-slate-700 sm:px-3 sm:py-2'
+  'whitespace-nowrap border-b border-slate-100 px-2 py-1.5 tabular-nums text-slate-700 sm:px-2.5 sm:py-1.5'
 const dashTdNumRight = `${dashTdNum} text-right`
 const dashTdName =
-  'whitespace-nowrap border-b border-slate-100 px-2 py-1.5 text-slate-700 sm:px-3 sm:py-2'
+  'whitespace-nowrap border-b border-slate-100 px-2 py-1.5 text-slate-700 sm:px-2.5 sm:py-1.5'
 const dashTdText =
-  'border-b border-slate-100 px-2 py-1.5 text-xs text-slate-700 sm:px-3 sm:py-2'
+  'border-b border-slate-100 px-2 py-1.5 text-xs text-slate-700 sm:px-2.5 sm:py-1.5'
 const dashTdAction =
-  'whitespace-nowrap border-b border-slate-100 px-2 py-1.5 text-right align-middle text-slate-700 sm:px-3 sm:py-2'
+  'whitespace-nowrap border-b border-slate-100 px-2 py-1.5 text-right align-middle text-slate-700 sm:px-2.5 sm:py-1.5'
 
 const cardButtonBase =
-  'w-full rounded-lg border px-4 py-3 text-left shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2'
+  'w-full rounded-lg border px-3 py-2.5 text-left shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2'
 const cardButtonIdle =
   'border-slate-200 bg-white hover:border-violet-200 hover:bg-violet-50/50'
 const cardButtonActive = 'border-violet-400 bg-violet-50 ring-2 ring-violet-300'
@@ -177,7 +177,10 @@ export function AdminWeeklyCommissionDashboardPage() {
 
   if (summaryQuery.isLoading) {
     return (
-      <div data-testid="admin-weekly-commission-page">
+      <div
+        className="mx-auto w-full max-w-6xl"
+        data-testid="admin-weekly-commission-page"
+      >
         <LoadingState
           message="Loading pay weeks…"
           testId="admin-weekly-commission-loading"
@@ -189,7 +192,10 @@ export function AdminWeeklyCommissionDashboardPage() {
   if (summaryQuery.isError) {
     const { message, err } = queryErrorDetail(summaryQuery.error)
     return (
-      <div data-testid="admin-weekly-commission-page">
+      <div
+        className="mx-auto w-full max-w-6xl"
+        data-testid="admin-weekly-commission-page"
+      >
         <ErrorState
           title="Could not load pay weeks"
           error={err}
@@ -203,7 +209,10 @@ export function AdminWeeklyCommissionDashboardPage() {
 
   if (weekOptions.length === 0) {
     return (
-      <div data-testid="admin-weekly-commission-page">
+      <div
+        className="mx-auto w-full max-w-6xl"
+        data-testid="admin-weekly-commission-page"
+      >
         <PageHeader
           title="Weekly commission dashboard"
           description="Commission and sales totals by pay week, grouped by staff."
@@ -218,13 +227,16 @@ export function AdminWeeklyCommissionDashboardPage() {
   }
 
   return (
-    <div data-testid="admin-weekly-commission-page">
+    <div
+      className="mx-auto w-full max-w-6xl"
+      data-testid="admin-weekly-commission-page"
+    >
       <PageHeader
         title="Weekly payroll summary"
         description="Totals for a selected pay week. Choose the week below; figures refresh from line-level payroll data."
       />
 
-      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:gap-8">
+      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:gap-6">
         <label className="flex max-w-md flex-col gap-1.5 text-sm">
           <span className="font-medium text-slate-700">Pay week</span>
           <select
@@ -268,7 +280,7 @@ export function AdminWeeklyCommissionDashboardPage() {
       ) : (
         <>
           <div
-            className="mb-8 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4"
+            className="mb-6 grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-2.5 2xl:grid-cols-4 2xl:gap-3"
             data-testid="admin-weekly-commission-cards"
           >
             <button
@@ -341,9 +353,9 @@ export function AdminWeeklyCommissionDashboardPage() {
             </button>
           </div>
 
-          <div className="grid grid-cols-1 gap-8 lg:grid-cols-2 lg:items-start">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start lg:gap-5">
           <section>
-            <h2 className="mb-3 text-base font-semibold text-slate-900">
+            <h2 className="mb-2 text-base font-semibold text-slate-900">
               By category (commission amount)
             </h2>
             <TableScrollArea>
@@ -411,7 +423,7 @@ export function AdminWeeklyCommissionDashboardPage() {
                       {visibleDisplayTableA.map((r) => (
                         <tr key={r.staffPaid}>
                           <td className={dashTdName}>
-                            <span className="flex items-center gap-1.5 whitespace-nowrap">
+                            <span className="flex items-center gap-1 whitespace-nowrap">
                               <StaffLocationNavBadge letter={r.locationBadge} />
                               <span className="font-medium whitespace-nowrap text-slate-900">
                                 {r.staffPaid}
@@ -443,7 +455,7 @@ export function AdminWeeklyCommissionDashboardPage() {
                       ))}
                       <tr className="bg-slate-50">
                         <td className={dashTdName}>
-                          <span className="flex items-center gap-1.5 whitespace-nowrap">
+                          <span className="flex items-center gap-1 whitespace-nowrap">
                             <StaffLocationNavBadge letter={null} />
                             <span className="font-semibold whitespace-nowrap">Total</span>
                           </span>
@@ -470,7 +482,7 @@ export function AdminWeeklyCommissionDashboardPage() {
           </section>
 
           <section>
-            <h2 className="mb-3 text-base font-semibold text-slate-900">
+            <h2 className="mb-2 text-base font-semibold text-slate-900">
               By commission product / service (commission amount)
             </h2>
             <TableScrollArea>
@@ -529,7 +541,7 @@ export function AdminWeeklyCommissionDashboardPage() {
                       {visibleDisplayTableB.map((r) => (
                         <tr key={r.staffPaid}>
                           <td className={dashTdName}>
-                            <span className="flex items-center gap-1.5 whitespace-nowrap">
+                            <span className="flex items-center gap-1 whitespace-nowrap">
                               <StaffLocationNavBadge letter={r.locationBadge} />
                               <span className="font-medium whitespace-nowrap text-slate-900">
                                 {r.staffPaid}
@@ -560,7 +572,7 @@ export function AdminWeeklyCommissionDashboardPage() {
                       ))}
                       <tr className="bg-slate-50">
                         <td className={dashTdName}>
-                          <span className="flex items-center gap-1.5 whitespace-nowrap">
+                          <span className="flex items-center gap-1 whitespace-nowrap">
                             <StaffLocationNavBadge letter={null} />
                             <span className="font-semibold whitespace-nowrap">Total</span>
                           </span>

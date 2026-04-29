@@ -101,6 +101,12 @@ export type KpiSnapshotArgs = {
    * caller's own staff id from `auth.uid()`.
    */
   staffMemberId: string | null
+  /**
+   * When `true`, requests all 11 KPIs (same as calling the RPC with
+   * `p_include_extended` omitted or true). When `false` or omitted here,
+   * the client sends `p_include_extended: false` for a fast six-KPI snapshot.
+   */
+  includeExtended?: boolean
 }
 
 function toError(op: string, err: PostgrestError): Error {
@@ -118,10 +124,14 @@ function toError(op: string, err: PostgrestError): Error {
  *     is auto-resolved from `auth.uid()` when NULL.
  *   - manager / admin → may request business / location / staff; the
  *     matching id is required for the non-business scopes.
+ *
+ * Pass `includeExtended: true` for all 11 KPIs; omit or pass `false` to
+ * skip retention/frequency (six core KPIs only).
  */
 export async function rpcGetKpiSnapshotLive(
   args: KpiSnapshotArgs,
 ): Promise<KpiSnapshotRow[]> {
+  const includeExtended = args.includeExtended ?? false
   const { data, error } = await requireSupabaseClient().rpc(
     'get_kpi_snapshot_live',
     {
@@ -129,6 +139,7 @@ export async function rpcGetKpiSnapshotLive(
       p_scope: args.scope,
       p_location_id: args.locationId,
       p_staff_member_id: args.staffMemberId,
+      p_include_extended: includeExtended,
     },
   )
   if (error) throw toError('get_kpi_snapshot_live', error)
