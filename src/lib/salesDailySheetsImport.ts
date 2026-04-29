@@ -182,8 +182,8 @@ function parseDate(s: string | undefined): string | null {
 
 /**
  * Map one raw CSV record into the staged-row JSON shape consumed by
- * `insert_sales_daily_sheets_staged_rows_chunk`. Mapping is preserved
- * verbatim from the Edge Function's `mapRowToStagedRow`.
+ * `insert_sales_daily_sheets_staged_rows_chunk`. Customer display prefers
+ * WHOLE_NAME (Kitomba); staff paid display must not use WHOLE_NAME / NAME / FIRST_NAME.
  */
 function mapRowToStagedRow(args: {
   row: Record<string, string>
@@ -208,15 +208,11 @@ function mapRowToStagedRow(args: {
   const payDate = pick(row, 'pay date', 'pay_date')
   const customerName = pick(
     row,
+    'WHOLE_NAME',
+    'whole_name',
     'customer',
     'customer name',
     'customer_name',
-    'whole_name',
-    'WHOLE_NAME',
-    'first_name',
-    'FIRST_NAME',
-    'name',
-    'NAME',
   )
   const productService = pick(
     row,
@@ -251,8 +247,6 @@ function mapRowToStagedRow(args: {
     'staff paid',
     'stylist',
     'staff',
-    'whole_name',
-    'WHOLE_NAME',
   )
   const actualComm = pick(
     row,

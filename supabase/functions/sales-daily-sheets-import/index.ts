@@ -260,8 +260,8 @@ async function authorizeRequest(
  * Map a single raw CSV record into the staged-row shape consumed by
  * `insert_sales_daily_sheets_staged_rows_chunk`. Pulled out so the
  * streaming loop can call it once per row without keeping a giant
- * mapped array around. Mapping logic is preserved verbatim from the
- * original whole-file `records.map(...)`.
+ * mapped array around. Customer name prefers WHOLE_NAME (Kitomba);
+ * staff paid display must not use WHOLE_NAME / NAME / FIRST_NAME.
  */
 function mapRowToStagedRow(args: {
   row: Record<string, string>
@@ -271,12 +271,27 @@ function mapRowToStagedRow(args: {
 }): Record<string, unknown> {
   const { row, lineNumber, batchId, forcedLocation } = args
 
-  const invoice = pick(row, "invoice", "invoice #", "invoice_no", "invoice number")
+  const invoice = pick(
+    row,
+    "invoice",
+    "invoice #",
+    "invoice_no",
+    "invoice number",
+    "source_document_number",
+    "SOURCE_DOCUMENT_NUMBER",
+  )
   const saleDate = pick(row, "sale date", "sale_date", "date")
   const payWeekStart = pick(row, "pay week start", "pay_week_start")
   const payWeekEnd = pick(row, "pay week end", "pay_week_end")
   const payDate = pick(row, "pay date", "pay_date")
-  const customerName = pick(row, "customer", "customer name", "customer_name")
+  const customerName = pick(
+    row,
+    "WHOLE_NAME",
+    "whole_name",
+    "customer",
+    "customer name",
+    "customer_name",
+  )
   const productService = pick(
     row,
     "product service name",
