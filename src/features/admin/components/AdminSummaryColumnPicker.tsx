@@ -85,7 +85,7 @@ export function AdminSummaryColumnPicker({
           data-testid="admin-summary-column-picker-panel"
         >
           <p className="mb-2 text-xs text-slate-500">
-            Week, Pay week start, Pay Date, and Detail always stay visible.
+            Pay week start, Pay Date, and Detail always stay visible.
           </p>
           <ul className="max-h-[min(60vh,20rem)] space-y-1 overflow-y-auto">
             {prefs.order.map((id) => {

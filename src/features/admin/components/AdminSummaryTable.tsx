@@ -1,10 +1,12 @@
 import type { ReactNode } from 'react'
 import { useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 
+import { AdminPayrollLinesPreviewModal } from '@/features/admin/components/AdminPayrollLinesPreviewModal'
 import { AdminSummaryColumnPicker } from '@/features/admin/components/AdminSummaryColumnPicker'
 import { useAdminPayrollSummaryColumnPreferences } from '@/features/admin/hooks/useAdminPayrollSummaryColumnPreferences'
 import {
+  adminMiddleColumnLabel,
   adminMiddleRowKeysForPreferences,
   isAdminMiddleColumnId,
   reorderAdminMiddleColumnOrder,
@@ -13,45 +15,14 @@ import {
 } from '@/features/admin/adminWeeklySummaryTableColumns'
 import { TableScrollArea } from '@/components/ui/TableScrollArea'
 import type { AdminPayrollSummaryRow } from '@/features/admin/types'
+import type { WeeklyCommissionSummaryRow } from '@/features/payroll/types'
 import { isEmptyish, formatScalarText } from '@/lib/cellValue'
+import { adminSummaryCellValue, stylistPaidFromAdminSummaryRow } from '@/lib/adminSummaryTableCells'
 import {
   formatDateLabel,
   formatNzd,
   formatShortDate,
-  tableColumnTitle,
 } from '@/lib/formatters'
-
-type AdminSummaryTableProps = {
-  rows: AdminPayrollSummaryRow[]
-  /** When true, line detail links scope to one location; when false, staff across all locations. */
-  splitByLocation: boolean
-  tableStructureSample?: AdminPayrollSummaryRow | null
-  emptyBodyMessage?: string
-  toolbarDataSources?: ReactNode
-  toolbarDateRange?: ReactNode
-}
-
-function adminDetailLinesHref(
-  row: AdminPayrollSummaryRow,
-  weekStart: string,
-  splitByLocation: boolean,
-): string {
-  const base = `/app/admin/sales-summary/${encodeURIComponent(weekStart)}`
-  const q = new URLSearchParams()
-  const sid = String(row.derived_staff_paid_id ?? '').trim()
-  if (sid !== '') {
-    q.set('staffId', sid)
-  } else {
-    const dn = String(row.derived_staff_paid_display_name ?? '').trim()
-    if (dn !== '') q.set('staffDisplay', dn)
-  }
-  if (splitByLocation) {
-    const lid = String(row.location_id ?? '').trim()
-    if (lid !== '') q.set('locationId', lid)
-  }
-  const qs = q.toString()
-  return qs === '' ? base : `${base}?${qs}`
-}
 
 const thBase =
   'border-b border-slate-200 px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 sm:px-4 sm:py-3 sm:normal-case sm:text-sm sm:tracking-normal sm:text-slate-700'
@@ -126,6 +97,16 @@ function stableAdminSummaryRowKey(row: AdminPayrollSummaryRow, index: number): s
 
 const DND_TYPE = 'application/x-admin-payroll-middle-column'
 
+type AdminSummaryTableProps = {
+  rows: AdminPayrollSummaryRow[]
+  /** When true, line detail links scope to one location; when false, staff across all locations. */
+  splitByLocation: boolean
+  tableStructureSample?: AdminPayrollSummaryRow | null
+  emptyBodyMessage?: string
+  toolbarDataSources?: ReactNode
+  toolbarDateRange?: ReactNode
+}
+
 export function AdminSummaryTable({
   rows,
   splitByLocation,
@@ -134,13 +115,36 @@ export function AdminSummaryTable({
   toolbarDataSources,
   toolbarDateRange,
 }: AdminSummaryTableProps) {
+  void splitByLocation
   const { prefs, setPrefs, reset } = useAdminPayrollSummaryColumnPreferences()
   const [draggingId, setDraggingId] = useState<AdminMiddleColumnId | null>(null)
   const [dropTargetId, setDropTargetId] = useState<AdminMiddleColumnId | null>(
     null,
   )
+  const [previewSummaryRow, setPreviewSummaryRow] =
+    useState<AdminPayrollSummaryRow | null>(null)
 
   const sample = rows[0] ?? tableStructureSample ?? null
+
+  const payWeekForPreview =
+    previewSummaryRow != null &&
+    String(previewSummaryRow.pay_week_start ?? '').trim() !== ''
+      ? String(previewSummaryRow.pay_week_start).trim()
+      : ''
+
+  const linesQuery = useQuery({
+    queryKey: ['admin-payroll-lines-weekly', payWeekForPreview] as const,
+    queryFn: () => rpcGetAdminPayrollLinesWeekly(payWeekForPreview),
+    enabled: Boolean(previewSummaryRow && payWeekForPreview),
+  })
+
+  const previewLines = useMemo(() => {
+    if (!previewSummaryRow || !linesQuery.data) return []
+    return filterCommissionLinesForSummaryRow(
+      previewSummaryRow as WeeklyCommissionSummaryRow,
+      linesQuery.data,
+    )
+  }, [previewSummaryRow, linesQuery.data])
 
   const keys = useMemo(
     () => (sample ? adminMiddleRowKeysForPreferences(sample, prefs) : []),
@@ -152,7 +156,7 @@ export function AdminSummaryTable({
     [sample, prefs],
   )
 
-  const colSpanEmpty = 2 + visibleMiddle.length + 1
+  const colSpanEmpty = 1 + visibleMiddle.length + 1
 
   function onDragStart(e: React.DragEvent, id: AdminMiddleColumnId) {
     e.dataTransfer.setData(DND_TYPE, id)
@@ -187,6 +191,9 @@ export function AdminSummaryTable({
     setDropTargetId(null)
   }
 
+  const previewStaffLabel =
+    previewSummaryRow != null ? stylistPaidFromAdminSummaryRow(previewSummaryRow) : '—'
+
   return (
     <div className="space-y-2">
       <div className="flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
@@ -204,9 +211,6 @@ export function AdminSummaryTable({
                 scope="col"
                 className={`${thBase} sticky left-0 z-30 min-w-[8.5rem] bg-slate-50`}
               >
-                Week
-              </th>
-              <th scope="col" className={thBase}>
                 Pay week start
               </th>
               {visibleMiddle.map(({ id, rowKey: k }) => {
@@ -232,7 +236,7 @@ export function AdminSummaryTable({
                     }`}
                     aria-grabbed={isDragging}
                   >
-                    {tableColumnTitle(k)}
+                    {adminMiddleColumnLabel(id)}
                   </th>
                 )
               })}
@@ -275,27 +279,21 @@ export function AdminSummaryTable({
                       <span className="text-slate-400">—</span>
                     )}
                   </td>
-                  <td className={tdBase}>
-                    {weekStart ? (
-                      <span>{formatShortDate(row.pay_week_start)}</span>
-                    ) : (
-                      <span className="text-slate-400">—</span>
-                    )}
-                  </td>
                   {keys.map((k) => (
                     <td key={k} className={tdBase}>
-                      <Cell rowKey={k} value={row[k]} />
+                      <Cell rowKey={k} value={adminSummaryCellValue(row, k)} />
                     </td>
                   ))}
                   <td className={`${tdBase} min-w-[5.5rem]`}>
                     {weekStart ? (
-                      <Link
-                        to={adminDetailLinesHref(row, weekStart, splitByLocation)}
+                      <button
+                        type="button"
+                        onClick={() => setPreviewSummaryRow(row)}
                         className="font-medium text-violet-700 hover:text-violet-900"
                         data-testid="admin-summary-view-lines"
                       >
                         View lines
-                      </Link>
+                      </button>
                     ) : (
                       <span className="text-slate-400">—</span>
                     )}
@@ -306,6 +304,14 @@ export function AdminSummaryTable({
           </tbody>
         </table>
       </TableScrollArea>
+      <AdminPayrollLinesPreviewModal
+        open={previewSummaryRow != null}
+        onClose={() => setPreviewSummaryRow(null)}
+        payWeekStart={payWeekForPreview}
+        staffLabel={previewStaffLabel}
+        lines={previewLines}
+        isLoading={linesQuery.isLoading}
+      />
     </div>
   )
 }

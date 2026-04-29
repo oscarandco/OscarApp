@@ -4,13 +4,14 @@ import { tableColumnTitle } from '@/lib/formatters'
 export const ADMIN_PAYROLL_SUMMARY_COLUMNS_STORAGE_KEY =
   'admin-payroll-summary-columns'
 
-/** Admin middle columns (between Week / Pay week start and Detail). Includes staff_full_name. */
+/** Admin middle columns (between Pay week start and Detail). */
 export type AdminMiddleColumnId =
   | 'pay_week_end'
   | 'pay_date'
   | 'location'
+  | 'work_performed_by'
+  | 'stylist_paid'
   | 'derived_staff_paid_id'
-  | 'derived_staff_paid_display_name'
   | 'derived_staff_paid_full_name'
   | 'staff_full_name'
   | 'derived_staff_paid_remuneration_plan'
@@ -32,8 +33,9 @@ const ALL_ADMIN_MIDDLE_IDS: readonly AdminMiddleColumnId[] = [
   'pay_week_end',
   'pay_date',
   'location',
+  'work_performed_by',
+  'stylist_paid',
   'derived_staff_paid_id',
-  'derived_staff_paid_display_name',
   'derived_staff_paid_full_name',
   'staff_full_name',
   'derived_staff_paid_remuneration_plan',
@@ -56,19 +58,21 @@ const ALL_ADMIN_MIDDLE_IDS: readonly AdminMiddleColumnId[] = [
 export const ADMIN_MIDDLE_LOCKED_VISIBLE: ReadonlySet<AdminMiddleColumnId> =
   new Set(['pay_date'])
 
-/** Labels match `tableColumnTitle` for the resolved row key (admin headers unchanged). */
+/** Labels for column picker and draggable headers (Sales Summary middle columns). */
 export function adminMiddleColumnLabel(id: AdminMiddleColumnId): string {
   if (id === 'location') return tableColumnTitle('location_name')
+  if (id === 'work_performed_by') return 'Work performed by'
+  if (id === 'stylist_paid') return 'Stylist paid'
   return tableColumnTitle(id)
 }
 
-/** Default visible middle columns (aligned with weekly payroll pattern; admin adds display + staff full name). */
+/** Default visible middle columns (Sales Summary main table). */
 const DEFAULT_VISIBLE_ADMIN_MIDDLE: readonly AdminMiddleColumnId[] = [
-  'pay_date',
   'pay_week_end',
+  'pay_date',
   'location',
-  'derived_staff_paid_display_name',
-  'staff_full_name',
+  'work_performed_by',
+  'stylist_paid',
   'total_sales_ex_gst',
   'total_theoretical_commission_ex_gst',
   'total_actual_commission_ex_gst',
@@ -169,6 +173,7 @@ export function resolveRowKeyForAdminMiddleColumn(
   id: AdminMiddleColumnId,
   row: AdminPayrollSummaryRow,
 ): string | null {
+  if (id === 'stylist_paid') return '__admin_summary_stylist_paid'
   if (id === 'location') {
     if (row.location_name != null && String(row.location_name).trim() !== '') {
       return 'location_name'

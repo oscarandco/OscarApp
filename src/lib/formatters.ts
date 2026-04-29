@@ -199,9 +199,11 @@ export function tableColumnTitle(key: string): string {
   if (key === 'zero_value_line_count') return 'Zero value line count'
   if (key === 'review_line_count') return 'Review line count'
   if (key === 'derived_staff_paid_id') return 'Derived staff paid ID'
+  if (key === 'derived_staff_paid_display_name') return 'Derived staff paid display name'
   if (key === 'derived_staff_paid_full_name') return 'Derived staff paid full name'
   if (key === 'derived_staff_paid_remuneration_plan') return 'Remuneration plan'
   if (key === 'total_actual_commission_ex_gst') return 'Total actual commission (ex GST)'
+  if (key === 'total_sales_ex_gst') return 'Total Sales Ex GST'
   if (key === 'total_theoretical_commission_ex_gst') {
     return 'Total theoretical commission (ex GST)'
   }

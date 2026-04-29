@@ -1,6 +1,9 @@
 -- Expose work-performed and staff-paid attribution columns on stylist line RPC
 -- (same underlying fields as v_admin_payroll_lines_weekly) for My Sales line
 -- preview and full week report.
+--
+-- New columns are appended after the existing view column list so
+-- CREATE OR REPLACE VIEW does not reinterpret column positions by name.
 
 CREATE OR REPLACE VIEW public.v_stylist_commission_lines_weekly_final AS
  SELECT a.user_id,
@@ -19,11 +22,6 @@ CREATE OR REPLACE VIEW public.v_stylist_commission_lines_weekly_final AS
     l.pay_date,
     l.customer_name,
     l.product_service_name,
-    l.work_display_name,
-    l.work_full_name,
-    l.staff_work_name,
-    l.staff_paid_name_derived,
-    l.existing_staff_paid_name,
     l.product_type_actual,
     l.product_type_short,
     l.commission_product_service,
@@ -44,7 +42,12 @@ CREATE OR REPLACE VIEW public.v_stylist_commission_lines_weekly_final AS
             ELSE NULL::text
         END AS stylist_visible_note,
     a.access_role,
-    l.location_name
+    l.location_name,
+    l.work_display_name,
+    l.work_full_name,
+    l.staff_work_name,
+    l.staff_paid_name_derived,
+    l.existing_staff_paid_name
    FROM v_admin_payroll_lines_weekly l
      JOIN staff_member_user_access a ON a.is_active = true
        AND (
