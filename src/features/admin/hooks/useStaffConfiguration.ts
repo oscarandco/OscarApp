@@ -5,21 +5,24 @@ import {
   fetchRemunerationPlanNames,
   fetchStaffMembers,
 } from '@/lib/staffMembersApi'
+import { rpcListActiveLocationsForImport, type ImportLocationRow } from '@/lib/supabaseRpc'
 
 export type StaffConfigurationBundle = {
   staff: StaffMemberRow[]
   planNames: string[]
+  locations: ImportLocationRow[]
 }
 
 export function useStaffConfiguration() {
   return useQuery({
     queryKey: ['staff-configuration'],
     queryFn: async (): Promise<StaffConfigurationBundle> => {
-      const [staff, planNames] = await Promise.all([
+      const [staff, planNames, locations] = await Promise.all([
         fetchStaffMembers(),
         fetchRemunerationPlanNames(),
+        rpcListActiveLocationsForImport(),
       ])
-      return { staff, planNames }
+      return { staff, planNames, locations }
     },
   })
 }

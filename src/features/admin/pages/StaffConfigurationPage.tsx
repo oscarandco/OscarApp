@@ -28,6 +28,8 @@ type StaffFormDraft = {
   secondary_roles: string
   remuneration_plan: string
   employment_type: EmploymentKind
+  /** Location id (`public.locations.id`); empty string = none. */
+  primary_location_id: string
   fte: string
   employment_start_date: string
   employment_end_date: string
@@ -131,6 +133,7 @@ function draftFromRow(row: StaffMemberRow): StaffFormDraft {
     secondary_roles: row.secondary_roles ?? '',
     remuneration_plan: row.remuneration_plan ?? '',
     employment_type: normalizeEmploymentKind(row.employment_type),
+    primary_location_id: row.primary_location_id ?? '',
     fte: row.fte == null ? '' : String(row.fte),
     employment_start_date: isoDateToInput(row.employment_start_date),
     employment_end_date: isoDateToInput(row.employment_end_date),
@@ -165,6 +168,7 @@ export function StaffConfigurationPage() {
 
   const staff = data?.staff ?? []
   const planNames = data?.planNames ?? []
+  const locations = data?.locations ?? []
 
   const primaryRoleFilterOptions = useMemo(() => {
     const set = new Set<string>()
@@ -267,6 +271,7 @@ export function StaffConfigurationPage() {
       'secondary_roles',
       'remuneration_plan',
       'employment_type',
+      'primary_location_id',
       'fte',
       'employment_start_date',
       'employment_end_date',
@@ -313,6 +318,8 @@ export function StaffConfigurationPage() {
         secondary_roles: draft.secondary_roles || null,
         remuneration_plan: draft.remuneration_plan || null,
         employment_type: draft.employment_type,
+        primary_location_id:
+          draft.primary_location_id.trim() === '' ? null : draft.primary_location_id.trim(),
         fte: fteValue,
         employment_start_date: draft.employment_start_date || null,
         employment_end_date: draft.employment_end_date || null,
@@ -367,6 +374,17 @@ export function StaffConfigurationPage() {
     if (current && !set.has(current)) set.add(current)
     return [...set].sort((a, b) => a.localeCompare(b))
   }, [planNames, draft?.remuneration_plan])
+
+  const primaryLocationSelectOptions = useMemo(() => {
+    const byId = new Map(locations.map((l) => [l.id, l]))
+    const cur = draft?.primary_location_id?.trim()
+    if (cur && !byId.has(cur)) {
+      byId.set(cur, { id: cur, code: '', name: 'Current value (not in active list)' })
+    }
+    return [...byId.values()].sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
+    )
+  }, [locations, draft?.primary_location_id])
 
   if (isLoading) {
     return (
@@ -746,8 +764,8 @@ export function StaffConfigurationPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                  <div>
+                <div className="space-y-4">
+                  <div className="max-w-md">
                     <label className="block text-sm font-medium text-slate-700" htmlFor="employment_type">
                       Employment type
                     </label>
@@ -770,27 +788,58 @@ export function StaffConfigurationPage() {
                       <option value="Contractor">Contractor</option>
                     </select>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700" htmlFor="fte">
-                      FTE
-                    </label>
-                    <input
-                      id="fte"
-                      type="number"
-                      inputMode="decimal"
-                      step="0.01"
-                      min="0"
-                      max="9.9999"
-                      value={draft.fte}
-                      onChange={(e) =>
-                        setDraft((d) => (d ? { ...d, fte: e.target.value } : d))
-                      }
-                      placeholder="e.g. 1, 0.8, 0.5"
-                      className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
-                    />
-                    <p className="mt-1 text-xs text-slate-500">
-                      Full-time equivalent. Typical range 0–1. Leave blank if unknown.
-                    </p>
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+                    <div className="min-w-0 flex-1">
+                      <label
+                        className="block text-sm font-medium text-slate-700"
+                        htmlFor="primary_location_id"
+                      >
+                        Primary location
+                      </label>
+                      <select
+                        id="primary_location_id"
+                        value={draft.primary_location_id}
+                        onChange={(e) =>
+                          setDraft((d) =>
+                            d ? { ...d, primary_location_id: e.target.value } : d,
+                          )
+                        }
+                        className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                      >
+                        <option value="">— None —</option>
+                        {primaryLocationSelectOptions.map((loc) => (
+                          <option key={loc.id} value={loc.id}>
+                            {loc.name}
+                            {loc.code ? ` (${loc.code})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Optional. Uses active locations from the Locations master.
+                      </p>
+                    </div>
+                    <div className="w-full shrink-0 sm:w-36">
+                      <label className="block text-sm font-medium text-slate-700" htmlFor="fte">
+                        FTE
+                      </label>
+                      <input
+                        id="fte"
+                        type="number"
+                        inputMode="decimal"
+                        step="0.01"
+                        min="0"
+                        max="9.9999"
+                        value={draft.fte}
+                        onChange={(e) =>
+                          setDraft((d) => (d ? { ...d, fte: e.target.value } : d))
+                        }
+                        placeholder="e.g. 1"
+                        className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                      />
+                      <p className="mt-1 text-xs text-slate-500">
+                        0–1 typical. Blank if unknown.
+                      </p>
+                    </div>
                   </div>
                 </div>
 

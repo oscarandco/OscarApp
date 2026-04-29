@@ -7,6 +7,8 @@ export type StaffMemberRow = {
   secondary_roles: string | null
   remuneration_plan: string | null
   employment_type: string | null
+  /** FK to `public.locations.id` when set. Omitted until migration applied. */
+  primary_location_id?: string | null
   fte: number | string | null
   employment_start_date: string | null
   employment_end_date: string | null
