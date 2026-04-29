@@ -31,18 +31,24 @@ import {
   sortWeeklyDashboardTableBRows,
 } from '@/lib/weeklyDashboardTableSort'
 
-const thBase =
-  'border-b border-slate-200 px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 sm:px-4 sm:py-3 sm:normal-case sm:text-sm sm:tracking-normal sm:text-slate-700'
-const tdBase =
-  'whitespace-nowrap border-b border-slate-100 px-3 py-2.5 text-slate-700 sm:px-4 sm:py-3 tabular-nums'
-const tdText = 'border-b border-slate-100 px-3 py-2.5 text-slate-700 sm:px-4 sm:py-3'
-/** First column: full names can wrap when tables are side-by-side on lg+ */
-const tdName =
-  'min-w-0 border-b border-slate-100 px-3 py-2.5 text-slate-700 sm:px-4 sm:py-3 break-words'
-/** Rightmost actions column: no visible header label */
-const thAction = `${thBase} w-px`
-const tdAction =
-  'whitespace-nowrap border-b border-slate-100 px-3 py-2.5 text-right align-middle text-slate-700 sm:px-4 sm:py-3'
+/**
+ * Weekly payroll dashboard summary tables only: smaller type, tighter rows,
+ * stylist names on one line (horizontal scroll via TableScrollArea when needed).
+ */
+const dashTable = 'w-max min-w-full border-collapse text-xs'
+const dashTh =
+  'border-b border-slate-200 px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-600 sm:px-3 sm:py-2 sm:normal-case sm:text-xs sm:tracking-normal sm:text-slate-700'
+const dashThRight = `${dashTh} text-right`
+const dashThAction = `${dashTh} w-px`
+const dashTdNum =
+  'whitespace-nowrap border-b border-slate-100 px-2 py-1.5 tabular-nums text-slate-700 sm:px-3 sm:py-2'
+const dashTdNumRight = `${dashTdNum} text-right`
+const dashTdName =
+  'whitespace-nowrap border-b border-slate-100 px-2 py-1.5 text-slate-700 sm:px-3 sm:py-2'
+const dashTdText =
+  'border-b border-slate-100 px-2 py-1.5 text-xs text-slate-700 sm:px-3 sm:py-2'
+const dashTdAction =
+  'whitespace-nowrap border-b border-slate-100 px-2 py-1.5 text-right align-middle text-slate-700 sm:px-3 sm:py-2'
 
 const cardButtonBase =
   'w-full rounded-lg border px-4 py-3 text-left shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2'
@@ -317,10 +323,10 @@ export function AdminWeeklyCommissionDashboardPage() {
               By category (commission amount)
             </h2>
             <TableScrollArea>
-              <table className="min-w-full border-collapse">
+              <table className={dashTable}>
                 <thead>
                   <tr>
-                    <th className={thBase} scope="col">
+                    <th className={dashTh} scope="col">
                       <TableColumnSortHeader
                         label="Stylist paid"
                         columnKey="staffPaid"
@@ -328,7 +334,7 @@ export function AdminWeeklyCommissionDashboardPage() {
                         onSortChange={setTableASort}
                       />
                     </th>
-                    <th className={`${thBase} text-right`} scope="col">
+                    <th className={dashThRight} scope="col">
                       <TableColumnSortHeader
                         label="Prof. Prod."
                         columnKey="profProd"
@@ -337,7 +343,7 @@ export function AdminWeeklyCommissionDashboardPage() {
                         align="right"
                       />
                     </th>
-                    <th className={`${thBase} text-right`} scope="col">
+                    <th className={dashThRight} scope="col">
                       <TableColumnSortHeader
                         label="Retail Prod."
                         columnKey="retailProd"
@@ -346,7 +352,7 @@ export function AdminWeeklyCommissionDashboardPage() {
                         align="right"
                       />
                     </th>
-                    <th className={`${thBase} text-right`} scope="col">
+                    <th className={dashThRight} scope="col">
                       <TableColumnSortHeader
                         label="Services"
                         columnKey="services"
@@ -355,7 +361,7 @@ export function AdminWeeklyCommissionDashboardPage() {
                         align="right"
                       />
                     </th>
-                    <th className={`${thBase} text-right`} scope="col">
+                    <th className={dashThRight} scope="col">
                       <TableColumnSortHeader
                         label="Total"
                         columnKey="total"
@@ -364,13 +370,13 @@ export function AdminWeeklyCommissionDashboardPage() {
                         align="right"
                       />
                     </th>
-                    <th className={thAction} aria-hidden />
+                    <th className={dashThAction} aria-hidden />
                   </tr>
                 </thead>
                 <tbody>
                   {tableA.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className={tdText}>
+                      <td colSpan={6} className={dashTdText}>
                         {weekLines.length === 0
                           ? 'No lines for this week.'
                           : 'No lines match the selected card filter.'}
@@ -380,21 +386,21 @@ export function AdminWeeklyCommissionDashboardPage() {
                     <>
                       {displayTableA.map((r) => (
                         <tr key={r.staffPaid}>
-                          <td className={tdName}>
-                            <span className="flex min-w-0 items-center gap-1.5">
+                          <td className={dashTdName}>
+                            <span className="flex items-center gap-1.5 whitespace-nowrap">
                               <StaffLocationNavBadge letter={r.locationBadge} />
-                              <span className="min-w-0 break-words font-medium text-slate-900">
+                              <span className="font-medium whitespace-nowrap text-slate-900">
                                 {r.staffPaid}
                               </span>
                             </span>
                           </td>
-                          <td className={`${tdBase} text-right`}>{formatNzd(r.profProd)}</td>
-                          <td className={`${tdBase} text-right`}>{formatNzd(r.retailProd)}</td>
-                          <td className={`${tdBase} text-right`}>{formatNzd(r.services)}</td>
-                          <td className={`${tdBase} text-right`}>
+                          <td className={dashTdNumRight}>{formatNzd(r.profProd)}</td>
+                          <td className={dashTdNumRight}>{formatNzd(r.retailProd)}</td>
+                          <td className={dashTdNumRight}>{formatNzd(r.services)}</td>
+                          <td className={dashTdNumRight}>
                             <span className="font-medium tabular-nums">{formatNzd(r.total)}</span>
                           </td>
-                          <td className={tdAction}>
+                          <td className={dashTdAction}>
                             <button
                               type="button"
                               className="text-xs font-medium text-violet-700 hover:text-violet-900"
@@ -412,25 +418,25 @@ export function AdminWeeklyCommissionDashboardPage() {
                         </tr>
                       ))}
                       <tr className="bg-slate-50">
-                        <td className={tdName}>
-                          <span className="flex min-w-0 items-center gap-1.5">
+                        <td className={dashTdName}>
+                          <span className="flex items-center gap-1.5 whitespace-nowrap">
                             <StaffLocationNavBadge letter={null} />
-                            <span className="font-semibold">Total</span>
+                            <span className="font-semibold whitespace-nowrap">Total</span>
                           </span>
                         </td>
-                        <td className={`${tdBase} text-right font-semibold`}>
+                        <td className={`${dashTdNumRight} font-semibold`}>
                           {formatNzd(totalsA.profProd)}
                         </td>
-                        <td className={`${tdBase} text-right font-semibold`}>
+                        <td className={`${dashTdNumRight} font-semibold`}>
                           {formatNzd(totalsA.retailProd)}
                         </td>
-                        <td className={`${tdBase} text-right font-semibold`}>
+                        <td className={`${dashTdNumRight} font-semibold`}>
                           {formatNzd(totalsA.services)}
                         </td>
-                        <td className={`${tdBase} text-right font-semibold`}>
+                        <td className={`${dashTdNumRight} font-semibold`}>
                           {formatNzd(totalsA.total)}
                         </td>
-                        <td className={tdAction} aria-hidden />
+                        <td className={dashTdAction} aria-hidden />
                       </tr>
                     </>
                   )}
@@ -444,10 +450,10 @@ export function AdminWeeklyCommissionDashboardPage() {
               By commission product / service (commission amount)
             </h2>
             <TableScrollArea>
-              <table className="min-w-full border-collapse">
+              <table className={dashTable}>
                 <thead>
                   <tr>
-                    <th className={thBase} scope="col">
+                    <th className={dashTh} scope="col">
                       <TableColumnSortHeader
                         label="Stylist paid"
                         columnKey="staffPaid"
@@ -455,7 +461,7 @@ export function AdminWeeklyCommissionDashboardPage() {
                         onSortChange={setTableBSort}
                       />
                     </th>
-                    <th className={`${thBase} text-right`} scope="col">
+                    <th className={dashThRight} scope="col">
                       <TableColumnSortHeader
                         label="Comm Products"
                         columnKey="commProducts"
@@ -464,7 +470,7 @@ export function AdminWeeklyCommissionDashboardPage() {
                         align="right"
                       />
                     </th>
-                    <th className={`${thBase} text-right`} scope="col">
+                    <th className={dashThRight} scope="col">
                       <TableColumnSortHeader
                         label="Comm Services"
                         columnKey="commServices"
@@ -473,7 +479,7 @@ export function AdminWeeklyCommissionDashboardPage() {
                         align="right"
                       />
                     </th>
-                    <th className={`${thBase} text-right`} scope="col">
+                    <th className={dashThRight} scope="col">
                       <TableColumnSortHeader
                         label="Total"
                         columnKey="total"
@@ -482,13 +488,13 @@ export function AdminWeeklyCommissionDashboardPage() {
                         align="right"
                       />
                     </th>
-                    <th className={thAction} aria-hidden />
+                    <th className={dashThAction} aria-hidden />
                   </tr>
                 </thead>
                 <tbody>
                   {tableB.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className={tdText}>
+                      <td colSpan={5} className={dashTdText}>
                         {weekLines.length === 0
                           ? 'No lines for this week.'
                           : 'No lines match the selected card filter.'}
@@ -498,24 +504,20 @@ export function AdminWeeklyCommissionDashboardPage() {
                     <>
                       {displayTableB.map((r) => (
                         <tr key={r.staffPaid}>
-                          <td className={tdName}>
-                            <span className="flex min-w-0 items-center gap-1.5">
+                          <td className={dashTdName}>
+                            <span className="flex items-center gap-1.5 whitespace-nowrap">
                               <StaffLocationNavBadge letter={r.locationBadge} />
-                              <span className="min-w-0 break-words font-medium text-slate-900">
+                              <span className="font-medium whitespace-nowrap text-slate-900">
                                 {r.staffPaid}
                               </span>
                             </span>
                           </td>
-                          <td className={`${tdBase} text-right`}>
-                            {formatNzd(r.commProducts)}
-                          </td>
-                          <td className={`${tdBase} text-right`}>
-                            {formatNzd(r.commServices)}
-                          </td>
-                          <td className={`${tdBase} text-right`}>
+                          <td className={dashTdNumRight}>{formatNzd(r.commProducts)}</td>
+                          <td className={dashTdNumRight}>{formatNzd(r.commServices)}</td>
+                          <td className={dashTdNumRight}>
                             <span className="font-medium tabular-nums">{formatNzd(r.total)}</span>
                           </td>
-                          <td className={tdAction}>
+                          <td className={dashTdAction}>
                             <button
                               type="button"
                               className="text-xs font-medium text-violet-700 hover:text-violet-900"
@@ -533,22 +535,22 @@ export function AdminWeeklyCommissionDashboardPage() {
                         </tr>
                       ))}
                       <tr className="bg-slate-50">
-                        <td className={tdName}>
-                          <span className="flex min-w-0 items-center gap-1.5">
+                        <td className={dashTdName}>
+                          <span className="flex items-center gap-1.5 whitespace-nowrap">
                             <StaffLocationNavBadge letter={null} />
-                            <span className="font-semibold">Total</span>
+                            <span className="font-semibold whitespace-nowrap">Total</span>
                           </span>
                         </td>
-                        <td className={`${tdBase} text-right font-semibold`}>
+                        <td className={`${dashTdNumRight} font-semibold`}>
                           {formatNzd(totalsB.commProducts)}
                         </td>
-                        <td className={`${tdBase} text-right font-semibold`}>
+                        <td className={`${dashTdNumRight} font-semibold`}>
                           {formatNzd(totalsB.commServices)}
                         </td>
-                        <td className={`${tdBase} text-right font-semibold`}>
+                        <td className={`${dashTdNumRight} font-semibold`}>
                           {formatNzd(totalsB.total)}
                         </td>
-                        <td className={tdAction} aria-hidden />
+                        <td className={dashTdAction} aria-hidden />
                       </tr>
                     </>
                   )}
