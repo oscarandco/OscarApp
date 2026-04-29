@@ -205,6 +205,25 @@ export async function rpcListActiveLocationsForImport(): Promise<ImportLocationR
   return asRows(data as ImportLocationRow[])
 }
 
+/** Live first/last sale + location labels from `list_staff_sales_import_metadata` (elevated). */
+export type StaffSalesImportMetadataRow = {
+  staff_member_id: string
+  first_seen_sale_date: string | null
+  first_seen_sale_location_names: string | null
+  last_seen_sale_date: string | null
+  last_seen_sale_location_names: string | null
+}
+
+export async function rpcListStaffSalesImportMetadata(): Promise<
+  StaffSalesImportMetadataRow[]
+> {
+  const { data, error } = await requireSupabaseClient().rpc(
+    'list_staff_sales_import_metadata',
+  )
+  if (error) throw toError('list_staff_sales_import_metadata', error)
+  return asRows(data as StaffSalesImportMetadataRow[])
+}
+
 /**
  * After uploading a CSV to Storage, call your server-side import pipeline.
  * `p_location_id` is required (Admin Imports location selector).

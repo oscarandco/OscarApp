@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 
 import { EmptyState } from '@/components/feedback/EmptyState'
 import { ErrorState } from '@/components/feedback/ErrorState'
@@ -6,6 +7,7 @@ import { LoadingState } from '@/components/feedback/LoadingState'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { TableScrollArea } from '@/components/ui/TableScrollArea'
 import { AdminPayrollLinesPreviewModal } from '@/features/admin/components/AdminPayrollLinesPreviewModal'
+import { StaffLocationNavBadge } from '@/features/admin/components/StaffLocationNavBadge'
 import { useAdminPayrollLinesWeekly } from '@/features/admin/hooks/useAdminPayrollLinesWeekly'
 import { useAdminPayrollSummaryWeekly } from '@/features/admin/hooks/useAdminPayrollSummaryWeekly'
 import {
@@ -16,6 +18,7 @@ import {
   filterLinesForDashboardCard,
 } from '@/features/admin/utils/weeklyCommissionDashboardAggregates'
 import { formatNzd } from '@/lib/formatters'
+import { rpcListActiveLocationsForImport } from '@/lib/supabaseRpc'
 import {
   filterAdminPayrollLinesForStaffWeek,
   uniquePayWeekStartOptions,
@@ -79,6 +82,12 @@ export function AdminWeeklyCommissionDashboardPage() {
 
   const linesQuery = useAdminPayrollLinesWeekly(selectedWeek ?? undefined)
 
+  const locationsQuery = useQuery({
+    queryKey: ['active-locations-for-import'],
+    queryFn: rpcListActiveLocationsForImport,
+  })
+  const locations = locationsQuery.data ?? []
+
   const weekLines = linesQuery.data ?? []
 
   const cards = useMemo(() => aggregateWeekSummaryCards(weekLines), [weekLines])
@@ -88,9 +97,15 @@ export function AdminWeeklyCommissionDashboardPage() {
     [weekLines, cardFilter],
   )
 
-  const tableA = useMemo(() => aggregateTableAByStaff(linesForTables), [linesForTables])
+  const tableA = useMemo(
+    () => aggregateTableAByStaff(linesForTables, locations),
+    [linesForTables, locations],
+  )
 
-  const tableB = useMemo(() => aggregateTableBByStaff(linesForTables), [linesForTables])
+  const tableB = useMemo(
+    () => aggregateTableBByStaff(linesForTables, locations),
+    [linesForTables, locations],
+  )
 
   const totalsA = useMemo(
     () => ({
@@ -285,7 +300,7 @@ export function AdminWeeklyCommissionDashboardPage() {
               <table className="min-w-full border-collapse">
                 <thead>
                   <tr>
-                    <th className={thBase}>Staff paid</th>
+                    <th className={thBase}>Stylist paid</th>
                     <th className={`${thBase} text-right`}>Prof. Prod.</th>
                     <th className={`${thBase} text-right`}>Retail Prod.</th>
                     <th className={`${thBase} text-right`}>Services</th>
@@ -306,7 +321,14 @@ export function AdminWeeklyCommissionDashboardPage() {
                     <>
                       {tableA.map((r) => (
                         <tr key={r.staffPaid}>
-                          <td className={tdName}>{r.staffPaid}</td>
+                          <td className={tdName}>
+                            <span className="flex min-w-0 items-center gap-1.5">
+                              <StaffLocationNavBadge letter={r.locationBadge} />
+                              <span className="min-w-0 break-words font-medium text-slate-900">
+                                {r.staffPaid}
+                              </span>
+                            </span>
+                          </td>
                           <td className={`${tdBase} text-right`}>{formatNzd(r.profProd)}</td>
                           <td className={`${tdBase} text-right`}>{formatNzd(r.retailProd)}</td>
                           <td className={`${tdBase} text-right`}>{formatNzd(r.services)}</td>
@@ -331,7 +353,12 @@ export function AdminWeeklyCommissionDashboardPage() {
                         </tr>
                       ))}
                       <tr className="bg-slate-50">
-                        <td className={`${tdText} font-semibold`}>Total</td>
+                        <td className={tdName}>
+                          <span className="flex min-w-0 items-center gap-1.5">
+                            <StaffLocationNavBadge letter={null} />
+                            <span className="font-semibold">Total</span>
+                          </span>
+                        </td>
                         <td className={`${tdBase} text-right font-semibold`}>
                           {formatNzd(totalsA.profProd)}
                         </td>
@@ -361,7 +388,7 @@ export function AdminWeeklyCommissionDashboardPage() {
               <table className="min-w-full border-collapse">
                 <thead>
                   <tr>
-                    <th className={thBase}>Staff paid</th>
+                    <th className={thBase}>Stylist paid</th>
                     <th className={`${thBase} text-right`}>Comm Products</th>
                     <th className={`${thBase} text-right`}>Comm Services</th>
                     <th className={`${thBase} text-right`}>Total</th>
@@ -381,7 +408,14 @@ export function AdminWeeklyCommissionDashboardPage() {
                     <>
                       {tableB.map((r) => (
                         <tr key={r.staffPaid}>
-                          <td className={tdName}>{r.staffPaid}</td>
+                          <td className={tdName}>
+                            <span className="flex min-w-0 items-center gap-1.5">
+                              <StaffLocationNavBadge letter={r.locationBadge} />
+                              <span className="min-w-0 break-words font-medium text-slate-900">
+                                {r.staffPaid}
+                              </span>
+                            </span>
+                          </td>
                           <td className={`${tdBase} text-right`}>
                             {formatNzd(r.commProducts)}
                           </td>
@@ -409,7 +443,12 @@ export function AdminWeeklyCommissionDashboardPage() {
                         </tr>
                       ))}
                       <tr className="bg-slate-50">
-                        <td className={`${tdText} font-semibold`}>Total</td>
+                        <td className={tdName}>
+                          <span className="flex min-w-0 items-center gap-1.5">
+                            <StaffLocationNavBadge letter={null} />
+                            <span className="font-semibold">Total</span>
+                          </span>
+                        </td>
                         <td className={`${tdBase} text-right font-semibold`}>
                           {formatNzd(totalsB.commProducts)}
                         </td>

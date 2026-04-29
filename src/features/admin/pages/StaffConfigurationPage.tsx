@@ -5,6 +5,7 @@ import { ConfirmDialog } from '@/components/feedback/ConfirmDialog'
 import { ErrorState } from '@/components/feedback/ErrorState'
 import { LoadingState } from '@/components/feedback/LoadingState'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { StaffLocationNavBadge } from '@/features/admin/components/StaffLocationNavBadge'
 import { useStaffConfiguration } from '@/features/admin/hooks/useStaffConfiguration'
 import type { StaffMemberRow } from '@/features/admin/types/staffConfiguration'
 import {
@@ -14,7 +15,8 @@ import {
   type StaffMemberUpdatePayload,
 } from '@/lib/staffMembersApi'
 import { queryErrorDetail } from '@/lib/queryError'
-import type { ImportLocationRow } from '@/lib/supabaseRpc'
+import { primaryLocationNavBadge } from '@/lib/locationNavBadge'
+import type { ImportLocationRow, StaffSalesImportMetadataRow } from '@/lib/supabaseRpc'
 
 type StatusFilter = 'all' | 'active' | 'inactive'
 
@@ -54,6 +56,23 @@ function isoDateToInput(iso: string | null | undefined): string {
   return iso.slice(0, 10)
 }
 
+/** One line for Import metadata panel: date · locations, or em dash when no sales. */
+function formatLiveSaleSeenLine(
+  meta: StaffSalesImportMetadataRow | undefined,
+  kind: 'first' | 'last',
+): string {
+  const date =
+    kind === 'first' ? meta?.first_seen_sale_date : meta?.last_seen_sale_date
+  const locs =
+    kind === 'first'
+      ? meta?.first_seen_sale_location_names
+      : meta?.last_seen_sale_location_names
+  if (!date) return '—'
+  const d = isoDateToInput(date)
+  const locPart = locs && locs.trim() !== '' ? locs : '—'
+  return `${d} · ${locPart}`
+}
+
 /** Left-nav bucket from `primary_role` only (no backend). */
 function staffNavBucket(row: StaffMemberRow): 'stylists' | 'assistants' | 'other' {
   const role = (row.primary_role ?? '').trim().toLowerCase()
@@ -77,24 +96,6 @@ function sortKeyForNav(s: StaffMemberRow): string {
 
 function compareStaffNav(a: StaffMemberRow, b: StaffMemberRow): number {
   return sortKeyForNav(a).localeCompare(sortKeyForNav(b), undefined, { sensitivity: 'base' })
-}
-
-/** Orewa / Takapuna only; uses same `locations` list as the Primary location dropdown (code or name). */
-function primaryLocationNavBadge(
-  primaryLocationId: string | null | undefined,
-  locations: ImportLocationRow[],
-): 'O' | 'T' | null {
-  const id = primaryLocationId?.trim()
-  if (!id) return null
-  const loc = locations.find((l) => l.id === id)
-  if (!loc) return null
-  const code = (loc.code ?? '').trim().toUpperCase()
-  if (code === 'ORE') return 'O'
-  if (code === 'TAK') return 'T'
-  const n = (loc.name ?? '').trim().toLowerCase()
-  if (n.includes('orewa')) return 'O'
-  if (n.includes('takapuna')) return 'T'
-  return null
 }
 
 function StaffNavRow({
@@ -126,26 +127,7 @@ function StaffNavRow({
         }`}
       >
         <span className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
-          {/* Fixed 16px slot so names line up whether O, T, or no primary location */}
-          <span className="flex h-4 w-4 shrink-0 items-center justify-center">
-            {locBadge === 'O' ? (
-              <span
-                className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-violet-600 text-[9px] font-semibold leading-none text-white"
-                title="Orewa"
-                aria-label="Primary location: Orewa"
-              >
-                O
-              </span>
-            ) : locBadge === 'T' ? (
-              <span
-                className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-sky-800 text-[9px] font-semibold leading-none text-sky-100"
-                title="Takapuna"
-                aria-label="Primary location: Takapuna"
-              >
-                T
-              </span>
-            ) : null}
-          </span>
+          <StaffLocationNavBadge letter={locBadge} />
           <span className="min-w-0 flex-1 truncate">
             <span className="font-medium text-slate-900">{primary}</span>
             {showSecondary ? (
@@ -213,6 +195,14 @@ export function StaffConfigurationPage() {
   const staff = data?.staff ?? []
   const planNames = data?.planNames ?? []
   const locations = data?.locations ?? []
+
+  const salesImportMetaByStaffId = useMemo(() => {
+    const m = new Map<string, StaffSalesImportMetadataRow>()
+    for (const r of data?.salesImportMetadata ?? []) {
+      m.set(r.staff_member_id, r)
+    }
+    return m
+  }, [data?.salesImportMetadata])
 
   const primaryRoleFilterOptions = useMemo(() => {
     const set = new Set<string>()
@@ -287,6 +277,11 @@ export function StaffConfigurationPage() {
     () => staff.find((s) => s.id === selectedId) ?? null,
     [staff, selectedId],
   )
+
+  const selectedSalesImportMeta = useMemo(() => {
+    if (!selected) return undefined
+    return salesImportMetaByStaffId.get(selected.id)
+  }, [selected, salesImportMetaByStaffId])
 
   useEffect(() => {
     if (!selected) {
@@ -1013,15 +1008,11 @@ export function StaffConfigurationPage() {
                   <p className="font-medium text-slate-800">Import metadata (read-only)</p>
                   <p className="mt-1">
                     First seen sale:{' '}
-                    {selected.first_seen_sale_date
-                      ? isoDateToInput(selected.first_seen_sale_date)
-                      : '—'}
+                    {formatLiveSaleSeenLine(selectedSalesImportMeta, 'first')}
                   </p>
                   <p>
                     Last seen sale:{' '}
-                    {selected.last_seen_sale_date
-                      ? isoDateToInput(selected.last_seen_sale_date)
-                      : '—'}
+                    {formatLiveSaleSeenLine(selectedSalesImportMeta, 'last')}
                   </p>
                 </div>
 
