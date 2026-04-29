@@ -18,6 +18,20 @@ export function primaryLocationNavBadge(
   return null
 }
 
+/** O / T from paid staff primary location code or name (same rules as `primaryLocationNavBadge`). */
+export function badgeFromPaidPrimaryLocation(
+  code: string | null | undefined,
+  name: string | null | undefined,
+): 'O' | 'T' | null {
+  const c = (code ?? '').trim().toUpperCase()
+  if (c === 'ORE') return 'O'
+  if (c === 'TAK') return 'T'
+  const n = (name ?? '').trim().toLowerCase()
+  if (n.includes('orewa')) return 'O'
+  if (n.includes('takapuna')) return 'T'
+  return null
+}
+
 /**
  * Single-salon badge for payroll aggregates: only when every contributing line
  * shares one location id (resolved via `locations`) or one distinct non-empty

@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
 
 import { EmptyState } from '@/components/feedback/EmptyState'
 import { ErrorState } from '@/components/feedback/ErrorState'
@@ -19,7 +18,6 @@ import {
   filterLinesForDashboardCard,
 } from '@/features/admin/utils/weeklyCommissionDashboardAggregates'
 import { formatNzd } from '@/lib/formatters'
-import { rpcListActiveLocationsForImport } from '@/lib/supabaseRpc'
 import {
   filterAdminPayrollLinesForStaffWeek,
   uniquePayWeekStartOptions,
@@ -98,12 +96,6 @@ export function AdminWeeklyCommissionDashboardPage() {
 
   const linesQuery = useAdminPayrollLinesWeekly(selectedWeek ?? undefined)
 
-  const locationsQuery = useQuery({
-    queryKey: ['active-locations-for-import'],
-    queryFn: rpcListActiveLocationsForImport,
-  })
-  const locations = locationsQuery.data ?? []
-
   const weekLines = linesQuery.data ?? []
 
   const cards = useMemo(() => aggregateWeekSummaryCards(weekLines), [weekLines])
@@ -114,13 +106,13 @@ export function AdminWeeklyCommissionDashboardPage() {
   )
 
   const tableA = useMemo(
-    () => aggregateTableAByStaff(linesForTables, locations),
-    [linesForTables, locations],
+    () => aggregateTableAByStaff(linesForTables),
+    [linesForTables],
   )
 
   const tableB = useMemo(
-    () => aggregateTableBByStaff(linesForTables, locations),
-    [linesForTables, locations],
+    () => aggregateTableBByStaff(linesForTables),
+    [linesForTables],
   )
 
   const displayTableA = useMemo(
