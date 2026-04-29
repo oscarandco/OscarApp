@@ -159,9 +159,14 @@ export async function rpcGetKpiSnapshotLive(
 /**
  * Fetch the stylist comparison set for the staff/self KPI dashboard
  * via `public.get_kpi_stylist_comparisons_live`. Returns one row per
- * supported KPI (the comparison-eligible subset only — see the
- * migration for the locked list) with `current_value`, `highest_value`,
+ * supported KPI (revenue, guests_per_month, new_clients_per_month,
+ * average_client_spend, assistant_utilisation_ratio — see
+ * `get_kpi_stylist_comparisons_live` migrations) with `current_value`, `highest_value`,
  * `average_value` plus `is_highest` / `is_above_average` flags.
+ * Revenue, guests, and new-clients rows use FTE-scaled comparison
+ * values (raw/fte when 0 < fte < 1 per cohort member) so self-view
+ * badges match normalised card values; average spend and assistant
+ * utilisation stay unscaled rates.
  *
  * Returns `[]` when the resolved scope is not staff (the backend
  * RPC explicitly returns zero rows in that case).

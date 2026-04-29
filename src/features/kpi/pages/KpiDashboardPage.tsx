@@ -5,7 +5,7 @@ import { EmptyState } from '@/components/feedback/EmptyState'
 import { ErrorState } from '@/components/feedback/ErrorState'
 import { LoadingState } from '@/components/feedback/LoadingState'
 import { PageHeader } from '@/components/layout/PageHeader'
-import { useHasElevatedAccess } from '@/features/access/accessContext'
+import { useHasElevatedAccess, useAccessProfile } from '@/features/access/accessContext'
 import { useStaffMemberSearch } from '@/features/admin/hooks/useAccessMappingSearch'
 import { KpiCard } from '@/features/kpi/components/KpiCard'
 import { KpiDetailPanel } from '@/features/kpi/components/KpiDetailPanel'
@@ -78,6 +78,7 @@ function formatMonthLabel(isoFirstOfMonth: string): string {
 
 export function KpiDashboardPage() {
   const elevated = useHasElevatedAccess()
+  const { normalized } = useAccessProfile()
 
   const [filters, setFilters] = useState<KpiFiltersValue>(() => ({
     periodStart: firstOfCurrentMonth(),
@@ -133,7 +134,24 @@ export function KpiDashboardPage() {
   // the elevated-user dashboards quiet). The comparison query is
   // intentionally separate from the snapshot — comparison values are
   // additive UI metadata, not part of the locked KPI return shape.
+  // Snapshot RPC still accepts null staff id for non-elevated callers
+  // (backend resolves from auth.uid()). Comparison RPC must receive an
+  // explicit staff_member_id for staff scope so PostgREST always sends a
+  // JWT-backed request with the same cohort key as the UI, and we never
+  // fire before `normalized.staffMemberId` exists.
+  const comparisonStaffMemberId =
+    effectiveScope === 'staff'
+      ? elevated
+        ? effectiveStaffId
+        : (normalized?.staffMemberId ?? null)
+      : null
+
   const comparisonsEnabled = snapshotEnabled && effectiveScope === 'staff'
+  const comparisonsRpcEnabled =
+    comparisonsEnabled &&
+    Boolean(comparisonStaffMemberId) &&
+    Boolean(filters.periodStart?.trim())
+
   const {
     data: comparisonPayload,
     isPending: comparisonsPending,
@@ -141,12 +159,12 @@ export function KpiDashboardPage() {
     periodStart: filters.periodStart,
     scope: effectiveScope,
     locationId: effectiveLocationId,
-    staffMemberId: effectiveStaffId,
-    enabled: comparisonsEnabled,
+    staffMemberId: comparisonStaffMemberId,
+    enabled: comparisonsRpcEnabled,
   })
   const comparisonRows = comparisonPayload?.rows
   const comparisonUnavailable =
-    comparisonsEnabled && !comparisonsPending && comparisonPayload?.unavailable
+    comparisonsRpcEnabled && !comparisonsPending && comparisonPayload?.unavailable
 
   const comparisonByKpiCode = useMemo(() => {
     const map = new Map<string, KpiStylistComparisonRow>()
@@ -338,9 +356,9 @@ export function KpiDashboardPage() {
         className={
           // Elevated users (manager / admin) keep the two-column
           // split with the Selected KPI side panel. Stylist /
-          // assistant views drop the side column entirely and let
-          // the card grid span the full page width — see the card
-          // grid class below for the matching wider breakpoints.
+          // assistant views drop the side column entirely. Self/staff
+          // grid uses up to five columns at xl so all KPI cards fit one
+          // row on typical laptop/desktop widths (see kpi-dashboard-grid).
           elevated
             ? 'flex flex-col gap-4 lg:grid lg:items-start lg:gap-5 lg:grid-cols-[minmax(0,1fr)_22rem]'
             : 'flex flex-col gap-4'
@@ -359,7 +377,7 @@ export function KpiDashboardPage() {
           className={
             elevated
               ? 'grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3'
-              : 'grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
+              : 'grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5'
           }
           data-testid="kpi-dashboard-grid"
         >

@@ -17,18 +17,16 @@ import {
  * `average_client_spend` is special-cased to avoid the awkward
  * "Avg avg spend" phrasing — it reads "Average client spend" instead.
  *
- * The set is deliberately narrow. The comparison RPC was trimmed on
- * 2026-04 to these four lightweight KPIs (revenue, guests, new
- * clients, average client spend) after the full nine-KPI fanout
- * tripped statement_timeout at real-world cohort sizes. Keep this
- * list in lockstep with
- * `20260501510000_kpi_stylist_comparisons_trim_to_lightweight.sql`.
+ * Keep in lockstep with `public.get_kpi_stylist_comparisons_live`
+ * (set-based migration adds assistant_utilisation_ratio alongside
+ * revenue, guests, new clients, average spend).
  */
 const COMPARISON_AVG_LABEL: Record<string, string> = {
   revenue: 'Avg revenue',
   guests_per_month: 'Avg guests',
   new_clients_per_month: 'Avg new guests',
   average_client_spend: 'Average guest spend',
+  assistant_utilisation_ratio: 'Avg utilisation',
 }
 
 /**
@@ -142,11 +140,10 @@ export function KpiCard({
   // Per-KPI prefix for the "Avg ..." pill. The map doubles as the
   // comparison-eligibility gate on the display side: any KPI not
   // listed here will never render pills even if the backend sends a
-  // row for it. This is intentional for the three KPIs explicitly
-  // out of the stylist comparison scope (`new_client_retention_6m`,
-  // `new_client_retention_12m`, `stylist_profitability`). The top
-  // pill label is a fixed "Top Stylist" string for every supported
-  // KPI so it doesn't need a per-KPI entry.
+  // row for it. KPIs outside this set (e.g. retentions,
+  // stylist_profitability) stay without pills. The top pill label is a
+  // fixed "Top Stylist" string for every supported KPI so it doesn't
+  // need a per-KPI entry.
   const comparisonAvgLabel = COMPARISON_AVG_LABEL[row.kpi_code]
 
   // Show the two-line "Highest stylist X / Average stylist X" note
@@ -155,6 +152,9 @@ export function KpiCard({
   // The backend itself already gates `is_highest` / `is_above_average`
   // on `cohort_size >= 2`, so the tint stays correctly off for
   // single-stylist cohorts without needing a second frontend gate.
+  // For revenue / guests / new_clients, the RPC uses FTE-adjusted
+  // cohort values when 0 < fte < 1 so flags and pills match the
+  // normalised headline number on the card.
   const showComparison =
     !!comparison &&
     !!comparisonAvgLabel &&

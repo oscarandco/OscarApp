@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 
 import { useAccessProfile } from '@/features/access/accessContext'
+import { useAuth } from '@/features/auth/authContext'
 import {
   rpcGetKpiSnapshotLive,
   type KpiSnapshotArgs,
@@ -29,6 +30,7 @@ type UseKpiSnapshotArgs = KpiSnapshotArgs & {
  */
 export function useKpiSnapshot(args: UseKpiSnapshotArgs) {
   const { accessState } = useAccessProfile()
+  const { session, user, loading: authLoading } = useAuth()
   const {
     periodStart,
     scope,
@@ -38,6 +40,11 @@ export function useKpiSnapshot(args: UseKpiSnapshotArgs) {
     enabled = true,
   } = args
   const resolvedIncludeExtended = includeExtended ?? false
+
+  const sessionReady =
+    !authLoading &&
+    Boolean(session?.access_token) &&
+    Boolean(user?.id)
 
   return useQuery({
     queryKey: [
@@ -56,6 +63,6 @@ export function useKpiSnapshot(args: UseKpiSnapshotArgs) {
         staffMemberId,
         includeExtended: resolvedIncludeExtended,
       }),
-    enabled: accessState === 'ready' && enabled,
+    enabled: accessState === 'ready' && sessionReady && enabled,
   })
 }
