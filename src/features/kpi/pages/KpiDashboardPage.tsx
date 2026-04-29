@@ -134,13 +134,19 @@ export function KpiDashboardPage() {
   // intentionally separate from the snapshot — comparison values are
   // additive UI metadata, not part of the locked KPI return shape.
   const comparisonsEnabled = snapshotEnabled && effectiveScope === 'staff'
-  const { data: comparisonRows } = useKpiStylistComparisons({
+  const {
+    data: comparisonPayload,
+    isPending: comparisonsPending,
+  } = useKpiStylistComparisons({
     periodStart: filters.periodStart,
     scope: effectiveScope,
     locationId: effectiveLocationId,
     staffMemberId: effectiveStaffId,
     enabled: comparisonsEnabled,
   })
+  const comparisonRows = comparisonPayload?.rows
+  const comparisonUnavailable =
+    comparisonsEnabled && !comparisonsPending && comparisonPayload?.unavailable
 
   const comparisonByKpiCode = useMemo(() => {
     const map = new Map<string, KpiStylistComparisonRow>()
@@ -341,6 +347,14 @@ export function KpiDashboardPage() {
         }
         data-testid="kpi-dashboard-layout"
       >
+        {comparisonUnavailable ? (
+          <p
+            className="text-sm text-neutral-500 dark:text-neutral-400"
+            data-testid="kpi-comparison-unavailable"
+          >
+            Comparison data unavailable.
+          </p>
+        ) : null}
         <div
           className={
             elevated

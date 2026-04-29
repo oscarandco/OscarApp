@@ -3,8 +3,15 @@ import { useQuery } from '@tanstack/react-query'
 import { useAccessProfile } from '@/features/access/accessContext'
 import {
   rpcGetKpiStylistComparisonsLive,
+  type KpiStylistComparisonRow,
   type KpiStylistComparisonsArgs,
 } from '@/features/kpi/data/kpiApi'
+
+export type KpiStylistComparisonsQueryPayload = {
+  rows: KpiStylistComparisonRow[]
+  /** True when the RPC failed — UI can show a soft message without breaking the page. */
+  unavailable: boolean
+}
 
 type UseKpiStylistComparisonsArgs = KpiStylistComparisonsArgs & {
   /**
@@ -33,13 +40,20 @@ export function useKpiStylistComparisons(args: UseKpiStylistComparisonsArgs) {
       locationId,
       staffMemberId,
     ] as const,
-    queryFn: () =>
-      rpcGetKpiStylistComparisonsLive({
-        periodStart,
-        scope,
-        locationId,
-        staffMemberId,
-      }),
+    queryFn: async (): Promise<KpiStylistComparisonsQueryPayload> => {
+      try {
+        const rows = await rpcGetKpiStylistComparisonsLive({
+          periodStart,
+          scope,
+          locationId,
+          staffMemberId,
+        })
+        return { rows, unavailable: false }
+      } catch {
+        return { rows: [], unavailable: true }
+      }
+    },
     enabled: accessState === 'ready' && enabled,
+    retry: false,
   })
 }
