@@ -102,6 +102,14 @@ export async function updateStaffMember(
   if (error) throw toError('staff_members update', error)
 }
 
+/** Removes the staff row and dependent KPI / access rows (elevated callers only; RPC-enforced). */
+export async function deleteStaffMember(staffMemberId: string): Promise<void> {
+  const { error } = await requireSupabaseClient().rpc('delete_staff_member_admin', {
+    p_staff_member_id: staffMemberId,
+  })
+  if (error) throw toError('delete_staff_member_admin', error)
+}
+
 function emptyToNull(s: string | null): string | null {
   if (s == null) return null
   const t = s.trim()

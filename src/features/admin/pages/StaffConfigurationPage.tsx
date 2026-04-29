@@ -1,12 +1,14 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 
+import { ConfirmDialog } from '@/components/feedback/ConfirmDialog'
 import { ErrorState } from '@/components/feedback/ErrorState'
 import { LoadingState } from '@/components/feedback/LoadingState'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useStaffConfiguration } from '@/features/admin/hooks/useStaffConfiguration'
 import type { StaffMemberRow } from '@/features/admin/types/staffConfiguration'
 import {
+  deleteStaffMember,
   insertStaffMember,
   updateStaffMember,
   type StaffMemberUpdatePayload,
@@ -156,6 +158,10 @@ export function StaffConfigurationPage() {
   const [remunerationPlanFilter, setRemunerationPlanFilter] = useState('')
   const [primaryRoleFilter, setPrimaryRoleFilter] = useState('')
   const [draft, setDraft] = useState<StaffFormDraft | null>(null)
+  const [confirmDeleteStaff, setConfirmDeleteStaff] = useState<{
+    id: string
+    label: string
+  } | null>(null)
 
   const staff = data?.staff ?? []
   const planNames = data?.planNames ?? []
@@ -337,6 +343,23 @@ export function StaffConfigurationPage() {
       setSelectedId(row.id)
     },
   })
+
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => deleteStaffMember(id),
+    onSuccess: (_, deletedId) => {
+      void queryClient.invalidateQueries({ queryKey: ['staff-configuration'] })
+      void queryClient.invalidateQueries({ queryKey: ['admin-access-mappings'] })
+      void queryClient.invalidateQueries({ queryKey: ['remuneration-configuration'] })
+      setSelectedId((cur) => (cur === deletedId ? null : cur))
+    },
+  })
+
+  function doConfirmDeleteStaff() {
+    const t = confirmDeleteStaff
+    if (!t) return
+    setConfirmDeleteStaff(null)
+    deleteMut.mutate(t.id)
+  }
 
   const remunerationOptions = useMemo(() => {
     const set = new Set(planNames)
@@ -917,28 +940,69 @@ export function StaffConfigurationPage() {
                   </p>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-3 border-t border-slate-100 pt-4">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <button
+                      type="submit"
+                      disabled={saveMut.isPending || !dirty}
+                      className="rounded-md bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {saveMut.isPending ? 'Saving…' : 'Save changes'}
+                    </button>
+                    {saveMut.isError ? (
+                      <span className="text-sm text-red-600">
+                        {saveMut.error instanceof Error
+                          ? saveMut.error.message
+                          : String(saveMut.error)}
+                      </span>
+                    ) : null}
+                  </div>
                   <button
-                    type="submit"
-                    disabled={saveMut.isPending || !dirty}
-                    className="rounded-md bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    type="button"
+                    disabled={
+                      deleteMut.isPending || saveMut.isPending || createMut.isPending
+                    }
+                    onClick={() => {
+                      if (!draft) return
+                      const disp = draft.display_name.trim()
+                      const full = draft.full_name.trim()
+                      const label =
+                        disp !== '' ? disp : full !== '' ? full : 'this staff member'
+                      setConfirmDeleteStaff({ id: draft.id, label })
+                    }}
+                    className="rounded-md border border-rose-200 bg-white px-4 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {saveMut.isPending ? 'Saving…' : 'Save changes'}
+                    {deleteMut.isPending ? 'Deleting…' : 'Delete staff'}
                   </button>
-                  {saveMut.isError ? (
-                    <span className="text-sm text-red-600">
-                      {saveMut.error instanceof Error
-                        ? saveMut.error.message
-                        : String(saveMut.error)}
-                    </span>
-                  ) : null}
                 </div>
+                {deleteMut.isError ? (
+                  <p className="mt-2 text-sm text-red-600">
+                    {deleteMut.error instanceof Error
+                      ? deleteMut.error.message
+                      : String(deleteMut.error)}
+                  </p>
+                ) : null}
               </form>
             )}
           </section>
         </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmDeleteStaff != null}
+        title={
+          confirmDeleteStaff
+            ? `Delete "${confirmDeleteStaff.label}"?`
+            : 'Delete staff?'
+        }
+        description="This permanently removes the staff record, any user access mappings for them, and KPI rows tied to this person (targets, monthly values, manual inputs, upload rows, capacity). Historical sales lines are unchanged. This cannot be undone."
+        confirmLabel="Delete staff"
+        tone="danger"
+        onConfirm={doConfirmDeleteStaff}
+        onClose={() => setConfirmDeleteStaff(null)}
+        testId="staff-config-delete-confirm"
+      />
     </div>
   )
 }
