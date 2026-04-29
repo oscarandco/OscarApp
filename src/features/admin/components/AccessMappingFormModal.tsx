@@ -75,11 +75,6 @@ export function AccessMappingFormModal({
 
   function handleAccessRoleChange(nextRaw: string) {
     setAccessRole(nextRaw)
-    const next = normalizeAccessRoleForForm(nextRaw)
-    if (next === 'admin') {
-      setPickedStaff(null)
-      setStaffSearch('')
-    }
   }
 
   useEffect(() => {
@@ -102,9 +97,7 @@ export function AccessMappingFormModal({
       })
       const r = normalizeAccessRoleForForm(initial.access_role)
       setAccessRole(r)
-      if (r === 'admin') {
-        setPickedStaff(null)
-      } else if (initial.staff_member_id) {
+      if (initial.staff_member_id) {
         setPickedStaff({
           staff_member_id: initial.staff_member_id,
           display_name: initial.staff_display_name,
@@ -124,8 +117,7 @@ export function AccessMappingFormModal({
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
     const role = normalizeAccessRoleForForm(accessRole)
-    const staffMemberId =
-      role === 'admin' ? null : (pickedStaff?.staff_member_id ?? null)
+    const staffMemberId = pickedStaff?.staff_member_id ?? null
 
     if (staffMemberRequiredForRole(role) && !staffMemberId) return
 
@@ -175,8 +167,8 @@ export function AccessMappingFormModal({
         </h2>
         <p className="mt-1 text-sm text-slate-600">
           {mode === 'create'
-            ? 'Choose the account and role. Stylist and Assistant need a staff member; Manager can optionally link one; Admin does not use staff linking.'
-            : 'Update role and access. Stylist and Assistant require a staff member; Manager is optional; Admin clears staff linking.'}
+            ? 'Choose the account and role. Stylist and Assistant require a staff member. Manager and Admin may optionally be linked to a staff profile.'
+            : 'Update role and access. Stylist and Assistant require a staff member. Manager and Admin may optionally be linked to a staff profile.'}
         </p>
 
         <form className="mt-6 space-y-5" onSubmit={(e) => void onSubmit(e)}>
@@ -305,7 +297,7 @@ export function AccessMappingFormModal({
               <p className="mt-0.5 text-xs text-slate-500">
                 {strictStaff
                   ? 'Required for Stylist and Assistant.'
-                  : 'Optional for Manager — leave empty if this login is not tied to one staff profile.'}
+                  : 'Optional for Manager and Admin — leave empty if this login is not tied to one staff profile.'}
               </p>
               <input
                 type="search"
@@ -343,9 +335,23 @@ export function AccessMappingFormModal({
                 </ul>
               )}
               {pickedStaff ? (
-                <p className="mt-2 text-xs text-slate-600">
-                  Selected: {staffLabel(pickedStaff)}
-                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <p className="text-xs text-slate-600">
+                    Selected: {staffLabel(pickedStaff)}
+                  </p>
+                  {!strictStaff ? (
+                    <button
+                      type="button"
+                      className="text-xs font-medium text-violet-700 hover:text-violet-900"
+                      onClick={() => {
+                        setPickedStaff(null)
+                        setStaffSearch('')
+                      }}
+                    >
+                      Clear selection
+                    </button>
+                  ) : null}
+                </div>
               ) : null}
             </div>
           ) : null}

@@ -51,10 +51,12 @@ export function staffMemberRequiredForRole(role: string | null | undefined): boo
   return r === 'stylist' || r === 'assistant'
 }
 
-/** Show staff picker for Stylist, Assistant, and Manager; hide for Admin. */
+/** Show staff picker for all roles; Stylist/Assistant require a selection before save. */
 export function roleShowsStaffMemberField(role: string | null | undefined): boolean {
   const r = (role ?? '').trim().toLowerCase()
-  return r === 'stylist' || r === 'assistant' || r === 'manager'
+  return (
+    r === 'stylist' || r === 'assistant' || r === 'manager' || r === 'admin'
+  )
 }
 
 const DISPLAY_BY_STORED: Record<string, string> = {
