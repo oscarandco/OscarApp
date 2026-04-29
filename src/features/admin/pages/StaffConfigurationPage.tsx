@@ -14,6 +14,7 @@ import {
   type StaffMemberUpdatePayload,
 } from '@/lib/staffMembersApi'
 import { queryErrorDetail } from '@/lib/queryError'
+import type { ImportLocationRow } from '@/lib/supabaseRpc'
 
 type StatusFilter = 'all' | 'active' | 'inactive'
 
@@ -78,20 +79,41 @@ function compareStaffNav(a: StaffMemberRow, b: StaffMemberRow): number {
   return sortKeyForNav(a).localeCompare(sortKeyForNav(b), undefined, { sensitivity: 'base' })
 }
 
+/** Orewa / Takapuna only; uses same `locations` list as the Primary location dropdown (code or name). */
+function primaryLocationNavBadge(
+  primaryLocationId: string | null | undefined,
+  locations: ImportLocationRow[],
+): 'O' | 'T' | null {
+  const id = primaryLocationId?.trim()
+  if (!id) return null
+  const loc = locations.find((l) => l.id === id)
+  if (!loc) return null
+  const code = (loc.code ?? '').trim().toUpperCase()
+  if (code === 'ORE') return 'O'
+  if (code === 'TAK') return 'T'
+  const n = (loc.name ?? '').trim().toLowerCase()
+  if (n.includes('orewa')) return 'O'
+  if (n.includes('takapuna')) return 'T'
+  return null
+}
+
 function StaffNavRow({
   member: s,
   active,
   onSelect,
+  locations,
 }: {
   member: StaffMemberRow
   active: boolean
   onSelect: (id: string) => void
+  locations: ImportLocationRow[]
 }) {
   const disp = s.display_name?.trim() ?? ''
   const full = (s.full_name ?? '').trim()
   const showSecondary =
     disp !== '' && full !== '' && disp.toLowerCase() !== full.toLowerCase()
   const primary = disp === '' ? full : disp
+  const locBadge = primaryLocationNavBadge(s.primary_location_id, locations)
   return (
     <li>
       <button
@@ -112,12 +134,31 @@ function StaffNavRow({
             </span>
           ) : null}
         </span>
-        <span
-          className={`shrink-0 text-xs font-medium ${
-            s.is_active ? 'text-emerald-700' : 'text-slate-400'
-          }`}
-        >
-          {s.is_active ? 'Active' : 'Inactive'}
+        <span className="flex shrink-0 items-center gap-1.5">
+          {locBadge === 'O' ? (
+            <span
+              className="inline-flex h-5 min-w-[1.125rem] items-center justify-center rounded bg-violet-600 px-0.5 text-[10px] font-bold leading-none text-white"
+              title="Orewa"
+              aria-label="Primary location: Orewa"
+            >
+              O
+            </span>
+          ) : locBadge === 'T' ? (
+            <span
+              className="inline-flex h-5 min-w-[1.125rem] items-center justify-center rounded bg-blue-600 px-0.5 text-[10px] font-bold leading-none text-white"
+              title="Takapuna"
+              aria-label="Primary location: Takapuna"
+            >
+              T
+            </span>
+          ) : null}
+          <span
+            className={`text-xs font-medium ${
+              s.is_active ? 'text-emerald-700' : 'text-slate-400'
+            }`}
+          >
+            {s.is_active ? 'Active' : 'Inactive'}
+          </span>
         </span>
       </button>
     </li>
@@ -553,6 +594,7 @@ export function StaffConfigurationPage() {
                         member={s}
                         active={s.id === selectedId}
                         onSelect={setSelectedId}
+                        locations={locations}
                       />
                     ))}
                   </ul>
@@ -568,6 +610,7 @@ export function StaffConfigurationPage() {
                         member={s}
                         active={s.id === selectedId}
                         onSelect={setSelectedId}
+                        locations={locations}
                       />
                     ))}
                   </ul>
@@ -583,6 +626,7 @@ export function StaffConfigurationPage() {
                         member={s}
                         active={s.id === selectedId}
                         onSelect={setSelectedId}
+                        locations={locations}
                       />
                     ))}
                   </ul>
@@ -705,9 +749,6 @@ export function StaffConfigurationPage() {
                         </option>
                       ))}
                     </select>
-                    <p className="mt-1 text-xs text-slate-500">
-                      Must match a plan name from Remuneration Configuration.
-                    </p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700" htmlFor="emp_start">
@@ -764,8 +805,8 @@ export function StaffConfigurationPage() {
                   </div>
                 </div>
 
-                <div className="space-y-4">
-                  <div className="max-w-md">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                  <div className="min-w-0 sm:col-span-2 xl:col-span-2">
                     <label className="block text-sm font-medium text-slate-700" htmlFor="employment_type">
                       Employment type
                     </label>
@@ -788,58 +829,50 @@ export function StaffConfigurationPage() {
                       <option value="Contractor">Contractor</option>
                     </select>
                   </div>
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
-                    <div className="min-w-0 flex-1">
-                      <label
-                        className="block text-sm font-medium text-slate-700"
-                        htmlFor="primary_location_id"
-                      >
-                        Primary location
-                      </label>
-                      <select
-                        id="primary_location_id"
-                        value={draft.primary_location_id}
-                        onChange={(e) =>
-                          setDraft((d) =>
-                            d ? { ...d, primary_location_id: e.target.value } : d,
-                          )
-                        }
-                        className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
-                      >
-                        <option value="">— None —</option>
-                        {primaryLocationSelectOptions.map((loc) => (
-                          <option key={loc.id} value={loc.id}>
-                            {loc.name}
-                            {loc.code ? ` (${loc.code})` : ''}
-                          </option>
-                        ))}
-                      </select>
-                      <p className="mt-1 text-xs text-slate-500">
-                        Optional. Uses active locations from the Locations master.
-                      </p>
-                    </div>
-                    <div className="w-full shrink-0 sm:w-36">
-                      <label className="block text-sm font-medium text-slate-700" htmlFor="fte">
-                        FTE
-                      </label>
-                      <input
-                        id="fte"
-                        type="number"
-                        inputMode="decimal"
-                        step="0.01"
-                        min="0"
-                        max="9.9999"
-                        value={draft.fte}
-                        onChange={(e) =>
-                          setDraft((d) => (d ? { ...d, fte: e.target.value } : d))
-                        }
-                        placeholder="e.g. 1"
-                        className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
-                      />
-                      <p className="mt-1 text-xs text-slate-500">
-                        0–1 typical. Blank if unknown.
-                      </p>
-                    </div>
+                  <div className="min-w-0">
+                    <label
+                      className="block text-sm font-medium text-slate-700"
+                      htmlFor="primary_location_id"
+                    >
+                      Primary location
+                    </label>
+                    <select
+                      id="primary_location_id"
+                      value={draft.primary_location_id}
+                      onChange={(e) =>
+                        setDraft((d) =>
+                          d ? { ...d, primary_location_id: e.target.value } : d,
+                        )
+                      }
+                      className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                    >
+                      <option value="">— None —</option>
+                      {primaryLocationSelectOptions.map((loc) => (
+                        <option key={loc.id} value={loc.id}>
+                          {loc.name}
+                          {loc.code ? ` (${loc.code})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="min-w-0">
+                    <label className="block text-sm font-medium text-slate-700" htmlFor="fte">
+                      FTE
+                    </label>
+                    <input
+                      id="fte"
+                      type="number"
+                      inputMode="decimal"
+                      step="0.01"
+                      min="0"
+                      max="9.9999"
+                      value={draft.fte}
+                      onChange={(e) =>
+                        setDraft((d) => (d ? { ...d, fte: e.target.value } : d))
+                      }
+                      placeholder="e.g. 1"
+                      className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                    />
                   </div>
                 </div>
 
