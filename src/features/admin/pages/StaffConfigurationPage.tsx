@@ -125,40 +125,43 @@ function StaffNavRow({
             : 'border-transparent bg-slate-50/80 text-slate-800 hover:border-slate-200 hover:bg-white'
         }`}
       >
-        <span className="block min-w-0 flex-1 truncate text-left">
-          <span className="font-medium text-slate-900">{primary}</span>
-          {showSecondary ? (
-            <span className="text-xs font-normal text-slate-500">
-              {' '}
-              ({full})
-            </span>
-          ) : null}
-        </span>
-        <span className="flex shrink-0 items-center gap-1.5">
-          {locBadge === 'O' ? (
-            <span
-              className="inline-flex h-5 min-w-[1.125rem] items-center justify-center rounded bg-violet-600 px-0.5 text-[10px] font-bold leading-none text-white"
-              title="Orewa"
-              aria-label="Primary location: Orewa"
-            >
-              O
-            </span>
-          ) : locBadge === 'T' ? (
-            <span
-              className="inline-flex h-5 min-w-[1.125rem] items-center justify-center rounded bg-blue-600 px-0.5 text-[10px] font-bold leading-none text-white"
-              title="Takapuna"
-              aria-label="Primary location: Takapuna"
-            >
-              T
-            </span>
-          ) : null}
-          <span
-            className={`text-xs font-medium ${
-              s.is_active ? 'text-emerald-700' : 'text-slate-400'
-            }`}
-          >
-            {s.is_active ? 'Active' : 'Inactive'}
+        <span className="flex min-w-0 flex-1 items-center gap-2 text-left">
+          {/* Fixed slot so names line up whether O, T, or no primary location */}
+          <span className="flex h-5 w-6 shrink-0 items-center justify-center">
+            {locBadge === 'O' ? (
+              <span
+                className="inline-flex h-5 w-6 items-center justify-center rounded-md bg-violet-800 text-[10px] font-bold leading-none text-white shadow-sm ring-1 ring-inset ring-violet-950/25"
+                title="Orewa"
+                aria-label="Primary location: Orewa"
+              >
+                O
+              </span>
+            ) : locBadge === 'T' ? (
+              <span
+                className="inline-flex h-5 w-6 items-center justify-center rounded-md bg-sky-500 text-[10px] font-bold leading-none text-white shadow-sm ring-1 ring-inset ring-sky-800/30"
+                title="Takapuna"
+                aria-label="Primary location: Takapuna"
+              >
+                T
+              </span>
+            ) : null}
           </span>
+          <span className="min-w-0 flex-1 truncate">
+            <span className="font-medium text-slate-900">{primary}</span>
+            {showSecondary ? (
+              <span className="text-xs font-normal text-slate-500">
+                {' '}
+                ({full})
+              </span>
+            ) : null}
+          </span>
+        </span>
+        <span
+          className={`shrink-0 text-xs font-medium ${
+            s.is_active ? 'text-emerald-700' : 'text-slate-400'
+          }`}
+        >
+          {s.is_active ? 'Active' : 'Inactive'}
         </span>
       </button>
     </li>
