@@ -86,7 +86,9 @@ export function filterLineRows(
 
 /**
  * Narrow weekly line rows to those matching one summary row (week + location + staff).
- * Prefer `derived_staff_paid_id` when present on both sides; otherwise match display/full name.
+ * Prefer `derived_staff_paid_id` on the summary row (canonical for admin weekly)
+ * when present on both sides; otherwise match display/full name using resolved
+ * then derived fields on lines.
  */
 export function filterCommissionLinesForSummaryRow(
   summary: WeeklyCommissionSummaryRow,
@@ -106,12 +108,24 @@ export function filterCommissionLinesForSummaryRow(
     }
 
     if (staffId !== '') {
-      const lid = String(l.derived_staff_paid_id ?? '').trim()
+      const lid = String(
+        l.resolved_derived_staff_paid_id ?? l.derived_staff_paid_id ?? '',
+      ).trim()
       if (lid === staffId) return true
     }
 
-    const ld = String(l.derived_staff_paid_display_name ?? '').trim().toLowerCase()
-    const lf = String(l.derived_staff_paid_full_name ?? '').trim().toLowerCase()
+    const ld = String(
+      l.resolved_derived_staff_paid_display_name ??
+        l.derived_staff_paid_display_name ??
+        '',
+    )
+      .trim()
+      .toLowerCase()
+    const lf = String(
+      l.resolved_derived_staff_paid_full_name ?? l.derived_staff_paid_full_name ?? '',
+    )
+      .trim()
+      .toLowerCase()
 
     if (disp !== '' && (ld === disp || lf === disp)) return true
     if (full !== '' && (ld === full || lf === full)) return true
@@ -123,7 +137,8 @@ export function filterCommissionLinesForSummaryRow(
 
 /**
  * Admin weekly dashboard: lines for one pay week and one paid staff member (all locations).
- * Prefer `derived_staff_paid_id`; otherwise match dashboard `staffLabel` to line full/display name.
+ * Prefer resolved then `derived_staff_paid_id`; otherwise match dashboard
+ * `staffLabel` to line resolved/full/display name then derived names.
  * Unassigned dashboard row (`staffLabel` "—") matches lines with no paid staff id.
  */
 export function filterAdminPayrollLinesForStaffWeek(
@@ -146,15 +161,31 @@ export function filterAdminPayrollLinesForStaffWeek(
     if (String(l.pay_week_start ?? '').trim() !== pw) return false
 
     if (idWanted !== '') {
-      return String(l.derived_staff_paid_id ?? '').trim() === idWanted
+      const lid = String(
+        l.resolved_derived_staff_paid_id ?? l.derived_staff_paid_id ?? '',
+      ).trim()
+      return lid === idWanted
     }
 
     if (label === '—') {
-      return String(l.derived_staff_paid_id ?? '').trim() === ''
+      return (
+        String(l.resolved_derived_staff_paid_id ?? l.derived_staff_paid_id ?? '').trim() ===
+        ''
+      )
     }
 
-    const ld = String(l.derived_staff_paid_display_name ?? '').trim().toLowerCase()
-    const lf = String(l.derived_staff_paid_full_name ?? '').trim().toLowerCase()
+    const ld = String(
+      l.resolved_derived_staff_paid_display_name ??
+        l.derived_staff_paid_display_name ??
+        '',
+    )
+      .trim()
+      .toLowerCase()
+    const lf = String(
+      l.resolved_derived_staff_paid_full_name ?? l.derived_staff_paid_full_name ?? '',
+    )
+      .trim()
+      .toLowerCase()
     if (labelLower === '') return false
     return ld === labelLower || lf === labelLower
   })
@@ -236,12 +267,27 @@ export function filterAdminPayrollLinesForDetailRoute(
   const lid = params.locationId?.trim() ?? ''
   const disp = params.staffDisplay?.trim() ?? ''
   if (sid !== '') {
-    out = out.filter((l) => String(l.derived_staff_paid_id ?? '').trim() === sid)
+    out = out.filter((l) => {
+      const lid = String(
+        l.resolved_derived_staff_paid_id ?? l.derived_staff_paid_id ?? '',
+      ).trim()
+      return lid === sid
+    })
   } else if (disp !== '') {
     const d = disp.toLowerCase()
     out = out.filter((l) => {
-      const a = String(l.derived_staff_paid_display_name ?? '').trim().toLowerCase()
-      const b = String(l.derived_staff_paid_full_name ?? '').trim().toLowerCase()
+      const a = String(
+        l.resolved_derived_staff_paid_display_name ??
+          l.derived_staff_paid_display_name ??
+          '',
+      )
+        .trim()
+        .toLowerCase()
+      const b = String(
+        l.resolved_derived_staff_paid_full_name ?? l.derived_staff_paid_full_name ?? '',
+      )
+        .trim()
+        .toLowerCase()
       return a === d || b === d
     })
   }

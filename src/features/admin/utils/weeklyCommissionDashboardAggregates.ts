@@ -21,17 +21,22 @@ function num(v: unknown): number {
   return Number.isFinite(n) ? n : 0
 }
 
-/** Grouping / display label: full name when present, else display name. */
+/** Grouping / display label: full name when present, else display name (resolved identity when present). */
 function staffKey(row: AdminPayrollLineRow): string {
-  const full = row.derived_staff_paid_full_name
+  const full =
+    row.resolved_derived_staff_paid_full_name ?? row.derived_staff_paid_full_name
   if (full != null && String(full).trim() !== '') return String(full).trim()
-  const display = row.derived_staff_paid_display_name
+  const display =
+    row.resolved_derived_staff_paid_display_name ??
+    row.derived_staff_paid_display_name
   if (display != null && String(display).trim() !== '') return String(display).trim()
   return '—'
 }
 
 function staffPaidIdFromRow(row: AdminPayrollLineRow): string | null {
-  const id = String(row.derived_staff_paid_id ?? '').trim()
+  const id = String(
+    row.resolved_derived_staff_paid_id ?? row.derived_staff_paid_id ?? '',
+  ).trim()
   return id !== '' ? id : null
 }
 
@@ -48,7 +53,9 @@ function ensureStaffId(bucket: StaffBucket, row: AdminPayrollLineRow) {
 }
 
 function mergePaidPrimaryLocation(bucket: StaffBucket, row: AdminPayrollLineRow) {
-  const code = row.derived_staff_paid_primary_location_code
+  const code =
+    row.resolved_derived_staff_paid_primary_location_code ??
+    row.derived_staff_paid_primary_location_code
   if (
     bucket.paidPrimaryCode == null &&
     code != null &&
@@ -56,7 +63,9 @@ function mergePaidPrimaryLocation(bucket: StaffBucket, row: AdminPayrollLineRow)
   ) {
     bucket.paidPrimaryCode = String(code).trim()
   }
-  const name = row.derived_staff_paid_primary_location_name
+  const name =
+    row.resolved_derived_staff_paid_primary_location_name ??
+    row.derived_staff_paid_primary_location_name
   if (
     bucket.paidPrimaryName == null &&
     name != null &&
@@ -112,7 +121,7 @@ export function aggregateWeekSummaryCards(lines: AdminPayrollLineRow[]): WeekSum
 
 export type TableARow = {
   staffPaid: string
-  /** First non-null `derived_staff_paid_id` seen for this staff grouping; used for line preview filter. */
+  /** First non-null resolved or `derived_staff_paid_id` seen for this staff grouping; used for line preview filter. */
   staffPaidId: string | null
   /** O / T from paid staff primary location when set; else null. */
   locationBadge: 'O' | 'T' | null

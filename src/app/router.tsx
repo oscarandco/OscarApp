@@ -15,6 +15,7 @@ import { AdminWeeklyCommissionDashboardPage } from '@/features/admin/pages/Admin
 import { ProductConfigurationPage } from '@/features/admin/pages/ProductConfigurationPage'
 import { RemunerationConfigurationPage } from '@/features/admin/pages/RemunerationConfigurationPage'
 import { StaffConfigurationPage } from '@/features/admin/pages/StaffConfigurationPage'
+import { HomeRoute } from '@/features/auth/pages/HomeRoute'
 import { LoginPage } from '@/features/auth/pages/LoginPage'
 import { ResetPasswordPage } from '@/features/auth/pages/ResetPasswordPage'
 import { PayrollSummaryPage } from '@/features/payroll/pages/PayrollSummaryPage'
@@ -50,6 +51,7 @@ export function AppRouter() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
+      <Route path="/setup-account" element={<ResetPasswordPage />} />
       <Route element={<RequireAuth />}>
         <Route path="/app" element={<AuthenticatedLayout />}>
           {/* Default landing inside `/app` — Guest Quote is the page
@@ -237,7 +239,7 @@ export function AppRouter() {
           />
         </Route>
       </Route>
-      <Route path="/" element={<Navigate to="/app/guest-quote" replace />} />
+      <Route path="/" element={<HomeRoute />} />
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
   )

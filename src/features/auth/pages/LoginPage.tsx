@@ -1,14 +1,21 @@
-import { useState } from 'react'
+import { useLayoutEffect, useState } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 
 import logoUrl from '@/assets/logo.png'
 import { ErrorState } from '@/components/feedback/ErrorState'
 import { useAuth } from '@/features/auth/authContext'
+import { buildResetPasswordPath, hasSupabaseAuthCallbackInUrl } from '@/lib/authCallbackUrl'
 import { requireSupabaseClient } from '@/lib/supabase'
 
 export function LoginPage() {
   const navigate = useNavigate()
   const location = useLocation()
+
+  useLayoutEffect(() => {
+    if (hasSupabaseAuthCallbackInUrl()) {
+      navigate(buildResetPasswordPath(), { replace: true })
+    }
+  }, [navigate])
   const { user, loading, signInWithPassword } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')

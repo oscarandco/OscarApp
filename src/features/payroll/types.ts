@@ -100,6 +100,14 @@ export interface WeeklyCommissionLineRow {
   derived_staff_paid_display_name?: string | null
   derived_staff_paid_full_name?: string | null
   derived_staff_paid_id?: string | null
+  /** Admin payroll: unique staff_members match when `derived_staff_paid_id` is null (`v_admin_payroll_lines_weekly`). */
+  resolved_derived_staff_paid_id?: string | null
+  resolved_derived_staff_paid_display_name?: string | null
+  resolved_derived_staff_paid_full_name?: string | null
+  resolved_derived_staff_paid_remuneration_plan?: string | null
+  resolved_derived_staff_paid_primary_location_id?: string | null
+  resolved_derived_staff_paid_primary_location_code?: string | null
+  resolved_derived_staff_paid_primary_location_name?: string | null
   /** Prefer API field from `v_stylist_commission_lines_weekly_final`. */
   actual_commission_amt_ex_gst?: number | string | null
   actual_commission_amount?: number | string | null

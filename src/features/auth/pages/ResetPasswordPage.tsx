@@ -1,27 +1,31 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { requireSupabaseClient } from '@/lib/supabase'
 
+type InviteFlow = 'invite' | 'recovery' | 'unknown'
+
+function readPasswordSetupFlowFromUrl(): InviteFlow {
+  if (typeof window === 'undefined') return 'unknown'
+  const h = window.location.hash.toLowerCase()
+  if (h.includes('type=signup')) return 'invite'
+  if (h.includes('type=recovery')) return 'recovery'
+  return 'unknown'
+}
+
 /**
- * Landing page for the Supabase password-reset email link.
+ * Password setup (invite) and password reset (forgot password).
  *
- * Flow:
- *  1. Supabase exchanges the `#access_token` / `#refresh_token` pair in
- *     the URL hash for a session automatically via
- *     `onAuthStateChange('PASSWORD_RECOVERY')`. While that hasn't
- *     fired we render a neutral "Preparing password reset…" state.
- *  2. Once we are in recovery mode, we show a single-field form and
- *     call `auth.updateUser({ password })`.
- *  3. On success we sign the user out (so they are forced to log in
- *     with the new password) and redirect to `/login`.
+ * Supabase `detectSessionInUrl` exchanges `#access_token` / `?code=` for a
+ * session. We listen for `INITIAL_SESSION`, `SIGNED_IN`, and `PASSWORD_RECOVERY`
+ * so the form appears reliably for invites (which may not emit PASSWORD_RECOVERY).
  *
- * The page deliberately does NOT require the user to already be signed
- * in — the recovery token grants a temporary session just for this
- * screen.
+ * `/` and `/login` forward auth callbacks here via `authCallbackUrl` so tokens
+ * are not dropped by redirects into `/app`.
  */
 export function ResetPasswordPage() {
   const navigate = useNavigate()
+  const flowRef = useRef<InviteFlow>(readPasswordSetupFlowFromUrl())
   const [recoveryReady, setRecoveryReady] = useState(false)
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
@@ -29,20 +33,31 @@ export function ResetPasswordPage() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
 
+  const isInvite = flowRef.current === 'invite'
+  const title = isInvite ? 'Set up your account' : 'Reset password'
+  const subtitle = isInvite
+    ? 'Choose a password to finish setting up your Oscar & Co Staff App account.'
+    : 'Choose a new password for your account.'
+
   useEffect(() => {
     const client = requireSupabaseClient()
 
-    // If the user is already mid-recovery (e.g. they refreshed this
-    // page after Supabase processed the hash), surface the form
-    // immediately instead of getting stuck on the spinner.
     void client.auth.getSession().then(({ data }) => {
       if (data.session) setRecoveryReady(true)
     })
 
     const {
       data: { subscription },
-    } = client.auth.onAuthStateChange((event) => {
-      if (event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN') {
+    } = client.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setRecoveryReady(true)
+        return
+      }
+      if (event === 'SIGNED_IN' && session) {
+        setRecoveryReady(true)
+        return
+      }
+      if (event === 'INITIAL_SESSION' && session) {
         setRecoveryReady(true)
       }
     })
@@ -72,7 +87,15 @@ export function ResetPasswordPage() {
       return
     }
     setSuccess(true)
-    // Force a fresh sign-in with the new password.
+
+    const flow = flowRef.current
+    if (flow === 'invite') {
+      setTimeout(() => {
+        navigate('/app/my-sales', { replace: true })
+      }, 900)
+      return
+    }
+
     await client.auth.signOut()
     setTimeout(() => {
       navigate('/login', { replace: true })
@@ -82,23 +105,21 @@ export function ResetPasswordPage() {
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center bg-slate-50 px-4 py-12">
       <div className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
-        <h1 className="text-center text-xl font-semibold text-slate-900">
-          Reset password
-        </h1>
-        <p className="mt-1 text-center text-sm text-slate-600">
-          Choose a new password for your account.
-        </p>
+        <h1 className="text-center text-xl font-semibold text-slate-900">{title}</h1>
+        <p className="mt-1 text-center text-sm text-slate-600">{subtitle}</p>
 
         {!recoveryReady ? (
           <p className="mt-6 text-center text-sm text-slate-600">
-            Preparing password reset…
+            Preparing secure session…
           </p>
         ) : success ? (
           <p
             className="mt-6 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-center text-sm text-emerald-800"
             role="status"
           >
-            Password updated. Redirecting to sign-in…
+            {isInvite
+              ? 'Password saved. Taking you to My Sales…'
+              : 'Password updated. Redirecting to sign-in…'}
           </p>
         ) : (
           <>
@@ -155,7 +176,7 @@ export function ResetPasswordPage() {
                 disabled={submitting}
                 className="w-full rounded-md bg-violet-600 px-3 py-2 text-sm font-semibold text-white shadow hover:bg-violet-700 disabled:opacity-60"
               >
-                {submitting ? 'Updating…' : 'Update password'}
+                {submitting ? 'Saving…' : isInvite ? 'Save password' : 'Update password'}
               </button>
             </form>
           </>

@@ -4,6 +4,10 @@
  *
  * Gateway verify_jwt is off (see config.toml); this handler validates JWT via getUser(accessToken)
  * and caller_can_manage_access_mappings().
+ *
+ * Invite email link: set INVITE_REDIRECT_TO to your full URL (e.g. https://…/reset-password
+ * or https://…/setup-account), or set APP_SITE_URL to the site origin so we default to
+ * {APP_SITE_URL}/reset-password. Add the same URL under Supabase Auth → Redirect URLs.
  */
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 
@@ -115,7 +119,14 @@ Deno.serve(async (req) => {
     auth: { autoRefreshToken: false, persistSession: false },
   })
 
-  const redirectTo = Deno.env.get("INVITE_REDIRECT_TO") ?? undefined
+  const inviteRedirectExplicit = Deno.env.get("INVITE_REDIRECT_TO")?.trim()
+  const appSite = Deno.env.get("APP_SITE_URL")?.trim().replace(/\/$/, "")
+  const redirectTo =
+    inviteRedirectExplicit && inviteRedirectExplicit.length > 0
+      ? inviteRedirectExplicit
+      : appSite && appSite.length > 0
+        ? `${appSite}/reset-password`
+        : undefined
 
   const { error: inviteErr } = await admin.auth.admin.inviteUserByEmail(email, {
     ...(redirectTo ? { redirectTo } : {}),
