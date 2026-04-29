@@ -45,9 +45,6 @@ SELECT
   derived_staff_paid_display_name,
   derived_staff_paid_full_name,
   derived_staff_paid_remuneration_plan,
-  derived_staff_paid_primary_location_id,
-  derived_staff_paid_primary_location_code,
-  derived_staff_paid_primary_location_name,
   count(*) AS line_count,
   count(*) FILTER (WHERE payroll_status = 'payable'::text) AS payable_line_count,
   count(*) FILTER (WHERE payroll_status = 'expected_no_commission'::text) AS expected_no_commission_line_count,
@@ -60,7 +57,10 @@ SELECT
   count(*) FILTER (WHERE calculation_alert = 'non_commission_unconfigured_paid_staff'::text) AS unconfigured_paid_staff_line_count,
   coalesce(bool_or(calculation_alert = 'non_commission_unconfigured_paid_staff'::text), false) AS has_unconfigured_paid_staff_rows,
   location_name,
-  string_agg(DISTINCT NULLIF(TRIM(work_display_name), ''), ', ') AS work_performed_by
+  string_agg(DISTINCT NULLIF(TRIM(work_display_name), ''), ', ') AS work_performed_by,
+  derived_staff_paid_primary_location_id,
+  derived_staff_paid_primary_location_code,
+  derived_staff_paid_primary_location_name
 FROM public.v_admin_payroll_lines_weekly
 GROUP BY
   pay_week_start,
@@ -71,10 +71,10 @@ GROUP BY
   derived_staff_paid_display_name,
   derived_staff_paid_full_name,
   derived_staff_paid_remuneration_plan,
+  location_name,
   derived_staff_paid_primary_location_id,
   derived_staff_paid_primary_location_code,
-  derived_staff_paid_primary_location_name,
-  location_name;
+  derived_staff_paid_primary_location_name;
 
 ALTER VIEW public.v_admin_payroll_summary_weekly OWNER TO postgres;
 
