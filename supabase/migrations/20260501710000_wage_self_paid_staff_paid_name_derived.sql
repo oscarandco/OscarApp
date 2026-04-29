@@ -529,19 +529,24 @@ CREATE OR REPLACE VIEW "public"."v_commission_calculations_core" AS
             "rp_paid"."plan_name" AS "derived_staff_paid_plan_name",
             "rp_commission"."id" AS "benchmark_commission_plan_id",
             "rp_commission"."plan_name" AS "benchmark_commission_plan_name"
-           FROM ((("parity" "p"
-             LEFT JOIN "public"."staff_members" "sm_paid" ON ((
-              (("p"."staff_paid_name_derived" IS NOT NULL)
-                AND ("lower"(TRIM(BOTH FROM "p"."staff_paid_name_derived")) = "lower"(TRIM(BOTH FROM "sm_paid"."display_name"))))
+           FROM "parity" "p"
+             LEFT JOIN "public"."staff_members" "sm_paid" ON (
+              (
+                "p"."staff_paid_name_derived" IS NOT NULL
+                AND "lower"(TRIM(BOTH FROM "p"."staff_paid_name_derived")) = "lower"(TRIM(BOTH FROM "sm_paid"."display_name"))
+              )
               OR (
                 "p"."staff_paid_name_derived" IS NULL
                 AND "p"."staff_work_id" IS NOT NULL
                 AND "p"."staff_work_is_staff_paid_dax_parity" = 'Yes'::"text"
                 AND "sm_paid"."id" = "p"."staff_work_id"
               )
-            ))))
-             LEFT JOIN "public"."remuneration_plans" "rp_paid" ON ((("sm_paid"."remuneration_plan" IS NOT NULL) AND ("lower"(TRIM(BOTH FROM "sm_paid"."remuneration_plan")) = "lower"(TRIM(BOTH FROM "rp_paid"."plan_name"))))))
-             LEFT JOIN "public"."remuneration_plans" "rp_commission" ON (("lower"(TRIM(BOTH FROM "rp_commission"."plan_name")) = 'commission'::"text")))
+            )
+             LEFT JOIN "public"."remuneration_plans" "rp_paid" ON (
+              "sm_paid"."remuneration_plan" IS NOT NULL
+              AND "lower"(TRIM(BOTH FROM "sm_paid"."remuneration_plan")) = "lower"(TRIM(BOTH FROM "rp_paid"."plan_name"))
+            )
+             LEFT JOIN "public"."remuneration_plans" "rp_commission" ON ("lower"(TRIM(BOTH FROM "rp_commission"."plan_name")) = 'commission'::"text")
         ), "rated" AS (
          SELECT "psr"."id",
             "psr"."import_batch_id",
