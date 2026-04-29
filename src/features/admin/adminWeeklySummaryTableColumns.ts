@@ -1,8 +1,12 @@
 import type { AdminPayrollSummaryRow } from '@/features/admin/types'
 import { tableColumnTitle } from '@/lib/formatters'
 
+/**
+ * v2: ignores legacy localStorage (old Week column + middle layout) so Sales
+ * Summary defaults to the required column order and labels.
+ */
 export const ADMIN_PAYROLL_SUMMARY_COLUMNS_STORAGE_KEY =
-  'admin-payroll-summary-columns'
+  'admin-payroll-summary-columns-v2'
 
 /** Admin middle columns (between Pay week start and Detail). */
 export type AdminMiddleColumnId =
@@ -174,6 +178,11 @@ export function resolveRowKeyForAdminMiddleColumn(
   row: AdminPayrollSummaryRow,
 ): string | null {
   if (id === 'stylist_paid') return '__admin_summary_stylist_paid'
+  if (id === 'work_performed_by') {
+    const w = row.work_performed_by
+    if (w != null && String(w).trim() !== '') return 'work_performed_by'
+    return '__admin_summary_work_performed'
+  }
   if (id === 'location') {
     if (row.location_name != null && String(row.location_name).trim() !== '') {
       return 'location_name'
