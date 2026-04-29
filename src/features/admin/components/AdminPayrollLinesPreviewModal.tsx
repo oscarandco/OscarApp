@@ -8,6 +8,7 @@ import {
   formatNzd,
   formatShortDate,
 } from '@/lib/formatters'
+import { stylistPaidFromLine, workPerformedByFromLine } from '@/lib/payrollLineDisplay'
 
 export type AdminPayrollLinesPreviewModalProps = {
   open: boolean
@@ -105,13 +106,15 @@ export function AdminPayrollLinesPreviewModal({
                 </p>
               ) : (
                 <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200">
-                  <table className="w-full min-w-[640px] border-collapse text-left text-sm">
+                  <table className="w-full min-w-[880px] border-collapse text-left text-sm">
                     <thead className="bg-slate-50">
                       <tr>
                         <th className={th}>Invoice</th>
                         <th className={th}>Sale date</th>
                         <th className={th}>Customer</th>
                         <th className={th}>Product / service</th>
+                        <th className={th}>Work performed by</th>
+                        <th className={th}>Stylist paid</th>
                         <th className={th}>Price ex GST</th>
                         <th className={th}>Rate</th>
                         <th className={th}>Actual commission</th>
@@ -122,6 +125,8 @@ export function AdminPayrollLinesPreviewModal({
                         const raw = row as Record<string, unknown>
                         const comm =
                           raw.actual_commission_amt_ex_gst ?? raw.actual_commission_amount
+                        const workBy = workPerformedByFromLine(row)
+                        const paid = stylistPaidFromLine(row)
                         return (
                           <tr
                             key={previewRowKey(row, index)}
@@ -133,6 +138,8 @@ export function AdminPayrollLinesPreviewModal({
                             </td>
                             <td className={td}>{row.customer_name ?? '—'}</td>
                             <td className={td}>{row.product_service_name ?? '—'}</td>
+                            <td className={td}>{workBy !== '' ? workBy : '—'}</td>
+                            <td className={td}>{paid !== '' ? paid : '—'}</td>
                             <td className={`${td} tabular-nums`}>
                               {row.price_ex_gst != null && row.price_ex_gst !== ''
                                 ? formatNzd(row.price_ex_gst)

@@ -14,6 +14,7 @@ import {
   type WeeklySummaryExtraTile,
 } from '@/features/payroll/components/WeeklySummaryStats'
 import { WeeklySummaryTable } from '@/features/payroll/components/WeeklySummaryTable'
+import { useLocationSalesSummaryForMySales } from '@/features/payroll/hooks/useLocationSalesSummaryForMySales'
 import { useMyWeeklyCommissionSummary } from '@/features/payroll/hooks/useMyWeeklyCommissionSummary'
 import { useSalesDailySheetsDataSources } from '@/features/payroll/hooks/useSalesDailySheetsDataSources'
 import { mySalesVisibilityForRole } from '@/features/payroll/payrollSummaryPageVisibility'
@@ -36,9 +37,29 @@ import {
 } from '@/lib/weeklySummaryReporting'
 
 export function PayrollSummaryPage() {
-  const { data, isLoading, isError, error, refetch } =
-    useMyWeeklyCommissionSummary()
+  const {
+    data,
+    isLoading: mySummaryLoading,
+    isError: mySummaryError,
+    error: mySummaryQueryError,
+    refetch: refetchMySummary,
+  } = useMyWeeklyCommissionSummary()
   const { data: dataSources } = useSalesDailySheetsDataSources()
+  const {
+    data: locationSalesKpiRows,
+    isLoading: locationSalesKpisLoading,
+    isError: locationSalesKpisError,
+    error: locationSalesKpisQueryError,
+    refetch: refetchLocationSalesKpis,
+  } = useLocationSalesSummaryForMySales()
+
+  const isLoading = mySummaryLoading || locationSalesKpisLoading
+  const isError = mySummaryError || locationSalesKpisError
+  const error = mySummaryQueryError ?? locationSalesKpisQueryError
+  const refetch = () => {
+    void refetchMySummary()
+    void refetchLocationSalesKpis()
+  }
 
   const { normalized } = useAccessProfile()
   const role = useMemo(() => resolveRole(normalized), [normalized])
@@ -138,20 +159,42 @@ export function PayrollSummaryPage() {
     return aggregateWeeklyCommissionSummaryByStaffWeek(filteredRows)
   }, [filteredRows, splitByLocation])
 
+  /** All-staff location totals (same basis as Sales Summary), then date/week/location filters for KPIs only. */
+  const salesKpiBasisRows = useMemo(() => {
+    const raw = locationSalesKpiRows ?? []
+    let scoped = filterRowsByPayWeekDateRange(
+      raw,
+      resolvedDateFrom,
+      resolvedDateTo,
+    )
+    if (locationId.trim()) {
+      const lid = locationId.trim()
+      scoped = scoped.filter(
+        (r) => String(r.location_id ?? '').trim() === lid,
+      )
+    }
+    return scoped
+  }, [
+    locationSalesKpiRows,
+    resolvedDateFrom,
+    resolvedDateTo,
+    locationId,
+  ])
+
   const perLocationSalesTiles = useMemo(
-    () => buildPerLocationSalesExtraTiles(dataSources, dateScopedRows),
-    [dataSources, dateScopedRows],
+    () => buildPerLocationSalesExtraTiles(dataSources, salesKpiBasisRows),
+    [dataSources, salesKpiBasisRows],
   )
 
   const salesExtraTiles = useMemo((): WeeklySummaryExtraTile[] => {
-    const totalVal = sumTotalSalesExGstFromRows(dateScopedRows)
+    const totalVal = sumTotalSalesExGstFromRows(salesKpiBasisRows)
     const totalTile: WeeklySummaryExtraTile = {
       key: 'total-sales-ex-gst',
       label: 'Total sales (ex GST)',
       value: totalVal,
     }
     return [totalTile, ...perLocationSalesTiles]
-  }, [dateScopedRows, perLocationSalesTiles])
+  }, [salesKpiBasisRows, perLocationSalesTiles])
 
   const dateRangeChanged =
     dateFromOverride != null || dateToOverride != null

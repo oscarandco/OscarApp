@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom'
 import { PayrollLineStats } from '@/features/payroll/components/PayrollLineStats'
 import type { WeeklyCommissionLineRow, WeeklyCommissionSummaryRow } from '@/features/payroll/types'
 import { filterCommissionLinesForSummaryRow } from '@/lib/payrollSummaryFilters'
+import { stylistPaidFromLine, workPerformedByFromLine } from '@/lib/payrollLineDisplay'
 import { rpcGetMyCommissionLinesWeekly } from '@/lib/supabaseRpc'
 import {
   formatCommissionRatePercent,
@@ -136,13 +137,15 @@ export function PayrollLinesPreviewModal({
                 </p>
               ) : (
                 <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200">
-                  <table className="w-full min-w-[640px] border-collapse text-left text-sm">
+                  <table className="w-full min-w-[880px] border-collapse text-left text-sm">
                     <thead className="bg-slate-50">
                       <tr>
                         <th className={th}>Invoice</th>
                         <th className={th}>Sale date</th>
                         <th className={th}>Customer</th>
                         <th className={th}>Product / service</th>
+                        <th className={th}>Work performed by</th>
+                        <th className={th}>Stylist paid</th>
                         <th className={th}>Price ex GST</th>
                         <th className={th}>Rate</th>
                         <th className={th}>Actual commission</th>
@@ -154,6 +157,8 @@ export function PayrollLinesPreviewModal({
                         const comm =
                           raw.actual_commission_amt_ex_gst ??
                           raw.actual_commission_amount
+                        const workBy = workPerformedByFromLine(row)
+                        const paid = stylistPaidFromLine(row)
                         return (
                           <tr key={previewRowKey(row, index)} className="odd:bg-white even:bg-slate-50/80">
                             <td className={td}>{row.invoice ?? '—'}</td>
@@ -164,6 +169,8 @@ export function PayrollLinesPreviewModal({
                             </td>
                             <td className={td}>{row.customer_name ?? '—'}</td>
                             <td className={td}>{row.product_service_name ?? '—'}</td>
+                            <td className={td}>{workBy !== '' ? workBy : '—'}</td>
+                            <td className={td}>{paid !== '' ? paid : '—'}</td>
                             <td className={`${td} tabular-nums`}>
                               {row.price_ex_gst != null && row.price_ex_gst !== ''
                                 ? formatNzd(row.price_ex_gst)

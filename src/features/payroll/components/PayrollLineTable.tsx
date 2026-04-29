@@ -19,6 +19,7 @@ import {
   formatShortDate,
   tableColumnTitle,
 } from '@/lib/formatters'
+import { stylistPaidFromLine, workPerformedByFromLine } from '@/lib/payrollLineDisplay'
 
 type PayrollLineTableProps = {
   rows: WeeklyCommissionLineRow[]
@@ -44,6 +45,18 @@ function isDateLikeKey(rowKey: string): boolean {
 
 function headerLabel(id: LineColumnId, rowKey: string): string {
   return LINE_COLUMN_LABEL[id] ?? tableColumnTitle(rowKey)
+}
+
+function lineCellValue(row: WeeklyCommissionLineRow, rowKey: string): unknown {
+  if (rowKey === '__work_performed_by') {
+    const t = workPerformedByFromLine(row)
+    return t === '' ? null : t
+  }
+  if (rowKey === '__stylist_paid') {
+    const t = stylistPaidFromLine(row)
+    return t === '' ? null : t
+  }
+  return row[rowKey as keyof WeeklyCommissionLineRow]
 }
 
 function Cell({ rowKey, value }: { rowKey: string; value: unknown }) {
@@ -207,10 +220,7 @@ export function PayrollLineTable({ rows }: PayrollLineTableProps) {
               >
                 {keys.map((k) => (
                   <td key={k} className={tdBase}>
-                    <Cell
-                      rowKey={k}
-                      value={row[k as keyof WeeklyCommissionLineRow]}
-                    />
+                    <Cell rowKey={k} value={lineCellValue(row, k)} />
                   </td>
                 ))}
               </tr>

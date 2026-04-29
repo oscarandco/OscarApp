@@ -11,6 +11,7 @@ import type {
 } from '@/features/admin/types/accessManagement'
 import type { AdminPayrollLineRow, AdminPayrollSummaryRow } from '@/features/admin/types'
 import type {
+  LocationSalesSummaryKpiRow,
   SalesDailySheetsDataSourceRow,
   WeeklyCommissionLineRow,
   WeeklyCommissionSummaryRow,
@@ -79,6 +80,21 @@ export async function rpcGetMyCommissionSummaryWeekly(): Promise<
   )
   if (error) throw toError('get_my_commission_summary_weekly', error)
   return asRows(data as WeeklyCommissionSummaryRow[])
+}
+
+/**
+ * My Sales KPI tiles: per-location `total_sales_ex_gst` summed across **all**
+ * staff for each pay week (same `v_admin_payroll_lines_weekly` basis as
+ * Sales Summary). Not scoped to the logged-in stylist.
+ */
+export async function rpcGetLocationSalesSummaryForMySales(): Promise<
+  LocationSalesSummaryKpiRow[]
+> {
+  const { data, error } = await requireSupabaseClient().rpc(
+    'get_location_sales_summary_for_my_sales',
+  )
+  if (error) throw toError('get_location_sales_summary_for_my_sales', error)
+  return asRows(data as LocationSalesSummaryKpiRow[])
 }
 
 export async function rpcGetMyCommissionLinesWeekly(

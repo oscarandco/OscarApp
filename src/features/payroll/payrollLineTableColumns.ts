@@ -16,6 +16,8 @@ export type LineColumnId =
   | 'pay_date'
   | 'customer_name'
   | 'product_service_name'
+  | 'work_performed_by'
+  | 'stylist_paid'
   | 'product_type_actual'
   | 'product_type_short'
   | 'commission_product_service'
@@ -50,6 +52,8 @@ const ALL_LINE_IDS: readonly LineColumnId[] = [
   'pay_date',
   'customer_name',
   'product_service_name',
+  'work_performed_by',
+  'stylist_paid',
   'product_type_actual',
   'product_type_short',
   'commission_product_service',
@@ -87,6 +91,8 @@ export const LINE_COLUMN_LABEL: Record<LineColumnId, string> = {
   pay_date: 'Pay date',
   customer_name: 'Customer',
   product_service_name: 'Product / service',
+  work_performed_by: 'Work performed by',
+  stylist_paid: 'Stylist paid',
   product_type_actual: 'Commission product type (actual)',
   product_type_short: 'Product type (short)',
   commission_product_service: 'Actual commission product/service',
@@ -121,8 +127,9 @@ const DEFAULT_VISIBLE_LINE: readonly LineColumnId[] = [
   'sale_date',
   'pay_week_end',
   'customer_name',
-  'derived_staff_paid_full_name',
   'product_service_name',
+  'work_performed_by',
+  'stylist_paid',
   'price_ex_gst',
   'price_incl_gst',
   'quantity',
@@ -224,6 +231,8 @@ export function resolveRowKeyForLineColumn(
   id: LineColumnId,
   row: WeeklyCommissionLineRow,
 ): string | null {
+  if (id === 'work_performed_by') return '__work_performed_by'
+  if (id === 'stylist_paid') return '__stylist_paid'
   if (id === 'location') {
     if (row.location_name != null && String(row.location_name).trim() !== '') {
       return 'location_name'
