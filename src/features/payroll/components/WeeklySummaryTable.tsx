@@ -31,10 +31,13 @@ type WeeklySummaryTableProps = {
    */
   emptyBodyMessage?: string
   /**
-   * Renders to the left of the Columns control: date range + data
-   * source lines (My Sales / Sales summary reporting toolbar).
+   * Sales reporting: data source lines, far left of the toolbar row.
    */
-  toolbarBeforeColumns?: ReactNode
+  toolbarDataSources?: ReactNode
+  /**
+   * Sales reporting: from/to date inputs, immediately left of Columns.
+   */
+  toolbarDateRange?: ReactNode
   /**
    * Middle column ids that must always be hidden, layered on top of
    * the user's saved column-picker preferences. Owned by the page so
@@ -169,7 +172,8 @@ export function WeeklySummaryTable({
   rows,
   tableStructureSample = null,
   emptyBodyMessage,
-  toolbarBeforeColumns,
+  toolbarDataSources,
+  toolbarDateRange,
   forceHiddenColumnIds,
   showColumnPicker = true,
   columnLabelOverrides,
@@ -194,7 +198,9 @@ export function WeeklySummaryTable({
   )
 
   const showToolbarRow =
-    toolbarBeforeColumns != null || showColumnPicker === true
+    toolbarDataSources != null ||
+    toolbarDateRange != null ||
+    showColumnPicker === true
 
   function onDragStart(e: React.DragEvent, id: MiddleColumnId) {
     e.dataTransfer.setData(DND_TYPE, id)
@@ -234,23 +240,18 @@ export function WeeklySummaryTable({
   return (
     <div className="space-y-2">
       {showToolbarRow ? (
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-          {toolbarBeforeColumns != null ? (
-            <div className="flex min-w-0 flex-1 flex-col gap-3 md:flex-row md:items-start md:gap-6 lg:gap-8">
-              {toolbarBeforeColumns}
-            </div>
-          ) : (
-            <div className="min-w-0 flex-1" />
-          )}
-          {showColumnPicker ? (
-            <div className="flex shrink-0 justify-start sm:justify-end sm:pt-0.5">
+        <div className="flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <div className="min-w-0 flex-1 text-left">{toolbarDataSources ?? null}</div>
+          <div className="flex shrink-0 flex-wrap items-center justify-start gap-2 sm:justify-end sm:gap-3">
+            {toolbarDateRange ?? null}
+            {showColumnPicker ? (
               <WeeklySummaryColumnPicker
                 prefs={prefs}
                 onChange={setPrefs}
                 onReset={reset}
               />
-            </div>
-          ) : null}
+            ) : null}
+          </div>
         </div>
       ) : null}
       <TableScrollArea testId="weekly-summary-table">

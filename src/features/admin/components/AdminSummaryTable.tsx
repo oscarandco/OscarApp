@@ -27,7 +27,8 @@ type AdminSummaryTableProps = {
   splitByLocation: boolean
   tableStructureSample?: AdminPayrollSummaryRow | null
   emptyBodyMessage?: string
-  toolbarBeforeColumns?: ReactNode
+  toolbarDataSources?: ReactNode
+  toolbarDateRange?: ReactNode
 }
 
 function adminDetailLinesHref(
@@ -130,7 +131,8 @@ export function AdminSummaryTable({
   splitByLocation,
   tableStructureSample = null,
   emptyBodyMessage,
-  toolbarBeforeColumns,
+  toolbarDataSources,
+  toolbarDateRange,
 }: AdminSummaryTableProps) {
   const { prefs, setPrefs, reset } = useAdminPayrollSummaryColumnPreferences()
   const [draggingId, setDraggingId] = useState<AdminMiddleColumnId | null>(null)
@@ -187,15 +189,10 @@ export function AdminSummaryTable({
 
   return (
     <div className="space-y-2">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-        {toolbarBeforeColumns != null ? (
-          <div className="flex min-w-0 flex-1 flex-col gap-3 md:flex-row md:items-start md:gap-6 lg:gap-8">
-            {toolbarBeforeColumns}
-          </div>
-        ) : (
-          <div className="min-w-0 flex-1" />
-        )}
-        <div className="flex shrink-0 justify-start sm:justify-end sm:pt-0.5">
+      <div className="flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+        <div className="min-w-0 flex-1 text-left">{toolbarDataSources ?? null}</div>
+        <div className="flex shrink-0 flex-wrap items-center justify-start gap-2 sm:justify-end sm:gap-3">
+          {toolbarDateRange ?? null}
           <AdminSummaryColumnPicker prefs={prefs} onChange={setPrefs} onReset={reset} />
         </div>
       </div>

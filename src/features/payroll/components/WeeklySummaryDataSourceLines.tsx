@@ -64,7 +64,7 @@ export function WeeklySummaryDataSourceLines({
 
   return (
     <ul
-      className={`min-w-0 flex-1 space-y-1 text-xs leading-snug text-slate-600 ${listMb}`}
+      className={`min-w-0 flex-1 space-y-1 text-left text-xs leading-snug text-slate-600 ${listMb}`}
       data-testid={listTestId}
     >
       {sorted.map((src, idx) => {

@@ -127,3 +127,24 @@ export function buildPerLocationSalesExtraTiles(
       }
     })
 }
+
+/**
+ * Sum `total_sales_ex_gst` across all rows (all locations). Uses the
+ * same row set as {@link buildPerLocationSalesExtraTiles} (typically
+ * `dateScopedRows`) so the total card matches the per-location tiles.
+ */
+export function sumTotalSalesExGstFromRows(
+  rows: SalesExGstByLocationRow[],
+): number | null {
+  let total = 0
+  let found = false
+  for (const r of rows) {
+    const v = r.total_sales_ex_gst
+    if (v == null || v === '') continue
+    const n = typeof v === 'number' ? v : Number(v)
+    if (!Number.isFinite(n)) continue
+    total += n
+    found = true
+  }
+  return found ? total : null
+}

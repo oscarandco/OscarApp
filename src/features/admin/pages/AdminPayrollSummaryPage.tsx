@@ -9,7 +9,7 @@ import { useAdminPayrollSummaryWeekly } from '@/features/admin/hooks/useAdminPay
 import { SummaryFiltersBar } from '@/features/payroll/components/SummaryFiltersBar'
 import { WeeklySummaryDataSourceLines } from '@/features/payroll/components/WeeklySummaryDataSourceLines'
 import { WeeklySummaryDateRangeInputs } from '@/features/payroll/components/WeeklySummaryDateRangeInputs'
-import { WeeklySummaryStats } from '@/features/payroll/components/WeeklySummaryStats'
+import { WeeklySummaryStats, type WeeklySummaryExtraTile } from '@/features/payroll/components/WeeklySummaryStats'
 import { useSalesDailySheetsDataSources } from '@/features/payroll/hooks/useSalesDailySheetsDataSources'
 import { aggregateWeeklyCommissionSummaryByStaffWeek } from '@/lib/aggregateWeeklyCommissionSummaryByStaffWeek'
 import {
@@ -24,6 +24,7 @@ import {
   computeDateExtents,
   defaultDateFromForRange,
   filterRowsByPayWeekDateRange,
+  sumTotalSalesExGstFromRows,
 } from '@/lib/weeklySummaryReporting'
 
 export function AdminPayrollSummaryPage() {
@@ -96,6 +97,16 @@ export function AdminPayrollSummaryPage() {
     [dataSources, dateScopedRows],
   )
 
+  const salesExtraTiles = useMemo((): WeeklySummaryExtraTile[] => {
+    const totalVal = sumTotalSalesExGstFromRows(dateScopedRows)
+    const totalTile: WeeklySummaryExtraTile = {
+      key: 'total-sales-ex-gst',
+      label: 'Total sales (ex GST)',
+      value: totalVal,
+    }
+    return [totalTile, ...perLocationSalesTiles]
+  }, [dateScopedRows, perLocationSalesTiles])
+
   const dateRangeChanged =
     dateFromOverride != null || dateToOverride != null
   const hasFilters = Boolean(
@@ -116,25 +127,26 @@ export function AdminPayrollSummaryPage() {
     setDateToOverride(null)
   }
 
-  const tableToolbar = (
-    <>
-      <WeeklySummaryDateRangeInputs
-        dateFrom={dateFrom}
-        dateTo={dateTo}
-        onDateFromChange={(v) => setDateFromOverride(v)}
-        onDateToChange={(v) => setDateToOverride(v)}
-        dateMin={dateExtents.min ?? undefined}
-        dateMax={dateExtents.max ?? undefined}
-        dateFromTestId="admin-summary-toolbar-date-from"
-        dateToTestId="admin-summary-toolbar-date-to"
-      />
-      <WeeklySummaryDataSourceLines
-        sources={dataSources}
-        listTestId="admin-summary-data-sources"
-        lineTestIdPrefix="admin-summary-data-source"
-        variant="toolbar"
-      />
-    </>
+  const toolbarDataSources = (
+    <WeeklySummaryDataSourceLines
+      sources={dataSources}
+      listTestId="admin-summary-data-sources"
+      lineTestIdPrefix="admin-summary-data-source"
+      variant="toolbar"
+    />
+  )
+
+  const toolbarDateRange = (
+    <WeeklySummaryDateRangeInputs
+      dateFrom={dateFrom}
+      dateTo={dateTo}
+      onDateFromChange={(v) => setDateFromOverride(v)}
+      onDateToChange={(v) => setDateToOverride(v)}
+      dateMin={dateExtents.min ?? undefined}
+      dateMax={dateExtents.max ?? undefined}
+      dateFromTestId="admin-summary-toolbar-date-from"
+      dateToTestId="admin-summary-toolbar-date-to"
+    />
   )
 
   if (isLoading) {
@@ -203,7 +215,7 @@ export function AdminPayrollSummaryPage() {
             }}
             showSalesCard={false}
             showRowsShownCard={false}
-            extraTiles={perLocationSalesTiles}
+            extraTiles={salesExtraTiles}
           />
           <div className="mt-4">
             <AdminSummaryTable
@@ -215,7 +227,8 @@ export function AdminPayrollSummaryPage() {
                   ? 'No rows match your filters.'
                   : undefined
               }
-              toolbarBeforeColumns={tableToolbar}
+              toolbarDataSources={toolbarDataSources}
+              toolbarDateRange={toolbarDateRange}
             />
           </div>
         </>

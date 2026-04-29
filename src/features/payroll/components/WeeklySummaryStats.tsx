@@ -2,9 +2,8 @@ import type { WeeklyCommissionSummaryRow } from '@/features/payroll/types'
 import { formatNzd } from '@/lib/formatters'
 
 /**
- * Pre-computed extra tile rendered after the built-in cards. Used by My
- * Sales to add per-location SALES (EX GST) tiles alongside the existing
- * Pay Weeks / Commission cards while keeping the same responsive grid.
+ * Pre-computed extra tile rendered after the built-in cards. My Sales /
+ * Sales summary use this for total + per-location sales (ex GST) tiles.
  */
 export type WeeklySummaryExtraTile = {
   key: string
@@ -47,10 +46,9 @@ type WeeklySummaryStatsProps = {
   showRowsShownCard?: boolean
   /**
    * Optional pre-computed money tiles rendered after the built-in
-   * cards. My Sales uses this to add per-location `SALES (EX GST) -
-   * <LOCATION>` tiles. Each tile is already summed by the caller (so
-   * the math reflects whatever scope the page deems correct, e.g.
-   * date-range only). Empty / undefined = no extra tiles.
+   * cards. Pass total sales first, then per-location tiles; array order
+   * is render order. Each value is pre-summed by the caller (same row
+   * scope as the per-location tiles, typically date-scoped summary rows).
    */
   extraTiles?: WeeklySummaryExtraTile[]
 }
@@ -123,9 +121,9 @@ export function WeeklySummaryStats({
           because the same figures are already visible in the diagnostics
           line above the table. The two money cards get a denser
           2-up layout with tighter padding and smaller type so they fit
-          one row on phone width. Desktop stays on the original 4-up
-          layout at `xl`. */}
-      <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4">
+          one row on phone width. Desktop uses up to five columns at `xl`
+          (weeks + commission + total sales + per-location tiles). */}
+      <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-5">
         <div className="hidden rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm sm:block">
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
             {weeksCardLabel}
