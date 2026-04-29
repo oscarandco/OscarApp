@@ -21,6 +21,7 @@ import type {
 import { useKpiSnapshot } from '@/features/kpi/hooks/useKpiSnapshot'
 import { useKpiStylistComparisons } from '@/features/kpi/hooks/useKpiStylistComparisons'
 import { useMyFte } from '@/features/kpi/hooks/useMyFte'
+import { useStaffFteForKpiDisplay } from '@/features/kpi/hooks/useStaffFteForKpiDisplay'
 import { kpiSortComparator } from '@/features/kpi/kpiLabels'
 import { formatShortDate } from '@/lib/formatters'
 import { queryErrorDetail } from '@/lib/queryError'
@@ -177,15 +178,30 @@ export function KpiDashboardPage() {
     return map
   }, [comparisonRows])
 
-  // FTE-based normalisation for self/staff cards. Only fetched for
-  // non-elevated (stylist / assistant) callers — elevated users keep
-  // the raw per-stylist numbers in every staff scope they pick so
-  // manager / admin comparisons stay apples-to-apples. The KPI card
-  // itself also gates on which KPIs accept normalisation (raw volume
-  // metrics only; see `NORMALISABLE_KPI_CODES` in `KpiCard.tsx`).
-  const fteEnabled = !elevated && effectiveScope === 'staff' && snapshotEnabled
-  const { data: myFte } = useMyFte({ enabled: fteEnabled })
-  const cardFte = fteEnabled ? myFte ?? null : null
+  // FTE-based normalisation for individual staff KPI cards (same rules
+  // in `KpiCard`: `NORMALISABLE_KPI_CODES` + 0 < fte < 1). Self view
+  // uses logged-in user's FTE; admin/manager Staff → member uses that
+  // member's FTE so headline / Raw / (NORMALISED) match self view.
+  const selfFteEnabled =
+    !elevated && effectiveScope === 'staff' && snapshotEnabled
+  const { data: myFte } = useMyFte({ enabled: selfFteEnabled })
+
+  const elevatedStaffSubjectFteEnabled =
+    elevated &&
+    effectiveScope === 'staff' &&
+    snapshotEnabled &&
+    Boolean(effectiveStaffId)
+
+  const { data: viewedStaffFte } = useStaffFteForKpiDisplay({
+    staffMemberId: effectiveStaffId,
+    enabled: elevatedStaffSubjectFteEnabled,
+  })
+
+  const cardFte = selfFteEnabled
+    ? (myFte ?? null)
+    : elevatedStaffSubjectFteEnabled
+      ? (viewedStaffFte ?? null)
+      : null
 
   const sortedRows = useMemo(() => {
     const rows = data ?? []

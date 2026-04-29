@@ -41,6 +41,12 @@ export async function rpcGetMyAccessProfile(): Promise<AccessProfile | null> {
   return firstRow(data as AccessProfile | AccessProfile[] | null)
 }
 
+function coerceNullableRpcNumber(data: unknown): number | null {
+  if (data == null) return null
+  const n = typeof data === 'number' ? data : Number(data as string)
+  return Number.isFinite(n) ? n : null
+}
+
 /**
  * Returns the logged-in user's `staff_members.fte` or `null`. Scalar
  * SECURITY DEFINER RPC — Supabase serialises numeric as string, so
@@ -51,9 +57,24 @@ export async function rpcGetMyAccessProfile(): Promise<AccessProfile | null> {
 export async function rpcGetMyFte(): Promise<number | null> {
   const { data, error } = await requireSupabaseClient().rpc('get_my_fte')
   if (error) throw toError('get_my_fte', error)
-  if (data == null) return null
-  const n = typeof data === 'number' ? data : Number(data as string)
-  return Number.isFinite(n) ? n : null
+  return coerceNullableRpcNumber(data)
+}
+
+/**
+ * FTE for a staff member (admin/manager staff KPI view). Same numeric
+ * coercion as `rpcGetMyFte`. Backend enforces role + id rules.
+ */
+export async function rpcGetStaffFteForKpiDisplay(
+  staffMemberId: string,
+): Promise<number | null> {
+  const id = String(staffMemberId ?? '').trim()
+  if (id === '') return null
+  const { data, error } = await requireSupabaseClient().rpc(
+    'get_staff_fte_for_kpi_display',
+    { p_staff_member_id: id },
+  )
+  if (error) throw toError('get_staff_fte_for_kpi_display', error)
+  return coerceNullableRpcNumber(data)
 }
 
 /**

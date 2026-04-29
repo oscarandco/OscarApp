@@ -5,9 +5,9 @@ import { rpcGetMyFte } from '@/lib/supabaseRpc'
 
 type UseMyFteArgs = {
   /**
-   * Caller-controlled gate. The KPI dashboard only needs the fte for
-   * non-elevated staff/self callers (stylist / assistant); elevated
-   * callers never use this value so we skip the round-trip entirely.
+   * Caller-controlled gate. The KPI dashboard uses this for stylist /
+   * assistant self view only; admin/manager staff-on-member view uses
+   * `useStaffFteForKpiDisplay` instead.
    */
   enabled?: boolean
 }
@@ -21,6 +21,9 @@ type UseMyFteArgs = {
  * server-side, so the user id alone is enough for invalidation). The
  * hook piggybacks on the existing access-profile readiness gate so we
  * don't race the bootstrap query.
+ *
+ * Admin/manager viewing another staff member's KPIs should use
+ * `useStaffFteForKpiDisplay` instead.
  */
 export function useMyFte(args: UseMyFteArgs = {}) {
   const { accessState, normalized } = useAccessProfile()
