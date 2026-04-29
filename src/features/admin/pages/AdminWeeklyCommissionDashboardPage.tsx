@@ -64,6 +64,11 @@ function sumColumn<T extends Record<string, unknown>>(rows: T[], key: keyof T): 
   return t
 }
 
+/** Display filter: paid stylist label is exactly "Internal" (trimmed, case-insensitive). */
+function isPaidStaffInternalRow(staffPaid: string): boolean {
+  return staffPaid.trim().toLowerCase() === 'internal'
+}
+
 export function AdminWeeklyCommissionDashboardPage() {
   const summaryQuery = useAdminPayrollSummaryWeekly()
   const weekOptions = useMemo(
@@ -79,6 +84,7 @@ export function AdminWeeklyCommissionDashboardPage() {
   const [cardFilter, setCardFilter] = useState<DashboardCardFilter | null>(null)
   const [tableASort, setTableASort] = useState<ColumnSortState>(null)
   const [tableBSort, setTableBSort] = useState<ColumnSortState>(null)
+  const [showInternal, setShowInternal] = useState(false)
 
   useEffect(() => {
     if (selectedWeek != null) return
@@ -123,6 +129,22 @@ export function AdminWeeklyCommissionDashboardPage() {
   const displayTableB = useMemo(
     () => sortWeeklyDashboardTableBRows(tableB, tableBSort),
     [tableB, tableBSort],
+  )
+
+  const visibleDisplayTableA = useMemo(
+    () =>
+      showInternal
+        ? displayTableA
+        : displayTableA.filter((r) => !isPaidStaffInternalRow(r.staffPaid)),
+    [displayTableA, showInternal],
+  )
+
+  const visibleDisplayTableB = useMemo(
+    () =>
+      showInternal
+        ? displayTableB
+        : displayTableB.filter((r) => !isPaidStaffInternalRow(r.staffPaid)),
+    [displayTableB, showInternal],
   )
 
   const totalsA = useMemo(
@@ -202,7 +224,7 @@ export function AdminWeeklyCommissionDashboardPage() {
         description="Totals for a selected pay week. Choose the week below; figures refresh from line-level payroll data."
       />
 
-      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:gap-8">
         <label className="flex max-w-md flex-col gap-1.5 text-sm">
           <span className="font-medium text-slate-700">Pay week</span>
           <select
@@ -217,6 +239,16 @@ export function AdminWeeklyCommissionDashboardPage() {
               </option>
             ))}
           </select>
+        </label>
+        <label className="flex cursor-pointer select-none items-center gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            className="h-4 w-4 rounded border-slate-300 text-violet-600 focus:ring-violet-500"
+            checked={showInternal}
+            onChange={(e) => setShowInternal(e.target.checked)}
+            data-testid="admin-weekly-payroll-show-internal"
+          />
+          <span className="font-medium">Show Internal</span>
         </label>
       </div>
 
@@ -376,7 +408,7 @@ export function AdminWeeklyCommissionDashboardPage() {
                     </tr>
                   ) : (
                     <>
-                      {displayTableA.map((r) => (
+                      {visibleDisplayTableA.map((r) => (
                         <tr key={r.staffPaid}>
                           <td className={dashTdName}>
                             <span className="flex items-center gap-1.5 whitespace-nowrap">
@@ -494,7 +526,7 @@ export function AdminWeeklyCommissionDashboardPage() {
                     </tr>
                   ) : (
                     <>
-                      {displayTableB.map((r) => (
+                      {visibleDisplayTableB.map((r) => (
                         <tr key={r.staffPaid}>
                           <td className={dashTdName}>
                             <span className="flex items-center gap-1.5 whitespace-nowrap">
