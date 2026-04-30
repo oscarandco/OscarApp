@@ -1,7 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { flushSync } from 'react-dom'
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 
 import { PageHeader } from '@/components/layout/PageHeader'
+import { AdminImportsRpcStepProgress } from '@/features/admin/components/AdminImportsRpcStepProgress'
 import { ImportSalesDataProgress } from '@/features/admin/components/ImportSalesDataProgress'
 import {
   guessLocationIdFromFileName,
@@ -11,6 +13,9 @@ import {
 import {
   rpcDeleteAllSalesDailySheetsImportData,
   rpcListActiveLocationsForImport,
+  rpcListSalesDailySheetsRebuildBatches,
+  rpcRebuildSalesDailySheetsReportingBatch,
+  type DeleteSalesDailySheetsImportDataResult,
   type SalesDailySheetsImportBatchRow,
 } from '@/lib/supabaseRpc'
 
@@ -27,6 +32,20 @@ function summarizePipelineResult(data: unknown): string {
   } catch {
     return String(data)
   }
+}
+
+const DELETE_PROGRESS_STEPS = [
+  'Checking delete scope',
+  'Deleting generated sales transactions',
+  'Deleting raw import rows',
+  'Deleting import batches',
+  'Deleting staged import records',
+  'Refreshing page data',
+  'Done',
+] as const
+
+function formatAdminCount(n: number): string {
+  return n.toLocaleString(undefined, { maximumFractionDigits: 0 })
 }
 
 export function AdminImportsPage() {
@@ -47,6 +66,27 @@ export function AdminImportsPage() {
   } | null>(null)
   /** Keep checklist visible after a failed import until the user starts over. */
   const [importFailedView, setImportFailedView] = useState(false)
+  const [rebuildLocationId, setRebuildLocationId] = useState('')
+  const [rebuildPanelOpen, setRebuildPanelOpen] = useState(false)
+  const [rebuildDynamicSteps, setRebuildDynamicSteps] = useState<string[]>([
+    'Checking existing Sales Daily Sheets batches',
+    'Done',
+  ])
+  const [rebuildActiveStepIndex, setRebuildActiveStepIndex] = useState(0)
+  const rebuildActiveStepRef = useRef(0)
+  const [rebuildProgFailureAt, setRebuildProgFailureAt] = useState<number | null>(null)
+  const [rebuildProgAllComplete, setRebuildProgAllComplete] = useState(false)
+  const [rebuildProgFailed, setRebuildProgFailed] = useState(false)
+  const [rebuildProgResult, setRebuildProgResult] = useState<string | null>(null)
+
+  const [deleteLocationId, setDeleteLocationId] = useState('')
+  const [deletePanelOpen, setDeletePanelOpen] = useState(false)
+  const [deleteProgCursor, setDeleteProgCursor] = useState(0)
+  const [deleteProgFailureAt, setDeleteProgFailureAt] = useState<number | null>(null)
+  const [deleteProgAllComplete, setDeleteProgAllComplete] = useState(false)
+  const [deleteProgFailed, setDeleteProgFailed] = useState(false)
+  const [deleteProgResult, setDeleteProgResult] = useState<string | null>(null)
+  const deleteProgCursorRef = useRef(0)
   const [importRunKey, setImportRunKey] = useState(0)
   const [activeBatchId, setActiveBatchId] = useState<string | null>(null)
   const [stagingComplete, setStagingComplete] = useState(false)
@@ -55,6 +95,11 @@ export function AdminImportsPage() {
     csvRowsRead: number
     rowsStaged: number
   } | null>(null)
+
+  const bumpRebuildStep = (n: number) => {
+    rebuildActiveStepRef.current = n
+    flushSync(() => setRebuildActiveStepIndex(n))
+  }
 
   const { data: locations = [], isLoading: locationsLoading } = useQuery({
     queryKey: ['list-active-locations-import'],
@@ -72,6 +117,254 @@ export function AdminImportsPage() {
     const n = loc?.name?.trim()
     return n && n.length > 0 ? n : 'Selected location'
   }, [locations, locationId])
+
+  const deleteScopeSalonLabel = useMemo(() => {
+    const loc = locations.find((l) => l.id === deleteLocationId)
+    const n = loc?.name?.trim()
+    if (n && n.length > 0) return n
+    const c = loc?.code?.trim()
+    if (c && c.length > 0) return c
+    return 'this salon'
+  }, [locations, deleteLocationId])
+
+  const rebuildScopeLabel = useMemo(() => {
+    if (rebuildLocationId.trim() === '') return 'All locations'
+    const loc = locations.find((l) => l.id === rebuildLocationId)
+    const n = loc?.name?.trim()
+    if (n && n.length > 0) return n
+    return loc?.code?.trim() || 'Selected location'
+  }, [locations, rebuildLocationId])
+
+  const invalidateSalesRebuildCaches = () => {
+    void queryClient.invalidateQueries({
+      queryKey: ['my-commission-summary-weekly'],
+    })
+    void queryClient.invalidateQueries({
+      queryKey: ['my-commission-lines-weekly'],
+    })
+    void queryClient.invalidateQueries({
+      queryKey: ['admin-payroll-summary-weekly'],
+    })
+    void queryClient.invalidateQueries({
+      queryKey: ['admin-payroll-lines-weekly'],
+    })
+    void queryClient.invalidateQueries({
+      queryKey: ['location-sales-summary-my-sales'],
+    })
+    void queryClient.invalidateQueries({
+      queryKey: ['sales-daily-sheets-data-sources'],
+    })
+    void queryClient.invalidateQueries({
+      queryKey: ['kpi-snapshot-live'],
+    })
+    void queryClient.invalidateQueries({
+      queryKey: ['kpi-stylist-comparisons-live'],
+    })
+  }
+
+  type RebuildBatchFlowResult =
+    | { kind: 'empty'; scopeLabel: string }
+    | { kind: 'ok'; scopeLabel: string; batches: number; deleted: number; created: number }
+
+  const rebuildMutation = useMutation({
+    mutationFn: async (): Promise<RebuildBatchFlowResult> => {
+      const pid = rebuildLocationId.trim() === '' ? null : rebuildLocationId.trim()
+      const scope = rebuildScopeLabel
+
+      const batches = await rpcListSalesDailySheetsRebuildBatches({ p_location_id: pid })
+      const n = batches.length
+
+      if (n === 0) {
+        const emptySteps = [
+          'Checking existing Sales Daily Sheets batches',
+          'Refreshing page data',
+          'Done',
+        ]
+        flushSync(() => {
+          setRebuildDynamicSteps(emptySteps)
+          rebuildActiveStepRef.current = 0
+          setRebuildActiveStepIndex(0)
+        })
+        bumpRebuildStep(1)
+        invalidateSalesRebuildCaches()
+        bumpRebuildStep(2)
+        return { kind: 'empty', scopeLabel: scope }
+      }
+
+      const stepLabels = [
+        'Checking existing Sales Daily Sheets batches',
+        ...batches.map(
+          (b, i) => `Rebuilding ${b.location_name} batch ${i + 1} of ${n}...`,
+        ),
+        'Refreshing page data',
+        'Done',
+      ]
+      flushSync(() => {
+        setRebuildDynamicSteps(stepLabels)
+        rebuildActiveStepRef.current = 0
+        setRebuildActiveStepIndex(0)
+      })
+      bumpRebuildStep(1)
+
+      let totalDel = 0
+      let totalCr = 0
+      for (let i = 0; i < n; i++) {
+        bumpRebuildStep(1 + i)
+        try {
+          const one = await rpcRebuildSalesDailySheetsReportingBatch(batches[i].batch_id)
+          if (one.status !== 'ok') {
+            throw new Error(`status ${one.status}`)
+          }
+          totalDel += one.transactions_deleted
+          totalCr += one.transactions_created
+        } catch (e) {
+          const base = e instanceof Error ? e.message : String(e)
+          const b = batches[i]
+          throw new Error(
+            `Batch ${i + 1} of ${n} (${b.location_name}, file: ${b.source_file_name || 'unknown'}, id: ${b.batch_id}): ${base}`,
+          )
+        }
+      }
+
+      bumpRebuildStep(1 + n)
+      invalidateSalesRebuildCaches()
+      bumpRebuildStep(2 + n)
+
+      return {
+        kind: 'ok',
+        scopeLabel: scope,
+        batches: n,
+        deleted: totalDel,
+        created: totalCr,
+      }
+    },
+    onMutate: () => {
+      setRebuildPanelOpen(true)
+      setRebuildProgFailureAt(null)
+      setRebuildProgAllComplete(false)
+      setRebuildProgFailed(false)
+      setRebuildProgResult(null)
+      setRebuildDynamicSteps([
+        'Checking existing Sales Daily Sheets batches',
+        'Done',
+      ])
+      rebuildActiveStepRef.current = 0
+      setRebuildActiveStepIndex(0)
+    },
+    onSuccess: (res: RebuildBatchFlowResult) => {
+      setRebuildProgFailed(false)
+      setRebuildProgFailureAt(null)
+      setRebuildProgAllComplete(true)
+      if (res.kind === 'empty') {
+        setRebuildProgResult(
+          `Rebuild complete for ${res.scopeLabel}. 0 batches rebuilt.`,
+        )
+        return
+      }
+      setRebuildProgResult(
+        `Rebuild complete for ${res.scopeLabel}. ${res.batches} batches rebuilt, ${formatAdminCount(res.deleted)} transactions deleted, ${formatAdminCount(res.created)} transactions created.`,
+      )
+    },
+    onError: (err: unknown) => {
+      setRebuildProgFailed(true)
+      setRebuildProgAllComplete(false)
+      setRebuildProgFailureAt(rebuildActiveStepRef.current)
+      setRebuildProgResult(
+        `Rebuild failed: ${err instanceof Error ? err.message : String(err)}`,
+      )
+      console.error('rebuild_sales_daily_sheets batch flow failed', err)
+    },
+  })
+
+  const resetMutation = useMutation({
+    mutationFn: (args: { p_location_id: string | null }) =>
+      rpcDeleteAllSalesDailySheetsImportData({ p_location_id: args.p_location_id }),
+    onMutate: () => {
+      setDeletePanelOpen(true)
+      setDeleteProgFailureAt(null)
+      setDeleteProgAllComplete(false)
+      setDeleteProgFailed(false)
+      setDeleteProgResult(null)
+      setDeleteProgCursor(0)
+    },
+    onSuccess: (res: DeleteSalesDailySheetsImportDataResult) => {
+      const failed = res.status !== 'ok'
+      setDeleteProgFailed(failed)
+      if (failed) {
+        setDeleteProgAllComplete(false)
+        setDeleteProgFailureAt(
+          Math.min(deleteProgCursorRef.current, DELETE_PROGRESS_STEPS.length - 2),
+        )
+        setDeleteProgResult(
+          [
+            `Delete failed: status ${res.status}`,
+            res.message || '',
+            `Transactions deleted: ${formatAdminCount(res.transactions_deleted)}`,
+            `Raw rows deleted: ${formatAdminCount(res.raw_rows_deleted)}`,
+            `Import batches deleted: ${formatAdminCount(res.sales_import_batches_deleted)}`,
+            `Staged rows deleted: ${formatAdminCount(res.staged_rows_deleted)}`,
+            `Sheet batches deleted: ${formatAdminCount(res.staged_batches_deleted)}`,
+          ]
+            .filter(Boolean)
+            .join('\n'),
+        )
+        return
+      }
+      setDeleteProgAllComplete(true)
+      setDeleteProgFailureAt(null)
+      setDeleteProgResult(
+        `Delete complete for ${res.location_name}. ${formatAdminCount(res.transactions_deleted)} transactions deleted, ${formatAdminCount(res.raw_rows_deleted)} raw rows deleted, ${formatAdminCount(res.sales_import_batches_deleted)} import batch(es) deleted, ${formatAdminCount(res.staged_rows_deleted)} staged row(s), ${formatAdminCount(res.staged_batches_deleted)} sheet batch(es).`,
+      )
+      void queryClient.invalidateQueries({
+        queryKey: ['my-commission-summary-weekly'],
+      })
+      void queryClient.invalidateQueries({
+        queryKey: ['my-commission-lines-weekly'],
+      })
+      void queryClient.invalidateQueries({
+        queryKey: ['admin-payroll-summary-weekly'],
+      })
+      void queryClient.invalidateQueries({
+        queryKey: ['admin-payroll-lines-weekly'],
+      })
+      void queryClient.invalidateQueries({
+        queryKey: ['location-sales-summary-my-sales'],
+      })
+      void queryClient.invalidateQueries({
+        queryKey: ['sales-daily-sheets-data-sources'],
+      })
+      void queryClient.invalidateQueries({
+        queryKey: ['kpi-snapshot-live'],
+      })
+      void queryClient.invalidateQueries({
+        queryKey: ['kpi-stylist-comparisons-live'],
+      })
+    },
+    onError: (err: unknown) => {
+      setDeleteProgFailed(true)
+      setDeleteProgAllComplete(false)
+      setDeleteProgFailureAt(
+        Math.min(deleteProgCursorRef.current, DELETE_PROGRESS_STEPS.length - 2),
+      )
+      setDeleteProgResult(
+        `Delete failed: ${err instanceof Error ? err.message : String(err)}`,
+      )
+      console.error('delete_all_sales_daily_sheets_import_data failed', err)
+    },
+  })
+
+  useEffect(() => {
+    deleteProgCursorRef.current = deleteProgCursor
+  }, [deleteProgCursor])
+
+  useEffect(() => {
+    if (!resetMutation.isPending) return
+    setDeleteProgCursor(0)
+    const id = window.setInterval(() => {
+      setDeleteProgCursor((c) => Math.min(c + 1, DELETE_PROGRESS_STEPS.length - 2))
+    }, 800)
+    return () => window.clearInterval(id)
+  }, [resetMutation.isPending])
 
   const importMutation = useMutation({
     mutationFn: async (args: { file: File; locationId: string }) => {
@@ -165,39 +458,12 @@ export function AdminImportsPage() {
     },
   })
 
-  const resetMutation = useMutation({
-    mutationFn: rpcDeleteAllSalesDailySheetsImportData,
-    onSuccess: (data) => {
-      setMessage(
-        `All Sales Daily Sheets import records were removed for every salon. You can run a completely fresh import if you need to.\n\n${summarizePipelineResult(data)}`,
-      )
-      setStatus('done')
-      void queryClient.invalidateQueries({
-        queryKey: ['my-commission-summary-weekly'],
-      })
-      void queryClient.invalidateQueries({
-        queryKey: ['my-commission-lines-weekly'],
-      })
-      void queryClient.invalidateQueries({
-        queryKey: ['admin-payroll-summary-weekly'],
-      })
-      void queryClient.invalidateQueries({
-        queryKey: ['admin-payroll-lines-weekly'],
-      })
-    },
-    onError: (err: unknown) => {
-      setStatus('failed')
-      setMessage(
-        err instanceof Error ? err.message : 'Reset failed. Check the console or Supabase logs.',
-      )
-    },
-  })
-
   useEffect(() => {
-    if (!importMutation.isPending || resetMutation.isPending) return
+    if (!importMutation.isPending || resetMutation.isPending || rebuildMutation.isPending)
+      return
     const id = window.setInterval(() => setNowTick(Date.now()), 1000)
     return () => window.clearInterval(id)
-  }, [importMutation.isPending, resetMutation.isPending])
+  }, [importMutation.isPending, resetMutation.isPending, rebuildMutation.isPending])
 
   function onPick(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0] ?? null
@@ -235,20 +501,40 @@ export function AdminImportsPage() {
   }
 
   function onResetClick() {
-    const ok = window.confirm(
-      'Delete all Sales Daily Sheets records that have been imported, for every salon?\n\nThis clears imported data from this feature so you can start completely fresh if needed. Information that came from other systems is not removed. This cannot be undone.\n\nThis option is only for managers and administrators.',
-    )
+    const allSalons = deleteLocationId.trim() === ''
+    const ok = allSalons
+      ? window.confirm(
+          'This will delete all Sales Daily Sheets records for all salons. Continue?',
+        )
+      : window.confirm(
+          `This will delete Sales Daily Sheets records for ${deleteScopeSalonLabel} only. Continue?`,
+        )
     if (!ok) return
     setLastSummary(null)
-    setMessage(null)
-    resetMutation.mutate()
+    resetMutation.mutate({
+      p_location_id: allSalons ? null : deleteLocationId.trim(),
+    })
   }
 
-  const busy =
+  /** Upload/import + delete — does not include rebuild so rebuild stays usable after import completes. */
+  const importOrResetBusy =
     status === 'uploading' ||
     status === 'processing' ||
     importMutation.isPending ||
     resetMutation.isPending
+
+  /** Disables all primary actions to avoid overlapping heavy DB work. */
+  const pageHeavyBusy =
+    importOrResetBusy || rebuildMutation.isPending
+
+  const rebuildControlsDisabled =
+    locationsLoading || rebuildMutation.isPending || importOrResetBusy
+
+  const deleteControlsDisabled =
+    locationsLoading ||
+    resetMutation.isPending ||
+    importOrResetBusy ||
+    rebuildMutation.isPending
 
   const canSubmit =
     Boolean(file) &&
@@ -260,7 +546,7 @@ export function AdminImportsPage() {
     <div data-testid="admin-imports-page">
       <PageHeader
         title="Sales Daily Sheets import"
-        description="Upload your sales daily sheets spreadsheet into the app for one salon at a time. Each upload replaces that salon’s earlier Sales Daily Sheets data and refreshes commission calculations. This form should be used by managers and administrators only."
+        description="Upload your Sales Daily Sheets spreadsheet into the app for one salon at a time. Each upload replaces that salon's earlier Sales Daily Sheets data for the uploaded date range and refreshes commission calculations."
       />
 
       <div className="space-y-6">
@@ -289,8 +575,6 @@ export function AdminImportsPage() {
           </p>
         </div>
 
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-8">
-          <div className="min-w-0 flex-1">
         <form
           onSubmit={(e) => void onSubmit(e)}
           className="space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm"
@@ -321,7 +605,7 @@ export function AdminImportsPage() {
               type="file"
               accept=".csv,text/csv"
               className="mt-2 block w-full text-sm text-slate-600 file:mr-4 file:rounded-md file:border-0 file:bg-violet-50 file:px-4 file:py-2 file:text-sm file:font-medium file:text-violet-900 hover:file:bg-violet-100"
-              disabled={busy}
+              disabled={pageHeavyBusy}
               onChange={onPick}
               data-testid="admin-imports-file"
             />
@@ -346,7 +630,7 @@ export function AdminImportsPage() {
               required
               value={locationId}
               onChange={(e) => setLocationId(e.target.value)}
-              disabled={busy || locationsLoading}
+              disabled={pageHeavyBusy || locationsLoading}
               className="mt-2 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500 disabled:opacity-50"
               data-testid="admin-imports-location"
             >
@@ -369,15 +653,15 @@ export function AdminImportsPage() {
             <div className="flex flex-wrap items-center gap-3">
               <button
                 type="submit"
-                disabled={busy || !canSubmit}
-                className="rounded-md bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={pageHeavyBusy || !canSubmit}
+                className="inline-flex rounded-md bg-violet-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
                 data-testid="admin-imports-submit"
               >
                 {importMutation.isPending && !resetMutation.isPending
-                  ? 'Working…'
+                  ? 'Uploading...'
                   : 'Upload and import'}
               </button>
-              {status !== 'idle' && !busy ? (
+              {status !== 'idle' && !importOrResetBusy ? (
                 <span className="text-sm text-slate-600" data-testid="admin-imports-phase">
                   {status === 'done'
                     ? 'Done'
@@ -423,38 +707,6 @@ export function AdminImportsPage() {
               {message}
             </p>
           ) : null}
-      </form>
-          </div>
-
-          <div className="flex w-full shrink-0 flex-col gap-6 lg:sticky lg:top-4 lg:w-72 lg:self-start xl:w-80">
-          <aside
-            className="w-full rounded-lg border border-red-200 bg-red-50 p-5 shadow-sm"
-            aria-labelledby="admin-imports-admin-delete-heading"
-          >
-            <h2
-              id="admin-imports-admin-delete-heading"
-              className="text-base font-semibold text-red-900"
-            >
-              Admin: Delete all records
-            </h2>
-            <p className="mt-2 text-sm leading-relaxed text-red-950/90">
-              Removes every Sales Daily Sheets import stored in the app across{' '}
-              <span className="font-medium text-red-950">all salons</span>, so you can load
-              everything again from scratch if you ever need a clean slate. Regular uploads for a
-              single salon already replace that salon’s data.  You only need to use this function for an all-salon
-              fresh start.
-            </p>
-            <p className="mt-2 text-xs text-red-800/90">Managers and administrators only.</p>
-            <button
-              type="button"
-              disabled={busy || resetMutation.isPending}
-              onClick={() => void onResetClick()}
-              className="mt-4 w-full rounded-md border border-red-700 bg-red-700 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-50"
-              data-testid="admin-imports-reset-all"
-            >
-              {resetMutation.isPending ? 'Removing records…' : 'Delete all Sales Daily Sheets records'}
-            </button>
-          </aside>
 
           {lastSummary ? (
             <div className="rounded-md border border-slate-100 bg-slate-50 p-3">
@@ -466,8 +718,162 @@ export function AdminImportsPage() {
               </pre>
             </div>
           ) : null}
+        </form>
+
+        <aside
+          className="w-full rounded-lg border border-sky-200 bg-sky-50 p-5 shadow-sm"
+          aria-labelledby="admin-imports-rebuild-heading"
+        >
+          <h2
+            id="admin-imports-rebuild-heading"
+            className="text-base font-semibold text-sky-950"
+          >
+            Rebuild reporting data
+          </h2>
+          <div className="mt-2 space-y-2 text-sm leading-relaxed text-sky-950/90">
+            <p>
+              Rebuild sales transactions and reporting outputs from Sales Daily Sheets data already
+              loaded in the app. 
+            <br/>
+            Use this after staff, product, remuneration, or commission-rule changes.
+            <br/>
+              This does not upload a new file and does not delete the original imported raw data.
+            </p>
           </div>
-        </div>
+          <label
+            htmlFor="admin-imports-rebuild-location"
+            className="mt-4 block text-sm font-medium text-sky-950"
+          >
+            Location
+          </label>
+          <select
+            id="admin-imports-rebuild-location"
+            value={rebuildLocationId}
+            onChange={(e) => {
+              setRebuildLocationId(e.target.value)
+              setRebuildPanelOpen(false)
+              setRebuildProgResult(null)
+              setRebuildProgFailed(false)
+              setRebuildProgAllComplete(false)
+              setRebuildProgFailureAt(null)
+              setRebuildDynamicSteps([
+                'Checking existing Sales Daily Sheets batches',
+                'Done',
+              ])
+              rebuildActiveStepRef.current = 0
+              setRebuildActiveStepIndex(0)
+            }}
+            disabled={rebuildControlsDisabled}
+            className="mt-2 block w-full rounded-md border border-sky-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 disabled:opacity-50"
+            data-testid="admin-imports-rebuild-location"
+          >
+            <option value="">All locations</option>
+            {locations.map((loc) => (
+              <option key={loc.id} value={loc.id}>
+                {loc.name} ({loc.code})
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            disabled={rebuildControlsDisabled}
+            onClick={() => void rebuildMutation.mutate()}
+            className="mt-4 inline-flex rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
+            data-testid="admin-imports-rebuild-reporting"
+          >
+            {rebuildMutation.isPending ? 'Rebuilding...' : 'Rebuild data'}
+          </button>
+          {rebuildPanelOpen ? (
+            <AdminImportsRpcStepProgress
+              variant="sky"
+              steps={rebuildDynamicSteps}
+              isRunning={rebuildMutation.isPending}
+              isFailed={rebuildProgFailed || rebuildMutation.isError}
+              failureAt={rebuildProgFailureAt}
+              cursor={rebuildActiveStepIndex}
+              allComplete={rebuildProgAllComplete}
+              resultLine={rebuildProgResult}
+            />
+          ) : null}
+        </aside>
+
+        <aside
+          className="w-full rounded-lg border border-red-200 bg-red-50 p-5 shadow-sm"
+          aria-labelledby="admin-imports-admin-delete-heading"
+        >
+          <h2
+            id="admin-imports-admin-delete-heading"
+            className="text-base font-semibold text-red-900"
+          >
+            Delete all records
+          </h2>
+          <p className="mt-2 text-sm leading-relaxed text-red-950/90">
+            {deleteLocationId.trim() === '' ? (
+              <>
+                <span className="font-medium text-red-950">All locations</span> is selected: this
+                removes every Sales Daily Sheets import stored in the app across{' '}
+                <span className="font-medium text-red-950">all locations</span>. <br/>Use only for a full
+                reset - this cannot be undone.
+              </>
+            ) : (
+              <>
+                Only <span className="font-medium text-red-950">{deleteScopeSalonLabel}</span> is
+                selected: Sales Daily Sheets data for{' '}
+                <span className="font-medium text-red-950">that salon only</span> will be removed.
+                <br/>Other salons are not affected - this cannot be undone.
+              </>
+            )}
+          </p>
+          <label
+            htmlFor="admin-imports-delete-location"
+            className="mt-4 block text-sm font-medium text-red-950"
+          >
+            Location
+          </label>
+          <select
+            id="admin-imports-delete-location"
+            value={deleteLocationId}
+            onChange={(e) => {
+              setDeleteLocationId(e.target.value)
+              setDeletePanelOpen(false)
+              setDeleteProgResult(null)
+              setDeleteProgFailed(false)
+              setDeleteProgAllComplete(false)
+              setDeleteProgFailureAt(null)
+            }}
+            disabled={deleteControlsDisabled}
+            className="mt-2 block w-full rounded-md border border-red-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-red-600 focus:outline-none focus:ring-1 focus:ring-red-500 disabled:opacity-50"
+            data-testid="admin-imports-delete-location"
+          >
+            <option value="">All locations</option>
+            {locations.map((loc) => (
+              <option key={loc.id} value={loc.id}>
+                {loc.name} ({loc.code})
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            disabled={pageHeavyBusy}
+            onClick={() => void onResetClick()}
+            className="mt-4 inline-flex rounded-md bg-red-700 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-50"
+            data-testid="admin-imports-reset-all"
+          >
+            {resetMutation.isPending ? 'Deleting...' : 'Delete all records'}
+          </button>
+          {deletePanelOpen ? (
+            <AdminImportsRpcStepProgress
+              variant="red"
+              steps={DELETE_PROGRESS_STEPS}
+              isRunning={resetMutation.isPending}
+              isFailed={deleteProgFailed || resetMutation.isError}
+              failureAt={deleteProgFailureAt}
+              cursor={deleteProgCursor}
+              allComplete={deleteProgAllComplete}
+              resultLine={deleteProgResult}
+            />
+          ) : null}
+        </aside>
       </div>
     </div>
   )

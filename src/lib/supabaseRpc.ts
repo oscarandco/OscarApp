@@ -302,13 +302,310 @@ export async function fetchSalesDailySheetsImportBatch(
   return data as SalesDailySheetsImportBatchRow
 }
 
-/** Destructive: removes all Sales Daily Sheets import data (elevated users only). */
-export async function rpcDeleteAllSalesDailySheetsImportData(): Promise<unknown> {
-  const { data, error } = await requireSupabaseClient().rpc(
-    'delete_all_sales_daily_sheets_import_data',
+function postgrestErrorDetailMessage(err: PostgrestError): string {
+  const parts: string[] = []
+  if (err.message) parts.push(err.message)
+  if (err.details) parts.push(`Details: ${err.details}`)
+  if (err.hint) parts.push(`Hint: ${err.hint}`)
+  if (err.code) parts.push(`Code: ${err.code}`)
+  return parts.join('\n')
+}
+
+export type DeleteSalesDailySheetsImportDataResult = {
+  status: string
+  message: string
+  location_id: string | null
+  location_name: string
+  transactions_deleted: number
+  raw_rows_deleted: number
+  sales_import_batches_deleted: number
+  staged_rows_deleted: number
+  staged_batches_deleted: number
+  deleted_at: string
+}
+
+function parseDeleteSalesDailySheetsImportDataResult(
+  data: unknown,
+): DeleteSalesDailySheetsImportDataResult {
+  let parsed: unknown = data
+  if (typeof parsed === 'string') {
+    try {
+      parsed = JSON.parse(parsed) as unknown
+    } catch {
+      throw new Error(
+        'Unexpected response from delete_all_sales_daily_sheets_import_data (invalid JSON)',
+      )
+    }
+  }
+  if (parsed == null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('Unexpected response from delete_all_sales_daily_sheets_import_data')
+  }
+  const o = parsed as Record<string, unknown>
+  const num = (v: unknown) =>
+    typeof v === 'number' && Number.isFinite(v)
+      ? v
+      : typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v))
+        ? Number(v)
+        : 0
+  const tx =
+    o.transactions_deleted != null
+      ? num(o.transactions_deleted)
+      : num(o.sales_transactions_deleted)
+  const raw =
+    o.raw_rows_deleted != null ? num(o.raw_rows_deleted) : num(o.raw_sales_import_rows_deleted)
+  const batches = num(o.sales_import_batches_deleted)
+  const staged =
+    o.staged_rows_deleted != null
+      ? num(o.staged_rows_deleted)
+      : num(o.sales_daily_sheets_staged_rows_deleted)
+  const sheetBatches =
+    o.staged_batches_deleted != null
+      ? num(o.staged_batches_deleted)
+      : num(o.sales_daily_sheets_import_batches_deleted)
+  return {
+    status: typeof o.status === 'string' ? o.status : 'ok',
+    message: typeof o.message === 'string' ? o.message : '',
+    location_id:
+      o.location_id == null || o.location_id === '' ? null : String(o.location_id),
+    location_name:
+      typeof o.location_name === 'string' && o.location_name.trim() !== ''
+        ? o.location_name.trim()
+        : o.location_id == null || o.location_id === ''
+          ? 'All locations'
+          : String(o.location_id),
+    transactions_deleted: tx,
+    raw_rows_deleted: raw,
+    sales_import_batches_deleted: batches,
+    staged_rows_deleted: staged,
+    staged_batches_deleted: sheetBatches,
+    deleted_at:
+      typeof o.deleted_at === 'string'
+        ? o.deleted_at
+        : o.deleted_at != null
+          ? String(o.deleted_at)
+          : '',
+  }
+}
+
+/** Destructive: removes Sales Daily Sheets import data (elevated users only). Null = all salons. */
+export async function rpcDeleteAllSalesDailySheetsImportData(args: {
+  p_location_id?: string | null
+}): Promise<DeleteSalesDailySheetsImportDataResult> {
+  const { data, error } = await requireSupabaseClient()
+    .rpc('delete_all_sales_daily_sheets_import_data', {
+      p_location_id: args.p_location_id ?? null,
+    })
+    .abortSignal(AbortSignal.timeout(60 * 60_000))
+  if (error) throw new Error(postgrestErrorDetailMessage(error))
+  return parseDeleteSalesDailySheetsImportDataResult(data)
+}
+
+export type RebuildSalesDailySheetsReportingResult = {
+  status: string
+  message: string
+  location_id: string | null
+  batches_rebuilt: number
+  transactions_deleted: number
+  transactions_created: number
+  rebuilt_at: string
+}
+
+function isMissingRebuildSalesRpcError(err: PostgrestError): boolean {
+  const m = (err.message ?? '').toLowerCase()
+  const c = err.code ?? ''
+  return (
+    c === 'PGRST202' ||
+    c === '42883' ||
+    (m.includes('could not find') && m.includes('function')) ||
+    (m.includes('schema cache') && m.includes('function')) ||
+    (m.includes('does not exist') &&
+      (m.includes('rebuild_sales_daily_sheets_reporting_data') ||
+        m.includes('list_sales_daily_sheets_rebuild_batches') ||
+        m.includes('rebuild_sales_daily_sheets_reporting_batch')))
   )
-  if (error) throw toError('delete_all_sales_daily_sheets_import_data', error)
-  return data
+}
+
+function throwFromRebuildSalesRpcError(error: PostgrestError): never {
+  const detail = postgrestErrorDetailMessage(error)
+  if (isMissingRebuildSalesRpcError(error)) {
+    throw new Error(
+      'Rebuild RPC is not available. Push the latest database migration first.\n\n' + detail,
+    )
+  }
+  throw new Error(detail)
+}
+
+function parseRebuildSalesDailySheetsReportingResult(
+  data: unknown,
+): RebuildSalesDailySheetsReportingResult {
+  let parsed: unknown = data
+  if (typeof parsed === 'string') {
+    try {
+      parsed = JSON.parse(parsed) as unknown
+    } catch {
+      throw new Error(
+        'Unexpected response from rebuild_sales_daily_sheets_reporting_data (invalid JSON)',
+      )
+    }
+  }
+  if (parsed == null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('Unexpected response from rebuild_sales_daily_sheets_reporting_data')
+  }
+  const o = parsed as Record<string, unknown>
+  const num = (v: unknown) =>
+    typeof v === 'number' && Number.isFinite(v)
+      ? v
+      : typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v))
+        ? Number(v)
+        : 0
+  return {
+    status: typeof o.status === 'string' ? o.status : 'unknown',
+    message: typeof o.message === 'string' ? o.message : '',
+    location_id:
+      o.location_id == null || o.location_id === ''
+        ? null
+        : String(o.location_id),
+    batches_rebuilt: num(o.batches_rebuilt),
+    transactions_deleted: num(o.transactions_deleted),
+    transactions_created: num(o.transactions_created),
+    rebuilt_at:
+      typeof o.rebuilt_at === 'string'
+        ? o.rebuilt_at
+        : o.rebuilt_at != null
+          ? String(o.rebuilt_at)
+          : '',
+  }
+}
+
+/**
+ * Rebuild `sales_transactions` from existing `raw_sales_import_rows` for
+ * Sales Daily Sheets import batches (elevated users only). Does not
+ * delete raw or staged data.
+ */
+export async function rpcRebuildSalesDailySheetsReportingData(args: {
+  p_location_id?: string | null
+}): Promise<RebuildSalesDailySheetsReportingResult> {
+  const { data, error } = await requireSupabaseClient()
+    .rpc('rebuild_sales_daily_sheets_reporting_data', {
+      p_location_id: args.p_location_id ?? null,
+    })
+    .abortSignal(AbortSignal.timeout(15 * 60_000))
+  if (error) throwFromRebuildSalesRpcError(error)
+  return parseRebuildSalesDailySheetsReportingResult(data)
+}
+
+export type SalesDailySheetsRebuildBatchRow = {
+  batch_id: string
+  location_id: string
+  location_name: string
+  source_file_name: string
+  raw_rows: number
+  existing_transactions: number
+  created_at: string | null
+}
+
+function parseSalesDailySheetsRebuildBatchRow(row: unknown): SalesDailySheetsRebuildBatchRow {
+  if (row == null || typeof row !== 'object' || Array.isArray(row)) {
+    throw new Error('Unexpected row from list_sales_daily_sheets_rebuild_batches')
+  }
+  const o = row as Record<string, unknown>
+  const num = (v: unknown) =>
+    typeof v === 'number' && Number.isFinite(v)
+      ? v
+      : typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v))
+        ? Number(v)
+        : 0
+  return {
+    batch_id: o.batch_id != null ? String(o.batch_id) : '',
+    location_id: o.location_id != null ? String(o.location_id) : '',
+    location_name: typeof o.location_name === 'string' ? o.location_name : '',
+    source_file_name: typeof o.source_file_name === 'string' ? o.source_file_name : '',
+    raw_rows: num(o.raw_rows),
+    existing_transactions: num(o.existing_transactions),
+    created_at:
+      o.created_at == null
+        ? null
+        : typeof o.created_at === 'string'
+          ? o.created_at
+          : String(o.created_at),
+  }
+}
+
+/** Lists SalesDailySheets import batches eligible for rebuild (elevated users only). */
+export async function rpcListSalesDailySheetsRebuildBatches(args: {
+  p_location_id?: string | null
+}): Promise<SalesDailySheetsRebuildBatchRow[]> {
+  const { data, error } = await requireSupabaseClient().rpc(
+    'list_sales_daily_sheets_rebuild_batches',
+    { p_location_id: args.p_location_id ?? null },
+  )
+  if (error) throwFromRebuildSalesRpcError(error)
+  return asRows(data as unknown).map(parseSalesDailySheetsRebuildBatchRow)
+}
+
+export type RebuildSalesDailySheetsReportingBatchResult = {
+  status: string
+  batch_id: string
+  location_id: string | null
+  location_name: string
+  source_file_name: string
+  transactions_deleted: number
+  transactions_created: number
+  rebuilt_at: string
+}
+
+function parseRebuildSalesDailySheetsReportingBatchResult(
+  data: unknown,
+): RebuildSalesDailySheetsReportingBatchResult {
+  let parsed: unknown = data
+  if (typeof parsed === 'string') {
+    try {
+      parsed = JSON.parse(parsed) as unknown
+    } catch {
+      throw new Error(
+        'Unexpected response from rebuild_sales_daily_sheets_reporting_batch (invalid JSON)',
+      )
+    }
+  }
+  if (parsed == null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('Unexpected response from rebuild_sales_daily_sheets_reporting_batch')
+  }
+  const o = parsed as Record<string, unknown>
+  const num = (v: unknown) =>
+    typeof v === 'number' && Number.isFinite(v)
+      ? v
+      : typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v))
+        ? Number(v)
+        : 0
+  return {
+    status: typeof o.status === 'string' ? o.status : 'unknown',
+    batch_id: o.batch_id != null ? String(o.batch_id) : '',
+    location_id:
+      o.location_id == null || o.location_id === '' ? null : String(o.location_id),
+    location_name: typeof o.location_name === 'string' ? o.location_name : '',
+    source_file_name: typeof o.source_file_name === 'string' ? o.source_file_name : '',
+    transactions_deleted: num(o.transactions_deleted),
+    transactions_created: num(o.transactions_created),
+    rebuilt_at:
+      typeof o.rebuilt_at === 'string'
+        ? o.rebuilt_at
+        : o.rebuilt_at != null
+          ? String(o.rebuilt_at)
+          : '',
+  }
+}
+
+/** Rebuild one SalesDailySheets import batch (elevated users only). */
+export async function rpcRebuildSalesDailySheetsReportingBatch(
+  batchId: string,
+): Promise<RebuildSalesDailySheetsReportingBatchResult> {
+  const id = String(batchId ?? '').trim()
+  if (id === '') throw new Error('batch_id is required')
+  const { data, error } = await requireSupabaseClient()
+    .rpc('rebuild_sales_daily_sheets_reporting_batch', { p_batch_id: id })
+    .abortSignal(AbortSignal.timeout(15 * 60_000))
+  if (error) throwFromRebuildSalesRpcError(error)
+  return parseRebuildSalesDailySheetsReportingBatchResult(data)
 }
 
 /**

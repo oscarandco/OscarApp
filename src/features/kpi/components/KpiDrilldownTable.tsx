@@ -498,6 +498,9 @@ function GuestMetricsDrilldownTable({
               Guest Name
             </th>
             <th scope="col" className={`${DRILL_TH} text-right`}>
+              # Visits
+            </th>
+            <th scope="col" className={`${DRILL_TH} text-right`}>
               Spend (ex GST)
             </th>
             <th scope="col" className={`${DRILL_TH} text-right`}>
