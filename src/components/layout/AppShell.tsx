@@ -11,7 +11,9 @@ import { TopNav } from '@/components/layout/TopNav'
  * main column. The outer container claims the full dynamic viewport
  * height (`lg:h-dvh`) and hides its own overflow so only `<main>`
  * scrolls. `min-h-0` on the flex row lets `<main>` actually engage
- * `overflow-y-auto`.
+ * `overflow-y-auto`. The inner max-width wrapper is `lg:flex-1
+ * lg:flex-col lg:min-h-0` so routes can fill the main column and own
+ * their scroll (e.g. admin line detail table frame).
  *
  * Mobile (< lg): the fixed-height chrome is **removed**. The shell
  * becomes a normal-document-flow column, the TopNav sits at the top of
@@ -33,10 +35,10 @@ export function AppShell() {
           onMobileClose={() => setMobileNavOpen(false)}
         />
         <main
-          className="min-w-0 flex-1 px-3 py-4 sm:px-4 sm:py-6 lg:overflow-y-auto lg:overflow-x-hidden lg:px-8"
+          className="min-w-0 flex-1 px-3 py-4 sm:px-4 sm:py-6 lg:flex lg:min-h-0 lg:flex-col lg:overflow-y-auto lg:overflow-x-hidden lg:px-8"
           data-testid="app-shell-main"
         >
-          <div className="w-full max-w-[85rem]">
+          <div className="flex w-full min-w-0 max-w-[85rem] flex-col lg:min-h-0 lg:flex-1">
             <Outlet />
           </div>
         </main>

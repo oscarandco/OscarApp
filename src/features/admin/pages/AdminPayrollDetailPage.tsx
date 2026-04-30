@@ -51,7 +51,7 @@ export function AdminPayrollDetailPage() {
 
   if (parsed.kind === 'missing') {
     return (
-      <div data-testid="admin-detail-page">
+      <div data-testid="admin-detail-page" className="flex min-h-0 min-w-0 flex-1 flex-col">
         <ErrorState
           title="No pay week selected"
           message="Open this page from Admin weekly payroll using View lines on a row."
@@ -63,7 +63,7 @@ export function AdminPayrollDetailPage() {
 
   if (parsed.kind === 'invalid') {
     return (
-      <div data-testid="admin-detail-page">
+      <div data-testid="admin-detail-page" className="flex min-h-0 min-w-0 flex-1 flex-col">
         <ErrorState
           title="Invalid pay week link"
           message={`${parsed.reason} (Received: ${parsed.rawDisplay})`}
@@ -77,7 +77,7 @@ export function AdminPayrollDetailPage() {
 
   if (isLoading) {
     return (
-      <div data-testid="admin-detail-page">
+      <div data-testid="admin-detail-page" className="flex min-h-0 min-w-0 flex-1 flex-col">
         <PayrollWeekHeader
           payWeekStart={payWeekStart}
           backTo="/app/admin/sales-summary"
@@ -94,7 +94,7 @@ export function AdminPayrollDetailPage() {
   if (isError) {
     const { message, err } = queryErrorDetail(error)
     return (
-      <div data-testid="admin-detail-page">
+      <div data-testid="admin-detail-page" className="flex min-h-0 min-w-0 flex-1 flex-col">
         <PayrollWeekHeader
           payWeekStart={payWeekStart}
           backTo="/app/admin/sales-summary"
@@ -114,40 +114,40 @@ export function AdminPayrollDetailPage() {
   const weekLabel = formatShortDate(payWeekStart)
 
   return (
-    <div data-testid="admin-detail-page">
-      <PayrollWeekHeader
-        payWeekStart={payWeekStart}
-        payWeekEnd={context.payWeekEnd}
-        payDate={context.payDate}
-        backTo="/app/admin/sales-summary"
-        backLabel="← Back to admin weekly summary"
-      />
-      <PageHeader
-        title="Admin — line detail"
-        description="Full line-level data for reconciliation and troubleshooting. Values come only from the server reporting function."
-      />
-      {lines.length > 0 ? (
-        <p
-          className="mb-4 text-xs text-slate-500"
-          data-testid="admin-detail-diagnostics"
-        >
-          {detailFiltered ? (
-            <>
-              {filteredLines.length} of {lines.length} admin line
-              {lines.length === 1 ? '' : 's'} for week starting{' '}
-              <span className="font-mono text-slate-700">{payWeekStart}</span>
-              {weekLabel !== '—' ? ` (${weekLabel})` : null} (narrowed from summary).
-            </>
-          ) : (
-            <>
-              {lines.length} admin line{lines.length === 1 ? '' : 's'} for week
-              starting{' '}
-              <span className="font-mono text-slate-700">{payWeekStart}</span>
-              {weekLabel !== '—' ? ` (${weekLabel})` : null}.
-            </>
-          )}
-        </p>
-      ) : null}
+    <div data-testid="admin-detail-page" className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div className="shrink-0">
+        <PayrollWeekHeader
+          payWeekStart={payWeekStart}
+          payWeekEnd={context.payWeekEnd}
+          payDate={context.payDate}
+          backTo="/app/admin/sales-summary"
+          backLabel="← Back to admin weekly summary"
+        />
+        <PageHeader title="Admin — line detail" />
+        {lines.length > 0 ? (
+          <p
+            className="mb-4 text-xs text-slate-500"
+            data-testid="admin-detail-diagnostics"
+          >
+            {detailFiltered ? (
+              <>
+                {filteredLines.length} of {lines.length} admin line
+                {lines.length === 1 ? '' : 's'} for week starting{' '}
+                <span className="font-mono text-slate-700">{payWeekStart}</span>
+                {weekLabel !== '—' ? ` (${weekLabel})` : null} (narrowed from
+                summary).
+              </>
+            ) : (
+              <>
+                {lines.length} admin line{lines.length === 1 ? '' : 's'} for week
+                starting{' '}
+                <span className="font-mono text-slate-700">{payWeekStart}</span>
+                {weekLabel !== '—' ? ` (${weekLabel})` : null}.
+              </>
+            )}
+          </p>
+        ) : null}
+      </div>
       {lines.length === 0 ? (
         <EmptyState
           title="No lines for this pay week"

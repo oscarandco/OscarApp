@@ -6,7 +6,7 @@ import { ErrorState } from '@/components/feedback/ErrorState'
 import { LoadingState } from '@/components/feedback/LoadingState'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { PayrollLineStats } from '@/features/payroll/components/PayrollLineStats'
-import { PayrollLineTable } from '@/features/payroll/components/PayrollLineTable'
+import { PayrollLineTableViewportFrame } from '@/features/payroll/components/PayrollLineTableViewportFrame'
 import { PayrollWeekHeader } from '@/features/payroll/components/PayrollWeekHeader'
 import { SummaryFiltersBar } from '@/features/payroll/components/SummaryFiltersBar'
 import { useMyWeeklyCommissionLines } from '@/features/payroll/hooks/useMyWeeklyCommissionLines'
@@ -57,7 +57,7 @@ export function PayrollWeekDetailPage() {
 
   if (parsed.kind === 'missing') {
     return (
-      <div data-testid="payroll-detail-page">
+      <div data-testid="payroll-detail-page" className="flex min-h-0 min-w-0 flex-1 flex-col">
         <ErrorState
           title="No pay week selected"
           message="Open this page from the weekly summary by choosing a pay week (View lines)."
@@ -69,7 +69,7 @@ export function PayrollWeekDetailPage() {
 
   if (parsed.kind === 'invalid') {
     return (
-      <div data-testid="payroll-detail-page">
+      <div data-testid="payroll-detail-page" className="flex min-h-0 min-w-0 flex-1 flex-col">
         <ErrorState
           title="Invalid pay week link"
           message={`${parsed.reason} (Received: ${parsed.rawDisplay})`}
@@ -83,7 +83,7 @@ export function PayrollWeekDetailPage() {
 
   if (isLoading) {
     return (
-      <div data-testid="payroll-detail-page">
+      <div data-testid="payroll-detail-page" className="flex min-h-0 min-w-0 flex-1 flex-col">
         <PayrollWeekHeader payWeekStart={payWeekStart} />
         <LoadingState
           message="Loading commission lines…"
@@ -96,7 +96,7 @@ export function PayrollWeekDetailPage() {
   if (isError) {
     const { message, err } = queryErrorDetail(error)
     return (
-      <div data-testid="payroll-detail-page">
+      <div data-testid="payroll-detail-page" className="flex min-h-0 min-w-0 flex-1 flex-col">
         <PayrollWeekHeader payWeekStart={payWeekStart} />
         <ErrorState
           title="Could not load lines for this week"
@@ -112,16 +112,15 @@ export function PayrollWeekDetailPage() {
   const weekLabel = formatShortDate(payWeekStart)
 
   return (
-    <div data-testid="payroll-detail-page">
-      <PayrollWeekHeader
-        payWeekStart={payWeekStart}
-        payWeekEnd={context.payWeekEnd}
-        payDate={context.payDate}
-      />
-      <PageHeader
-        title="Line detail"
-        description="All commission lines returned for this pay week. Use this view to audit amounts and statuses."
-      />
+    <div data-testid="payroll-detail-page" className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div className="shrink-0">
+        <PayrollWeekHeader
+          payWeekStart={payWeekStart}
+          payWeekEnd={context.payWeekEnd}
+          payDate={context.payDate}
+        />
+        <PageHeader title="Line detail" />
+      </div>
       {sourceRows.length === 0 ? (
         <EmptyState
           title="No lines for this pay week"
@@ -130,35 +129,37 @@ export function PayrollWeekDetailPage() {
         />
       ) : (
         <>
-          <SummaryFiltersBar
-            variant="stylist"
-            locationId={locationId}
-            onLocationId={setLocationId}
-            locationOptions={locationOptions}
-            search={search}
-            onSearch={setSearch}
-            searchPlaceholder="Search by staff, customer, invoice…"
-            onReset={resetFilters}
-            showReset={showReset}
-          />
-          {hasFilters ? (
-            <p
-              className="mb-4 text-xs text-slate-500"
-              data-testid="payroll-detail-diagnostics"
-            >
-              Showing {filteredRows.length} of {sourceRows.length} line
-              {sourceRows.length === 1 ? '' : 's'} (filters on).
-            </p>
-          ) : (
-            <p
-              className="mb-4 text-xs text-slate-500"
-              data-testid="payroll-detail-diagnostics"
-            >
-              {sourceRows.length} line{sourceRows.length === 1 ? '' : 's'} for week
-              starting <span className="font-mono text-slate-700">{payWeekStart}</span>
-              {weekLabel !== '—' ? ` (${weekLabel})` : null}.
-            </p>
-          )}
+          <div className="shrink-0">
+            <SummaryFiltersBar
+              variant="stylist"
+              locationId={locationId}
+              onLocationId={setLocationId}
+              locationOptions={locationOptions}
+              search={search}
+              onSearch={setSearch}
+              searchPlaceholder="Search by staff, customer, invoice…"
+              onReset={resetFilters}
+              showReset={showReset}
+            />
+            {hasFilters ? (
+              <p
+                className="mb-4 text-xs text-slate-500"
+                data-testid="payroll-detail-diagnostics"
+              >
+                Showing {filteredRows.length} of {sourceRows.length} line
+                {sourceRows.length === 1 ? '' : 's'} (filters on).
+              </p>
+            ) : (
+              <p
+                className="mb-4 text-xs text-slate-500"
+                data-testid="payroll-detail-diagnostics"
+              >
+                {sourceRows.length} line{sourceRows.length === 1 ? '' : 's'} for week
+                starting <span className="font-mono text-slate-700">{payWeekStart}</span>
+                {weekLabel !== '—' ? ` (${weekLabel})` : null}.
+              </p>
+            )}
+          </div>
           {filteredRows.length === 0 ? (
             <EmptyState
               title="No rows match your filters"
@@ -166,12 +167,12 @@ export function PayrollWeekDetailPage() {
               testId="payroll-detail-filtered-empty"
             />
           ) : (
-            <>
-              <PayrollLineStats rows={filteredRows} />
-              <div className="mt-4">
-                <PayrollLineTable rows={filteredRows} />
+            <div className="mt-2 flex min-h-0 min-w-0 flex-1 flex-col gap-4">
+              <div className="shrink-0">
+                <PayrollLineStats rows={filteredRows} />
               </div>
-            </>
+              <PayrollLineTableViewportFrame rows={filteredRows} />
+            </div>
           )}
         </>
       )}

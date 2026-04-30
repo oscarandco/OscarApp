@@ -21,6 +21,7 @@ import type { WeeklyCommissionSummaryRow } from '@/features/payroll/types'
 import { isEmptyish, formatScalarText } from '@/lib/cellValue'
 import { formatNzd, formatShortDate } from '@/lib/formatters'
 import type { ColumnSortState } from '@/lib/tableSort'
+import { prioritizeSelfInWorkPerformedByDisplay } from '@/lib/prioritizeSelfInWorkPerformedByDisplay'
 import {
   sortStylistCommissionSummaryRows,
   STYLIST_SUMMARY_SORT_PAY_WEEK_START,
@@ -94,15 +95,18 @@ type WeeklySummaryTableProps = {
    * render `Detail`. Stylist/assistant pass `"View"`.
    */
   mobileDetailLabel?: string | null
+  /**
+   * My Sales only: display names from the access profile used to reorder
+   * `work_performed_by` so the logged-in stylist appears first (comma list).
+   */
+  workPerformedBySelfMatchNames?: readonly string[] | null
 }
 
-// Mobile (`<sm`) keeps slightly roomier vertical padding for tap
-// targets; from `sm:` up, padding is a touch tighter so more columns
-// fit on laptop widths without horizontal scroll.
+// Shared padding for even column rhythm (My Sales + admin summary table).
 const thBase =
-  'border-b border-slate-200 px-1.5 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 sm:px-2.5 sm:py-2 sm:normal-case sm:text-sm sm:tracking-normal sm:text-slate-700 min-w-0'
+  'border-b border-slate-200 px-2 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 sm:py-2 sm:normal-case sm:text-sm sm:tracking-normal sm:text-slate-700 min-w-0'
 const tdBase =
-  'px-1.5 py-2.5 align-top text-slate-700 sm:px-2.5 sm:py-2 min-w-0'
+  'px-2 py-2.5 align-top text-slate-700 sm:py-2 min-w-0'
 
 const CURRENCY_MIDDLE_IDS: ReadonlySet<MiddleColumnId> = new Set([
   'total_sales_ex_gst',
@@ -136,22 +140,23 @@ function sortAlignForMiddleColumn(id: MiddleColumnId): 'left' | 'right' {
 function thClassForMiddleColumn(id: MiddleColumnId): string {
   const parts: string[] = []
   if (CURRENCY_MIDDLE_IDS.has(id)) {
-    parts.push('text-right', 'max-w-[7rem]')
+    parts.push('w-[1%]', 'min-w-[5rem]', 'whitespace-nowrap', 'text-right')
   }
   if (id === 'pay_week_end') {
-    parts.push('whitespace-nowrap', 'w-[6.25rem]', 'max-w-[6.75rem]')
+    parts.push('w-[1%]', 'min-w-0', 'max-w-[6rem]', 'whitespace-nowrap')
   }
   if (id === 'work_performed_by') {
-    parts.push('max-w-[9rem]', 'sm:max-w-[11rem]', 'lg:max-w-[13rem]')
+    // Flexible text column: cap width so it does not leave a wide empty band; no w-[1%] so width tracks content up to max.
+    parts.push('min-w-0', 'max-w-[13rem]', 'sm:max-w-[15rem]', 'lg:max-w-[17rem]')
   }
   if (id === 'derived_staff_paid_full_name') {
-    parts.push('max-w-[6.5rem]', 'sm:max-w-[8rem]')
+    parts.push('w-[1%]', 'min-w-0', 'max-w-[7rem]', 'sm:max-w-[8.5rem]')
   }
   if (id === 'derived_staff_paid_remuneration_plan') {
-    parts.push('max-w-[4.75rem]', 'sm:max-w-[5.5rem]')
+    parts.push('w-[1%]', 'min-w-0', 'max-w-[6rem]', 'sm:max-w-[6.75rem]')
   }
   if (id === 'location') {
-    parts.push('max-w-[7rem]', 'sm:max-w-[8.5rem]')
+    parts.push('w-[1%]', 'min-w-0', 'max-w-[7rem]', 'sm:max-w-[8rem]')
   }
   if (NUMERIC_COUNT_MIDDLE_IDS.has(id)) {
     parts.push('whitespace-nowrap')
@@ -162,28 +167,22 @@ function thClassForMiddleColumn(id: MiddleColumnId): string {
 function tdClassForMiddleColumn(id: MiddleColumnId): string {
   const parts: string[] = []
   if (CURRENCY_MIDDLE_IDS.has(id)) {
-    parts.push(
-      'whitespace-nowrap',
-      'text-right',
-      'tabular-nums',
-      'w-[1%]',
-      'max-w-[7rem]',
-    )
+    parts.push('w-[1%]', 'min-w-[5rem]', 'whitespace-nowrap', 'text-right', 'tabular-nums')
   }
   if (id === 'pay_week_end') {
-    parts.push('whitespace-nowrap')
+    parts.push('w-[1%]', 'min-w-0', 'max-w-[6rem]', 'whitespace-nowrap')
   }
   if (id === 'work_performed_by') {
-    parts.push('max-w-[9rem]', 'sm:max-w-[11rem]', 'lg:max-w-[13rem]')
+    parts.push('min-w-0', 'max-w-[13rem]', 'sm:max-w-[15rem]', 'lg:max-w-[17rem]')
   }
   if (id === 'derived_staff_paid_full_name') {
-    parts.push('max-w-[6.5rem]', 'sm:max-w-[8rem]')
+    parts.push('w-[1%]', 'min-w-0', 'max-w-[7rem]', 'sm:max-w-[8.5rem]')
   }
   if (id === 'derived_staff_paid_remuneration_plan') {
-    parts.push('max-w-[4.75rem]', 'sm:max-w-[5.5rem]')
+    parts.push('w-[1%]', 'min-w-0', 'max-w-[6rem]', 'sm:max-w-[6.75rem]')
   }
   if (id === 'location') {
-    parts.push('max-w-[7rem]', 'sm:max-w-[8.5rem]')
+    parts.push('w-[1%]', 'min-w-0', 'max-w-[7rem]', 'sm:max-w-[8rem]')
   }
   if (NUMERIC_COUNT_MIDDLE_IDS.has(id)) {
     parts.push('whitespace-nowrap', 'tabular-nums')
@@ -210,10 +209,12 @@ function Cell({
   rowKey,
   value,
   middleColumnId,
+  workPerformedBySelfMatchNames,
 }: {
   rowKey: string
   value: unknown
   middleColumnId?: MiddleColumnId
+  workPerformedBySelfMatchNames?: readonly string[] | null
 }) {
   if (isEmptyish(value)) return <span className="text-slate-400">—</span>
   if (typeof value === 'boolean') {
@@ -250,10 +251,20 @@ function Cell({
     TRUNCATE_WITH_TITLE_IDS.has(middleColumnId) &&
     typeof value !== 'object'
   ) {
-    const text = formatScalarText(value)
+    let text = formatScalarText(value)
     if (text === '') return <span className="text-slate-400">—</span>
+    if (
+      middleColumnId === 'work_performed_by' &&
+      workPerformedBySelfMatchNames != null &&
+      workPerformedBySelfMatchNames.length > 0
+    ) {
+      text = prioritizeSelfInWorkPerformedByDisplay(
+        text,
+        workPerformedBySelfMatchNames,
+      )
+    }
     return (
-      <span className="block min-w-0 truncate" title={text}>
+      <span className="block min-w-0 truncate whitespace-nowrap" title={text}>
         {text}
       </span>
     )
@@ -296,6 +307,7 @@ export function WeeklySummaryTable({
   mobileHiddenColumnIds,
   mobileColumnLabelOverrides,
   mobileDetailLabel,
+  workPerformedBySelfMatchNames,
 }: WeeklySummaryTableProps) {
   const { prefs, setPrefs, reset } = usePayrollSummaryColumnPreferences()
   const [previewSummaryRow, setPreviewSummaryRow] =
@@ -385,7 +397,7 @@ export function WeeklySummaryTable({
                   removed as part of the My Sales redesign. */}
               <th
                 scope="col"
-                className={`${thBase} sticky left-0 z-30 min-w-0 w-[5.5rem] max-w-[6rem] bg-slate-50 sm:w-[6rem] sm:max-w-[6.5rem]`}
+                className={`${thBase} sticky left-0 z-30 w-[1%] min-w-0 max-w-[5.5rem] whitespace-nowrap bg-slate-50`}
               >
                 <TableColumnSortHeader
                   label="Start of week"
@@ -404,6 +416,9 @@ export function WeeklySummaryTable({
                   columnLabelOverrides?.[id] ?? COLUMN_LABEL[id]
                 const mobileLabel = mobileColumnLabelOverrides?.[id]
                 const thExtra = thClassForMiddleColumn(id)
+                const headerLabelGrows =
+                  id !== 'work_performed_by' &&
+                  id !== 'derived_staff_paid_remuneration_plan'
                 return (
                   <th
                     key={k}
@@ -413,15 +428,18 @@ export function WeeklySummaryTable({
                     }`}
                   >
                     <div className="flex min-w-0 items-start gap-0.5">
-                      <div className="min-w-0 flex-1">
+                      <div className={headerLabelGrows ? 'min-w-0 flex-1' : 'min-w-0'}>
                         <TableColumnSortHeader
                           label={desktopLabel}
                           columnKey={k}
                           sortState={summarySort}
                           onSortChange={setSummarySort}
                           mobileLabel={mobileLabel ?? undefined}
-                          wrapLabel
+                          wrapLabel={!CURRENCY_MIDDLE_IDS.has(id)}
                           align={sortAlignForMiddleColumn(id)}
+                          className={
+                            headerLabelGrows ? '' : '!w-auto max-w-full min-w-0'
+                          }
                         />
                       </div>
                       <ColumnReorderHandle
@@ -438,7 +456,7 @@ export function WeeklySummaryTable({
               })}
               <th
                 scope="col"
-                className={`${thBase} w-[4.5rem] min-w-0 max-w-[5.5rem] whitespace-normal sm:max-w-[6rem]`}
+                className={`${thBase} w-[1%] min-w-0 max-w-[5.25rem] whitespace-nowrap`}
               >
                 {mobileDetailLabel != null ? (
                   <>
@@ -475,7 +493,7 @@ export function WeeklySummaryTable({
                   className="group border-b border-slate-100 odd:bg-white even:bg-slate-50/90 hover:bg-violet-50/60"
                 >
                   <td
-                    className={`${tdBase} sticky left-0 z-10 min-w-0 w-[5.5rem] max-w-[6rem] whitespace-nowrap border-slate-100 font-medium sm:w-[6rem] sm:max-w-[6.5rem] ${
+                    className={`${tdBase} sticky left-0 z-10 w-[1%] min-w-0 max-w-[5.5rem] whitespace-nowrap border-slate-100 font-medium ${
                       idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/90'
                     } group-hover:bg-violet-50/60`}
                   >
@@ -500,12 +518,15 @@ export function WeeklySummaryTable({
                           rowKey={k}
                           value={row[k as keyof WeeklyCommissionSummaryRow]}
                           middleColumnId={id}
+                          workPerformedBySelfMatchNames={
+                            workPerformedBySelfMatchNames
+                          }
                         />
                       </td>
                     )
                   })}
                   <td
-                    className={`${tdBase} w-[4.5rem] min-w-0 max-w-[5.5rem] whitespace-nowrap sm:max-w-[6rem]`}
+                    className={`${tdBase} w-[1%] min-w-0 max-w-[5.25rem] whitespace-nowrap`}
                   >
                     {weekStart ? (
                       <Link

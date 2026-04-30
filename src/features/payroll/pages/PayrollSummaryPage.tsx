@@ -64,6 +64,16 @@ export function PayrollSummaryPage() {
   const { normalized } = useAccessProfile()
   const role = useMemo(() => resolveRole(normalized), [normalized])
   const visibility = useMemo(() => mySalesVisibilityForRole(role), [role])
+  /** Display-only: reorder comma-separated `work_performed_by` so the session stylist is first. */
+  const workPerformedBySelfMatchNames = useMemo((): readonly string[] | null => {
+    if (!normalized) return null
+    const names: string[] = []
+    const d = normalized.staffDisplayName?.trim()
+    const f = normalized.staffFullName?.trim()
+    if (d) names.push(d)
+    if (f && f !== d) names.push(f)
+    return names.length > 0 ? names : null
+  }, [normalized])
   /** Access Management role (`resolveRole`): only managers/admins see KPI sales tiles. */
   const canViewSalesSummaryCards = role === 'admin' || role === 'manager'
 
@@ -360,6 +370,7 @@ export function PayrollSummaryPage() {
                 visibility.mobileColumnLabelOverrides
               }
               mobileDetailLabel={visibility.mobileDetailLabel}
+              workPerformedBySelfMatchNames={workPerformedBySelfMatchNames}
             />
           </div>
         </>

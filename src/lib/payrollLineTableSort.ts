@@ -71,6 +71,7 @@ export type CommissionLinePreviewSortKey =
   | 'work_performed_by'
   | 'stylist_paid'
   | 'price_ex_gst'
+  | 'price_incl_gst'
   | 'actual_commission_rate'
   | 'actual_commission'
 
@@ -78,6 +79,7 @@ function previewSortKind(key: CommissionLinePreviewSortKey): 'date' | 'number' |
   if (key === 'sale_date') return 'date'
   if (
     key === 'price_ex_gst' ||
+    key === 'price_incl_gst' ||
     key === 'actual_commission_rate' ||
     key === 'actual_commission'
   ) {
