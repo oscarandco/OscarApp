@@ -70,16 +70,15 @@ export function WeeklySummaryDataSourceLines({
       {sorted.map((src, idx) => {
         const loc = displayLocationName(src)
         const rowCount = src.row_count == null ? 0 : Number(src.row_count)
-        const first = formatShortDate(src.first_sale_date ?? null)
-        const last = formatShortDate(src.last_sale_date ?? null)
+        const first = formatShortDate(src.min_sale_date ?? null)
+        const last = formatShortDate(src.max_sale_date ?? null)
+        const locKey = src.location_id ? String(src.location_id) : `idx-${idx}`
         return (
           <li
-            key={src.batch_id ?? `${loc}-${idx}`}
-            data-testid={`${lineTestIdPrefix}-${idx + 1}`}
+            key={locKey}
+            data-testid={`${lineTestIdPrefix}-${locKey}`}
           >
-            <span className="font-medium text-slate-700">
-              Data source {idx + 1} - {loc}:
-            </span>{' '}
+            <span className="font-medium text-slate-700">Data - {loc}:</span>{' '}
             {Number.isFinite(rowCount) ? rowCount.toLocaleString() : '0'} rows (
             {first} - {last})
           </li>

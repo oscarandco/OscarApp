@@ -113,7 +113,7 @@ export function mySalesVisibilityForRole(
         showSalesCard: false,
         // Rows-shown KPI tile removed on My Sales for every role —
         // the same figure already appears in the diagnostics line and
-        // the new per-location data-source rows.
+        // the per-location "Data - …" coverage lines.
         showRowsShownCard: false,
         showColumnPicker: true,
         // Manager/Admin see all role-gated middle columns (Stylist Paid,

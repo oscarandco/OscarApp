@@ -311,8 +311,8 @@ async function parseAndStageCsvInBrowser(args: {
   file: File
   batchId: string
   locationId: string
-  onProgress?: (rowsStaged: number) => void
-}): Promise<{ rowsStaged: number }> {
+  onProgress?: (info: { rowsStaged: number; csvRowsRead: number }) => void
+}): Promise<{ rowsStaged: number; csvRowsRead: number }> {
   const { file, batchId, locationId, onProgress } = args
 
   let lineNumber = 0
@@ -337,7 +337,10 @@ async function parseAndStageCsvInBrowser(args: {
       try {
         await rpcInsertSalesDailySheetsStagedRowsChunk(batch)
         totalStaged += batch.length
-        onProgress?.(totalStaged)
+        onProgress?.({
+          rowsStaged: totalStaged,
+          csvRowsRead: Math.max(0, totalParserRows - 1),
+        })
       } catch (e) {
         aborted = true
         firstError = e instanceof Error ? e : new Error(String(e))
@@ -437,7 +440,7 @@ async function parseAndStageCsvInBrowser(args: {
     dataRowsStagedWithLineNumbers: lineNumber,
   })
 
-  return { rowsStaged: totalStaged }
+  return { rowsStaged: totalStaged, csvRowsRead: Math.max(0, totalParserRows - 1) }
 }
 
 /**
@@ -459,6 +462,14 @@ export async function uploadAndTriggerSalesDailySheetsImport(
      * the page UX advance from "in progress" to "applying".
      */
     onEdgeAccepted?: () => void
+    /** Fires when trigger_sales_daily_sheets_import returns a batch id. */
+    onBatchId?: (batchId: string) => void
+    /** While parsing/staging CSV in the browser (throttled on each flushed chunk). */
+    onParseProgress?: (info: { rowsStaged: number; csvRowsRead: number }) => void
+    /** After CSV parse + staging finished (before apply RPC). */
+    onStagingComplete?: (info: { csvRowsRead: number; rowsStaged: number }) => void
+    /** Immediately before apply_sales_daily_sheets_to_payroll RPC. */
+    onApplyStart?: () => void
     /** Each poll tick while waiting for a terminal batch status. */
     onBatchPoll?: (row: SalesDailySheetsImportBatchRow) => void
   },
@@ -504,6 +515,7 @@ export async function uploadAndTriggerSalesDailySheetsImport(
   }
 
   if (status === 'queued' && pj?.success === true) {
+    options?.onBatchId?.(batchId)
     options?.onQueueRegistered?.(batchId)
 
     try {
@@ -520,15 +532,18 @@ export async function uploadAndTriggerSalesDailySheetsImport(
       await rpcDeleteSalesDailySheetsStagedRowsForBatch(batchId)
 
       // 3) Parse + stage rows in chunks.
-      const { rowsStaged } = await parseAndStageCsvInBrowser({
+      const { rowsStaged, csvRowsRead } = await parseAndStageCsvInBrowser({
         file,
         batchId,
         locationId,
+        onProgress: (info) => options?.onParseProgress?.(info),
       })
 
       if (rowsStaged === 0) {
         throw new Error('No data rows in CSV')
       }
+
+      options?.onStagingComplete?.({ csvRowsRead, rowsStaged })
 
       // Surface the staged count + advance UX before the heavy apply RPC runs.
       await rpcSetSalesDailySheetsBatchStatus({
@@ -536,10 +551,15 @@ export async function uploadAndTriggerSalesDailySheetsImport(
         status: 'processing',
         message: `Applying ${rowsStaged} staged rows`,
         rowsStaged,
+        importResult: {
+          csv_rows_read: csvRowsRead,
+          csv_rows_staged: rowsStaged,
+        },
       })
       options?.onEdgeAccepted?.()
 
       // 4) Apply staged rows into payroll/transaction tables.
+      options?.onApplyStart?.()
       await rpcApplySalesDailySheetsToPayroll(batchId)
 
       // 5) Mark completed (rows_loaded is already set by apply RPC).

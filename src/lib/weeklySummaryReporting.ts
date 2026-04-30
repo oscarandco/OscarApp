@@ -139,6 +139,15 @@ export function buildPerLocationSalesExtraTiles(
 ): WeeklySummaryExtraTile[] {
   const sources = dataSources ?? []
   if (sources.length === 0) return []
+  /** One metadata row per location (RPC is location-grouped; map is defensive). */
+  const sourceByLocationId = new Map<string, SalesDailySheetsDataSourceRow>()
+  for (const s of sources) {
+    const id = s.location_id ? String(s.location_id).trim() : ''
+    if (!id) continue
+    sourceByLocationId.set(id, s)
+  }
+  if (sourceByLocationId.size === 0) return []
+
   const sumByLocationId = new Map<string, number>()
   let foundAny = false
   for (const r of dateScopedRows) {
@@ -151,20 +160,19 @@ export function buildPerLocationSalesExtraTiles(
     sumByLocationId.set(id, (sumByLocationId.get(id) ?? 0) + n)
     foundAny = true
   }
-  return sources
-    .filter((s) => s.location_id && String(s.location_id).trim() !== '')
-    .map((s) => {
-      const id = String(s.location_id).trim()
-      const labelLocation =
-        s.location_name && String(s.location_name).trim() !== ''
-          ? String(s.location_name).trim().toUpperCase()
-          : String(s.location_code ?? id).toUpperCase()
-      return {
-        key: `sales-ex-gst-${id}`,
-        label: `Sales (ex GST) - ${labelLocation}`,
-        value: foundAny ? sumByLocationId.get(id) ?? 0 : null,
-      }
-    })
+
+  return Array.from(sourceByLocationId.values()).map((s) => {
+    const id = String(s.location_id).trim()
+    const labelLocation =
+      s.location_name && String(s.location_name).trim() !== ''
+        ? String(s.location_name).trim().toUpperCase()
+        : String(s.location_code ?? id).toUpperCase()
+    return {
+      key: `sales-ex-gst-${id}`,
+      label: `Sales (ex GST) - ${labelLocation}`,
+      value: foundAny ? sumByLocationId.get(id) ?? 0 : null,
+    }
+  })
 }
 
 /**

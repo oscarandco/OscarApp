@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 
 import { PageHeader } from '@/components/layout/PageHeader'
+import { ImportSalesDataProgress } from '@/features/admin/components/ImportSalesDataProgress'
 import {
   guessLocationIdFromFileName,
   isLikelyCsvFile,
@@ -28,273 +29,6 @@ function summarizePipelineResult(data: unknown): string {
   }
 }
 
-type StepVisual = 'pending' | 'running' | 'done' | 'failed'
-
-function formatDurationShort(ms: number): string {
-  if (!Number.isFinite(ms) || ms < 0) return '—'
-  const s = Math.floor(ms / 1000)
-  const m = Math.floor(s / 60)
-  const sec = s % 60
-  if (m <= 0) return `${sec}s`
-  return `${m}m ${sec}s`
-}
-
-function StepRow({
-  label,
-  hint,
-  state,
-  sub,
-}: {
-  label: string
-  hint?: string
-  state: StepVisual
-  sub?: string
-}) {
-  return (
-    <li className="flex gap-2 text-sm">
-      <span className="mt-0.5 w-5 shrink-0 text-center font-medium" aria-hidden>
-        {state === 'done'
-          ? '✓'
-          : state === 'failed'
-            ? '✗'
-            : state === 'running'
-              ? '…'
-              : '○'}
-      </span>
-      <div className="min-w-0 flex-1">
-        <p
-          className={
-            state === 'running'
-              ? 'font-semibold text-violet-900'
-              : state === 'failed'
-                ? 'font-medium text-red-800'
-                : state === 'done'
-                  ? 'text-slate-700'
-                  : 'text-slate-500'
-          }
-        >
-          {label}
-          {hint ? (
-            <span className="ml-1 text-xs font-normal text-slate-500">({hint})</span>
-          ) : null}
-        </p>
-        {sub ? <p className="mt-0.5 text-xs text-slate-500">{sub}</p> : null}
-      </div>
-    </li>
-  )
-}
-
-function ImportProgressChecklist(props: {
-  importPhase: ImportUiPhase
-  liveBatch: SalesDailySheetsImportBatchRow | null
-  importPending: boolean
-  failed: boolean
-  errorText: string | null
-  startedAt: number
-  nowTick: number
-  /** After a successful run, show all steps complete with final duration. */
-  completedSnapshot: { durationMs: number; batch: SalesDailySheetsImportBatchRow | null } | null
-}) {
-  const {
-    importPhase,
-    liveBatch,
-    importPending,
-    failed,
-    errorText,
-    startedAt,
-    nowTick,
-    completedSnapshot,
-  } = props
-
-  const batchStatus = (liveBatch?.status ?? '').toLowerCase()
-  const totalMs = completedSnapshot
-    ? completedSnapshot.durationMs
-    : nowTick - startedAt
-
-  if (completedSnapshot) {
-    const b = completedSnapshot.batch
-    return (
-      <div
-        className="rounded-lg border border-emerald-200 bg-gradient-to-b from-emerald-50/90 to-white px-4 py-3 shadow-sm"
-        role="status"
-        data-testid="admin-imports-progress-complete"
-      >
-        <p className="text-sm font-semibold text-emerald-900">
-          Finished in {formatDurationShort(completedSnapshot.durationMs)}
-        </p>
-        <p className="mt-1 text-xs text-emerald-800/90">
-          Everything completed successfully. You can review the details under “Latest result” below.
-        </p>
-        <ol className="mt-3 list-none space-y-1.5 pl-0 text-sm text-emerald-900/90">
-          <li>✓ File uploaded</li>
-          <li>✓ Import job created</li>
-          <li>✓ Import run started</li>
-          <li>✓ Spreadsheet read</li>
-          <li>✓ Rows saved{b?.rows_staged != null ? ` (${b.rows_staged} rows)` : ''}</li>
-          <li>✓ Commission calculations updated{b?.rows_loaded != null ? ` (${b.rows_loaded} rows)` : ''}</li>
-          <li>✓ All done</li>
-        </ol>
-      </div>
-    )
-  }
-
-  const sUpload: StepVisual =
-    importPhase === 'upload' ? 'running' : importPending || importPhase !== 'idle' ? 'done' : 'pending'
-
-  const sQueue: StepVisual =
-    importPhase === 'upload'
-      ? 'pending'
-      : importPhase === 'prequeue'
-        ? failed
-          ? 'failed'
-          : 'running'
-        : 'done'
-
-  const sEdge: StepVisual =
-    failed && importPhase === 'queued'
-      ? 'failed'
-      : importPhase === 'upload' || importPhase === 'prequeue'
-        ? 'pending'
-        : importPhase === 'queued'
-          ? 'running'
-          : 'done'
-
-  const serverActive =
-    importPhase === 'processing' ||
-    batchStatus === 'processing' ||
-    batchStatus === 'queued'
-
-  const serverDone = batchStatus === 'completed'
-  const serverFailed = batchStatus === 'failed' || failed
-
-  const sParse: StepVisual = serverFailed
-    ? 'failed'
-    : serverDone
-      ? 'done'
-      : serverActive
-        ? 'running'
-        : 'pending'
-
-  const sInsert: StepVisual = serverFailed
-    ? 'failed'
-    : serverDone
-      ? 'done'
-      : serverActive
-        ? 'running'
-        : 'pending'
-
-  const sPayroll: StepVisual = serverFailed
-    ? 'failed'
-    : serverDone
-      ? 'done'
-      : serverActive
-        ? 'running'
-        : 'pending'
-
-  const sDone: StepVisual = serverFailed ? 'failed' : serverDone ? 'done' : 'pending'
-
-  return (
-    <div
-      className="rounded-lg border border-violet-200 bg-gradient-to-b from-violet-50/90 to-white px-4 py-3 shadow-sm"
-      role="status"
-      aria-live="polite"
-      data-testid="admin-imports-progress"
-    >
-      <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-violet-100 pb-2">
-        <p className="text-sm font-semibold text-slate-900">Import progress</p>
-        <p className="font-mono text-xs text-slate-600">
-          Time so far: <span className="text-slate-800">{formatDurationShort(totalMs)}</span>
-        </p>
-      </div>
-      <p className="mt-2 text-xs leading-relaxed text-slate-600">
-        Big files can take a few minutes—your data is read, saved line by line, then fed into commission
-        calculations. The work runs in this browser window, so please keep this tab open until you see
-        “Finished”. There isn’t a percent complete; these steps and any row counts we receive are the best
-        guide while the import runs.
-      </p>
-      <ol className="mt-3 list-none space-y-2.5 pl-0">
-        <StepRow
-          label="Uploading file"
-          state={sUpload}
-          sub={sUpload === 'running' ? 'Sending your spreadsheet securely…' : undefined}
-        />
-        <StepRow
-          label="Creating your import job"
-          state={sQueue}
-          sub={
-            sQueue === 'running'
-              ? 'Setting up your import and checking the file…'
-              : undefined
-          }
-        />
-        <StepRow
-          label="Import started"
-          state={sEdge}
-          sub={
-            sEdge === 'running'
-              ? 'Preparing the import in this browser window — please keep this tab open…'
-              : undefined
-          }
-        />
-        <StepRow
-          label="Reading your spreadsheet"
-          hint="in progress with steps below"
-          state={sParse}
-          sub={
-            serverActive
-              ? 'Your CSV is being read and prepared for the next steps—large files stay here longer.'
-              : undefined
-          }
-        />
-        <StepRow
-          label="Saving each row from your file"
-          hint="in progress with steps above"
-          state={sInsert}
-          sub={
-            liveBatch?.rows_staged != null
-              ? `Rows saved so far: ${liveBatch.rows_staged}`
-              : serverActive
-                ? 'Row totals usually appear when the import finishes.'
-                : undefined
-          }
-        />
-        <StepRow
-          label="Updating commission calculations"
-          hint="in progress with steps above"
-          state={sPayroll}
-          sub={
-            liveBatch?.rows_loaded != null
-              ? `Rows included in calculations: ${liveBatch.rows_loaded}`
-              : serverActive
-                ? 'Turning your saved rows into commission figures for this salon.'
-                : undefined
-          }
-        />
-        <StepRow
-          label="All done"
-          state={sDone}
-          sub={
-            liveBatch?.message && (serverDone || serverFailed)
-              ? liveBatch.message
-              : undefined
-          }
-        />
-      </ol>
-      {liveBatch?.error_message && serverFailed ? (
-        <p className="mt-3 rounded border border-red-200 bg-red-50/80 px-2 py-1.5 text-xs text-red-900">
-          <span className="font-medium">Something went wrong: </span>
-          {liveBatch.error_message}
-        </p>
-      ) : null}
-      {errorText && failed && !liveBatch?.error_message ? (
-        <p className="mt-3 rounded border border-red-200 bg-red-50/80 px-2 py-1.5 text-xs text-red-900">
-          {errorText}
-        </p>
-      ) : null}
-    </div>
-  )
-}
-
 export function AdminImportsPage() {
   const queryClient = useQueryClient()
   const [file, setFile] = useState<File | null>(null)
@@ -313,6 +47,14 @@ export function AdminImportsPage() {
   } | null>(null)
   /** Keep checklist visible after a failed import until the user starts over. */
   const [importFailedView, setImportFailedView] = useState(false)
+  const [importRunKey, setImportRunKey] = useState(0)
+  const [activeBatchId, setActiveBatchId] = useState<string | null>(null)
+  const [stagingComplete, setStagingComplete] = useState(false)
+  const [applyStarted, setApplyStarted] = useState(false)
+  const [parseSnapshot, setParseSnapshot] = useState<{
+    csvRowsRead: number
+    rowsStaged: number
+  } | null>(null)
 
   const { data: locations = [], isLoading: locationsLoading } = useQuery({
     queryKey: ['list-active-locations-import'],
@@ -325,6 +67,12 @@ export function AdminImportsPage() {
     if (guess) setLocationId(guess)
   }, [file, locations])
 
+  const selectedLocationName = useMemo(() => {
+    const loc = locations.find((l) => l.id === locationId)
+    const n = loc?.name?.trim()
+    return n && n.length > 0 ? n : 'Selected location'
+  }, [locations, locationId])
+
   const importMutation = useMutation({
     mutationFn: async (args: { file: File; locationId: string }) => {
       const t0 = Date.now()
@@ -333,6 +81,11 @@ export function AdminImportsPage() {
       setNowTick(t0)
       setCompletedSnapshot(null)
       setImportFailedView(false)
+      setImportRunKey((k) => k + 1)
+      setActiveBatchId(null)
+      setStagingComplete(false)
+      setApplyStarted(false)
+      setParseSnapshot(null)
       setStatus('uploading')
       setImportPhase('upload')
       setLiveBatch(null)
@@ -344,6 +97,19 @@ export function AdminImportsPage() {
         },
         onQueueRegistered: () => {
           setImportPhase('queued')
+        },
+        onBatchId: (batchId) => {
+          setActiveBatchId(batchId)
+        },
+        onParseProgress: (info) => {
+          setParseSnapshot(info)
+        },
+        onStagingComplete: (info) => {
+          setParseSnapshot(info)
+          setStagingComplete(true)
+        },
+        onApplyStart: () => {
+          setApplyStarted(true)
         },
         onEdgeAccepted: () => {
           setImportPhase('processing')
@@ -363,8 +129,12 @@ export function AdminImportsPage() {
         batch: res.batchRow ?? null,
       })
       setMessage('Import finished successfully.')
+      const irPart =
+        res.batchRow?.import_result != null
+          ? `import_result:\n${summarizePipelineResult(res.batchRow.import_result)}\n\n`
+          : ''
       const batchPart = res.batchRow
-        ? `Batch status: ${res.batchRow.status ?? '?'}\nrows_staged: ${String(res.batchRow.rows_staged ?? '')}\nrows_loaded: ${String(res.batchRow.rows_loaded ?? '')}\nmessage: ${res.batchRow.message ?? ''}\nerror_message: ${res.batchRow.error_message ?? ''}\n\n`
+        ? `Batch status: ${res.batchRow.status ?? '?'}\nrows_staged: ${String(res.batchRow.rows_staged ?? '')}\nrows_loaded: ${String(res.batchRow.rows_loaded ?? '')}\nmessage: ${res.batchRow.message ?? ''}\nerror_message: ${res.batchRow.error_message ?? ''}\n\n${irPart}`
         : ''
       setLastSummary(
         `Storage path: ${res.storagePath}\n\n${batchPart}Queue RPC / pipeline:\n${summarizePipelineResult(res.pipelineResult)}`,
@@ -386,6 +156,9 @@ export function AdminImportsPage() {
       setStatus('failed')
       setImportFailedView(true)
       setCompletedSnapshot(null)
+      setStagingComplete(false)
+      setApplyStarted(false)
+      setParseSnapshot(null)
       setMessage(
         err instanceof Error ? err.message : 'Import failed. Check the console or Supabase logs.',
       )
@@ -435,6 +208,10 @@ export function AdminImportsPage() {
     setImportPhase('idle')
     setCompletedSnapshot(null)
     setImportFailedView(false)
+    setActiveBatchId(null)
+    setStagingComplete(false)
+    setApplyStarted(false)
+    setParseSnapshot(null)
     if (!f) {
       setLocationId('')
     }
@@ -614,14 +391,21 @@ export function AdminImportsPage() {
             {(importMutation.isPending && !resetMutation.isPending) ||
             completedSnapshot ||
             importFailedView ? (
-              <ImportProgressChecklist
+              <ImportSalesDataProgress
                 importPhase={importPhase}
-                liveBatch={liveBatch}
                 importPending={importMutation.isPending && !resetMutation.isPending}
                 failed={importFailedView || status === 'failed'}
                 errorText={message}
                 startedAt={importStartedAt}
                 nowTick={nowTick}
+                liveBatch={liveBatch}
+                activeBatchId={activeBatchId}
+                stagingComplete={stagingComplete}
+                applyStarted={applyStarted}
+                applyFinished={status === 'done'}
+                parseSnapshot={parseSnapshot}
+                selectedLocationName={selectedLocationName}
+                importRunKey={importRunKey}
                 completedSnapshot={completedSnapshot}
               />
             ) : null}

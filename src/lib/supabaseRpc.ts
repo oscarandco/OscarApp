@@ -78,18 +78,19 @@ export async function rpcGetStaffFteForKpiDisplay(
 }
 
 /**
- * My Sales metadata: one row per active SalesDailySheets
- * `sales_import_batches` row (source filename + location +
- * row_count + first/last sale date). Drives the "Data source N"
- * line and the per-location sales tiles.
+ * My Sales / Sales Summary metadata: calls
+ * `get_sales_daily_sheets_data_sources_by_location` — one row per location
+ * (aggregated SalesDailySheets-backed `sales_transactions`: row_count,
+ * min/max sale_date). Drives the "Data - {Location}" lines and per-location
+ * sales tiles.
  */
 export async function rpcGetSalesDailySheetsDataSources(): Promise<
   SalesDailySheetsDataSourceRow[]
 > {
   const { data, error } = await requireSupabaseClient().rpc(
-    'get_sales_daily_sheets_data_sources',
+    'get_sales_daily_sheets_data_sources_by_location',
   )
-  if (error) throw toError('get_sales_daily_sheets_data_sources', error)
+  if (error) throw toError('get_sales_daily_sheets_data_sources_by_location', error)
   return asRows(data as SalesDailySheetsDataSourceRow[])
 }
 
@@ -263,6 +264,19 @@ export async function rpcTriggerSalesDailySheetsImport(args: {
   return data
 }
 
+export type SalesDailySheetsImportResult = {
+  selected_location_name?: string | null
+  date_range_start?: string | null
+  date_range_end?: string | null
+  csv_rows_read?: number | null
+  csv_rows_staged?: number | null
+  existing_rows_before_import?: number | null
+  existing_rows_replaced?: number | null
+  existing_rows_unchanged?: number | null
+  rows_loaded?: number | null
+  sales_transactions_created?: number | null
+}
+
 export type SalesDailySheetsImportBatchRow = {
   id: string
   storage_path: string
@@ -271,6 +285,7 @@ export type SalesDailySheetsImportBatchRow = {
   rows_staged: number | null
   rows_loaded: number | null
   error_message: string | null
+  import_result?: SalesDailySheetsImportResult | null
 }
 
 export async function fetchSalesDailySheetsImportBatch(
@@ -278,7 +293,9 @@ export async function fetchSalesDailySheetsImportBatch(
 ): Promise<SalesDailySheetsImportBatchRow> {
   const { data, error } = await requireSupabaseClient()
     .from('sales_daily_sheets_import_batches')
-    .select('id, storage_path, status, message, rows_staged, rows_loaded, error_message')
+    .select(
+      'id, storage_path, status, message, rows_staged, rows_loaded, error_message, import_result',
+    )
     .eq('id', batchId)
     .single()
   if (error) throw toError('sales_daily_sheets_import_batches', error)
@@ -341,6 +358,8 @@ export async function rpcSetSalesDailySheetsBatchStatus(args: {
   errorMessage?: string | null
   rowsStaged?: number | null
   rowsLoaded?: number | null
+  /** Merged into sales_daily_sheets_import_batches.import_result (server JSON). */
+  importResult?: Record<string, unknown> | null
 }): Promise<void> {
   const { error } = await requireSupabaseClient().rpc(
     'set_sales_daily_sheets_batch_status',
@@ -351,6 +370,7 @@ export async function rpcSetSalesDailySheetsBatchStatus(args: {
       p_error_message: args.errorMessage ?? null,
       p_rows_staged: args.rowsStaged ?? null,
       p_rows_loaded: args.rowsLoaded ?? null,
+      p_import_result: args.importResult ?? null,
     },
   )
   if (error) throw toError('set_sales_daily_sheets_batch_status', error)
