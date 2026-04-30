@@ -1,4 +1,5 @@
 import type { WeeklyCommissionSummaryRow } from '@/features/payroll/types'
+import { tableColumnTitle } from '@/lib/formatters'
 
 export const PAYROLL_SUMMARY_COLUMNS_STORAGE_KEY = 'payroll-summary-columns'
 
@@ -26,6 +27,22 @@ export type MiddleColumnId =
   | 'has_unconfigured_paid_staff_rows'
   | 'user_id'
   | 'access_role'
+
+/**
+ * Middle-column headers aligned with Admin Sales Summary (`/app/admin/sales-summary`)
+ * for the same logical columns (stylist `MiddleColumnId` vs admin `AdminMiddleColumnId`).
+ */
+export function salesSummaryAlignedMiddleColumnLabel(id: MiddleColumnId): string {
+  if (id === 'location') return tableColumnTitle('location_name')
+  if (id === 'work_performed_by') return 'Work performed by'
+  if (id === 'derived_staff_paid_full_name') return 'Stylist paid'
+  if (id === 'total_sales_ex_gst') return 'Sales (ex GST)'
+  if (id === 'total_theoretical_commission_ex_gst') {
+    return 'Potential Comm. (ex GST)'
+  }
+  if (id === 'total_actual_commission_ex_gst') return 'Commission (ex GST)'
+  return tableColumnTitle(id)
+}
 
 const ALL_MIDDLE_IDS: readonly MiddleColumnId[] = [
   'pay_week_end',
@@ -62,22 +79,22 @@ const ALL_MIDDLE_IDS: readonly MiddleColumnId[] = [
 export const MIDDLE_LOCKED_VISIBLE: ReadonlySet<MiddleColumnId> = new Set()
 
 export const COLUMN_LABEL: Record<MiddleColumnId, string> = {
-  pay_week_end: 'End of week',
+  pay_week_end: 'Pay Week End',
   pay_date: 'Pay Date',
   location: 'Location',
   derived_staff_paid_id: 'Derived staff paid ID',
   derived_staff_paid_display_name: 'Derived staff paid display name',
-  work_performed_by: 'Work Performed By',
-  derived_staff_paid_full_name: 'Stylist Paid',
-  derived_staff_paid_remuneration_plan: 'Rem Plan',
-  total_sales_ex_gst: 'Total Sales (ex GST)',
+  work_performed_by: 'Work performed by',
+  derived_staff_paid_full_name: 'Stylist paid',
+  derived_staff_paid_remuneration_plan: 'Remuneration plan',
+  total_sales_ex_gst: 'Sales (ex GST)',
   row_count: 'Line count',
   payable_line_count: 'Payable line count',
   expected_no_commission_line_count: 'Expected no commission line count',
   zero_value_line_count: 'Zero value line count',
   review_line_count: 'Review line count',
-  total_actual_commission_ex_gst: 'Commission payable (ex GST)',
-  total_theoretical_commission_ex_gst: 'Potential Commission (ex GST)',
+  total_actual_commission_ex_gst: 'Commission (ex GST)',
+  total_theoretical_commission_ex_gst: 'Potential Comm. (ex GST)',
   total_assistant_commission_ex_gst: 'Total assistant commission (ex GST)',
   unconfigured_paid_staff_line_count: 'Unconfigured paid staff line count',
   has_unconfigured_paid_staff_rows: 'Has unconfigured paid staff rows',
@@ -99,7 +116,6 @@ const DEFAULT_VISIBLE_MIDDLE: readonly MiddleColumnId[] = [
   'location',
   'work_performed_by',
   'derived_staff_paid_full_name',
-  'derived_staff_paid_remuneration_plan',
   'total_sales_ex_gst',
   'total_theoretical_commission_ex_gst',
   'total_actual_commission_ex_gst',

@@ -11,7 +11,7 @@ type TableScrollAreaProps = {
  */
 export function TableScrollArea({ children, testId }: TableScrollAreaProps) {
   return (
-    <div className="space-y-1.5">
+    <div className="w-full space-y-1.5">
       <p
         className="pl-0.5 text-xs text-slate-500 sm:hidden"
         aria-hidden
@@ -19,7 +19,7 @@ export function TableScrollArea({ children, testId }: TableScrollAreaProps) {
         Scroll horizontally for all columns →
       </p>
       <div
-        className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm [-webkit-overflow-scrolling:touch]"
+        className="w-full overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm [-webkit-overflow-scrolling:touch]"
         data-testid={testId}
       >
         {children}

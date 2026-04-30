@@ -116,7 +116,7 @@ export function WeeklySummaryStats({
   const warnUnconfigured = anyUnconfigured(rows)
 
   return (
-    <div className="space-y-3" data-testid="weekly-summary-stats">
+    <div className="w-full space-y-3" data-testid="weekly-summary-stats">
       {/* On mobile, the two meta stats (Pay weeks, Rows shown) are hidden
           because the same figures are already visible in the diagnostics
           line above the table. The two money cards get a denser

@@ -13,7 +13,7 @@ import {
   WeeklySummaryStats,
   type WeeklySummaryExtraTile,
 } from '@/features/payroll/components/WeeklySummaryStats'
-import { WeeklySummaryTable } from '@/features/payroll/components/WeeklySummaryTable'
+import { AdminSummaryTable } from '@/features/admin/components/AdminSummaryTable'
 import { useLocationSalesSummaryForMySales } from '@/features/payroll/hooks/useLocationSalesSummaryForMySales'
 import { useMyWeeklyCommissionSummary } from '@/features/payroll/hooks/useMyWeeklyCommissionSummary'
 import { useSalesDailySheetsDataSources } from '@/features/payroll/hooks/useSalesDailySheetsDataSources'
@@ -351,9 +351,10 @@ export function PayrollSummaryPage() {
             showRowsShownCard={visibility.showRowsShownCard}
             extraTiles={canViewSalesSummaryCards ? salesExtraTiles : undefined}
           />
-          <div className="mt-4">
-            <WeeklySummaryTable
+          <div className="mt-4 w-full min-w-0">
+            <AdminSummaryTable
               rows={displayRows}
+              splitByLocation={splitByLocation}
               tableStructureSample={sourceRows[0] ?? null}
               emptyBodyMessage={
                 displayRows.length === 0
@@ -362,15 +363,11 @@ export function PayrollSummaryPage() {
               }
               toolbarDataSources={toolbarDataSources}
               toolbarDateRange={toolbarDateRange}
-              forceHiddenColumnIds={forceHiddenColumnIds}
-              showColumnPicker={visibility.showColumnPicker}
-              columnLabelOverrides={visibility.columnLabelOverrides}
-              mobileHiddenColumnIds={visibility.mobileHiddenColumnIds}
-              mobileColumnLabelOverrides={
-                visibility.mobileColumnLabelOverrides
-              }
-              mobileDetailLabel={visibility.mobileDetailLabel}
-              workPerformedBySelfMatchNames={workPerformedBySelfMatchNames}
+              mySalesTableOptions={{
+                forceHiddenColumnIds,
+                showColumnPicker: visibility.showColumnPicker,
+                workPerformedBySelfMatchNames,
+              }}
             />
           </div>
         </>

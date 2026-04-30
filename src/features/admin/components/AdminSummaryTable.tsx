@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 
 import {
@@ -17,22 +18,41 @@ import {
   visibleAdminMiddleColumns,
   type AdminMiddleColumnId,
 } from '@/features/admin/adminWeeklySummaryTableColumns'
+import { PayrollLinesPreviewModal } from '@/features/payroll/components/PayrollLinesPreviewModal'
+import { WeeklySummaryColumnPicker } from '@/features/payroll/components/WeeklySummaryColumnPicker'
+import { usePayrollSummaryColumnPreferences } from '@/features/payroll/hooks/usePayrollSummaryColumnPreferences'
+import {
+  isMiddleColumnId,
+  middleRowKeysForPreferences,
+  reorderMiddleColumnOrder,
+  salesSummaryAlignedMiddleColumnLabel,
+  visibleMiddleColumns,
+  type MiddleColumnId,
+} from '@/features/payroll/weeklySummaryTableColumns'
 import { TableScrollArea } from '@/components/ui/TableScrollArea'
 import type { AdminPayrollSummaryRow } from '@/features/admin/types'
 import type { WeeklyCommissionSummaryRow } from '@/features/payroll/types'
 import { isEmptyish, formatScalarText } from '@/lib/cellValue'
-import { adminSummaryCellValue, stylistPaidFromAdminSummaryRow } from '@/lib/adminSummaryTableCells'
+import {
+  adminSummaryCellValue,
+  stylistPaidFromAdminSummaryRow,
+} from '@/lib/adminSummaryTableCells'
 import {
   formatDateLabel,
   formatNzd,
   formatShortDate,
 } from '@/lib/formatters'
+import { prioritizeSelfInWorkPerformedByDisplay } from '@/lib/prioritizeSelfInWorkPerformedByDisplay'
 import { filterCommissionLinesForSummaryRow } from '@/lib/payrollSummaryFilters'
 import type { ColumnSortState } from '@/lib/tableSort'
 import {
   ADMIN_SUMMARY_SORT_PAY_WEEK_START,
   sortAdminCommissionSummaryRows,
 } from '@/lib/adminCommissionSummarySort'
+import {
+  sortStylistCommissionSummaryRows,
+  STYLIST_SUMMARY_SORT_PAY_WEEK_START,
+} from '@/lib/weeklyCommissionSummarySort'
 import { rpcGetAdminPayrollLinesWeekly } from '@/lib/supabaseRpc'
 
 const thBase =
@@ -47,7 +67,15 @@ function isDateLikeKey(rowKey: string): boolean {
   return rowKey.includes('week') && rowKey.includes('start')
 }
 
-function Cell({ rowKey, value }: { rowKey: string; value: unknown }) {
+function Cell({
+  rowKey,
+  value,
+  workPerformedBySelfMatchNames,
+}: {
+  rowKey: string
+  value: unknown
+  workPerformedBySelfMatchNames?: readonly string[] | null
+}) {
   if (isEmptyish(value)) return <span className="text-slate-400">—</span>
   if (typeof value === 'boolean') {
     return <span>{value ? 'Yes' : 'No'}</span>
@@ -86,6 +114,22 @@ function Cell({ rowKey, value }: { rowKey: string; value: unknown }) {
       <span className="font-mono text-xs">{JSON.stringify(value)}</span>
     )
   }
+  if (
+    rowKey === 'work_performed_by' ||
+    rowKey === '__admin_summary_work_performed'
+  ) {
+    const text = formatScalarText(value)
+    if (text === '') return <span className="text-slate-400">—</span>
+    const shown =
+      workPerformedBySelfMatchNames != null &&
+      workPerformedBySelfMatchNames.length > 0
+        ? prioritizeSelfInWorkPerformedByDisplay(
+            text,
+            workPerformedBySelfMatchNames,
+          )
+        : text
+    return <span>{shown}</span>
+  }
   const text = formatScalarText(value)
   return <span>{text === '' ? '—' : text}</span>
 }
@@ -106,7 +150,14 @@ function stableAdminSummaryRowKey(row: AdminPayrollSummaryRow, index: number): s
   return `${week}-${loc}-${uid}-${index}`
 }
 
-const DND_TYPE = 'application/x-admin-payroll-middle-column'
+const DND_TYPE_ADMIN = 'application/x-admin-payroll-middle-column'
+const DND_TYPE_MY_SALES = 'application/x-my-sales-payroll-middle-column'
+
+export type MySalesSummaryTableOptions = {
+  forceHiddenColumnIds: ReadonlySet<MiddleColumnId>
+  showColumnPicker: boolean
+  workPerformedBySelfMatchNames?: readonly string[] | null
+}
 
 type AdminSummaryTableProps = {
   rows: AdminPayrollSummaryRow[]
@@ -116,16 +167,18 @@ type AdminSummaryTableProps = {
   emptyBodyMessage?: string
   toolbarDataSources?: ReactNode
   toolbarDateRange?: ReactNode
+  /** My Sales: same table chrome as admin; stylist column prefs, Link + modal, self-first work performed. */
+  mySalesTableOptions?: MySalesSummaryTableOptions | null
 }
 
-export function AdminSummaryTable({
+function AdminSummaryTableAdmin({
   rows,
   splitByLocation,
   tableStructureSample = null,
   emptyBodyMessage,
   toolbarDataSources,
   toolbarDateRange,
-}: AdminSummaryTableProps) {
+}: Omit<AdminSummaryTableProps, 'mySalesTableOptions'>) {
   void splitByLocation
   const { prefs, setPrefs, reset } = useAdminPayrollSummaryColumnPreferences()
   const [draggingId, setDraggingId] = useState<AdminMiddleColumnId | null>(null)
@@ -176,7 +229,7 @@ export function AdminSummaryTable({
   const colSpanEmpty = 1 + visibleMiddle.length + 1
 
   function onDragStart(e: React.DragEvent, id: AdminMiddleColumnId) {
-    e.dataTransfer.setData(DND_TYPE, id)
+    e.dataTransfer.setData(DND_TYPE_ADMIN, id)
     e.dataTransfer.setData('text/plain', id)
     e.dataTransfer.effectAllowed = 'move'
     setDraggingId(id)
@@ -192,7 +245,8 @@ export function AdminSummaryTable({
   function onDropOnCol(e: React.DragEvent, targetId: AdminMiddleColumnId) {
     e.preventDefault()
     const raw =
-      e.dataTransfer.getData(DND_TYPE) || e.dataTransfer.getData('text/plain')
+      e.dataTransfer.getData(DND_TYPE_ADMIN) ||
+      e.dataTransfer.getData('text/plain')
     const fromId = isAdminMiddleColumnId(raw) ? raw : null
     setDraggingId(null)
     setDropTargetId(null)
@@ -209,7 +263,9 @@ export function AdminSummaryTable({
   }
 
   const previewStaffLabel =
-    previewSummaryRow != null ? stylistPaidFromAdminSummaryRow(previewSummaryRow) : '—'
+    previewSummaryRow != null
+      ? stylistPaidFromAdminSummaryRow(previewSummaryRow)
+      : '—'
 
   return (
     <div className="space-y-2">
@@ -341,5 +397,285 @@ export function AdminSummaryTable({
         isLoading={linesQuery.isLoading}
       />
     </div>
+  )
+}
+
+function AdminSummaryTableMySales({
+  rows,
+  splitByLocation,
+  tableStructureSample = null,
+  emptyBodyMessage,
+  toolbarDataSources,
+  toolbarDateRange,
+  mySales,
+}: Omit<AdminSummaryTableProps, 'mySalesTableOptions'> & {
+  mySales: MySalesSummaryTableOptions
+}) {
+  void splitByLocation
+  const { prefs, setPrefs, reset } = usePayrollSummaryColumnPreferences()
+  const { forceHiddenColumnIds, showColumnPicker, workPerformedBySelfMatchNames } =
+    mySales
+  const [draggingId, setDraggingId] = useState<MiddleColumnId | null>(null)
+  const [dropTargetId, setDropTargetId] = useState<MiddleColumnId | null>(null)
+  const [previewSummaryRow, setPreviewSummaryRow] =
+    useState<WeeklyCommissionSummaryRow | null>(null)
+  const [summarySort, setSummarySort] = useState<ColumnSortState>(null)
+
+  const sampleRow = rows[0] ?? tableStructureSample ?? null
+  const sample = sampleRow as WeeklyCommissionSummaryRow | null
+
+  const displayRows = useMemo(
+    () =>
+      sortStylistCommissionSummaryRows(
+        rows as WeeklyCommissionSummaryRow[],
+        summarySort,
+      ),
+    [rows, summarySort],
+  )
+
+  const keys = useMemo(
+    () =>
+      sample ? middleRowKeysForPreferences(sample, prefs, forceHiddenColumnIds) : [],
+    [sample, prefs, forceHiddenColumnIds],
+  )
+
+  const visibleMiddle = useMemo(
+    () =>
+      sample
+        ? visibleMiddleColumns(sample, prefs, forceHiddenColumnIds)
+        : [],
+    [sample, prefs, forceHiddenColumnIds],
+  )
+
+  const colSpanEmpty = 1 + visibleMiddle.length + 1
+
+  function onDragStart(e: React.DragEvent, id: MiddleColumnId) {
+    e.dataTransfer.setData(DND_TYPE_MY_SALES, id)
+    e.dataTransfer.setData('text/plain', id)
+    e.dataTransfer.effectAllowed = 'move'
+    setDraggingId(id)
+    setDropTargetId(null)
+  }
+
+  function onDragOverCol(e: React.DragEvent, id: MiddleColumnId) {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    if (draggingId && draggingId !== id) setDropTargetId(id)
+  }
+
+  function onDropOnCol(e: React.DragEvent, targetId: MiddleColumnId) {
+    e.preventDefault()
+    const raw =
+      e.dataTransfer.getData(DND_TYPE_MY_SALES) ||
+      e.dataTransfer.getData('text/plain')
+    const fromId = isMiddleColumnId(raw) ? raw : null
+    setDraggingId(null)
+    setDropTargetId(null)
+    if (fromId == null || fromId === targetId) return
+    setPrefs((prev) => ({
+      ...prev,
+      order: reorderMiddleColumnOrder(prev.order, fromId, targetId),
+    }))
+  }
+
+  function onDragEnd() {
+    setDraggingId(null)
+    setDropTargetId(null)
+  }
+
+  const showToolbarRow =
+    toolbarDataSources != null ||
+    toolbarDateRange != null ||
+    showColumnPicker === true
+
+  return (
+    <div className="space-y-2">
+      {showToolbarRow ? (
+        <div className="flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <div className="min-w-0 flex-1 text-left">{toolbarDataSources ?? null}</div>
+          <div className="flex shrink-0 flex-wrap items-center justify-start gap-2 sm:justify-end sm:gap-3">
+            {toolbarDateRange ?? null}
+            {showColumnPicker ? (
+              <WeeklySummaryColumnPicker
+                prefs={prefs}
+                onChange={setPrefs}
+                onReset={reset}
+              />
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+      <TableScrollArea testId="weekly-summary-table">
+        <table className="min-w-[760px] w-full border-collapse text-left text-sm">
+          <thead className="sticky top-0 z-20 bg-slate-50 shadow-[0_1px_0_0_rgb(226_232_240)]">
+            <tr>
+              <th
+                scope="col"
+                className={`${thBase} sticky left-0 z-30 min-w-[8.5rem] bg-slate-50`}
+              >
+                <TableColumnSortHeader
+                  label="Pay week start"
+                  columnKey={STYLIST_SUMMARY_SORT_PAY_WEEK_START}
+                  sortState={summarySort}
+                  onSortChange={setSummarySort}
+                  wrapLabel
+                />
+              </th>
+              {visibleMiddle.map(({ id, rowKey: k }) => {
+                const isDragging = draggingId === id
+                const isDropTarget =
+                  dropTargetId === id && draggingId != null && draggingId !== id
+                return (
+                  <th
+                    key={`${id}-${k}`}
+                    scope="col"
+                    className={`${thBase} max-w-[9.5rem] sm:max-w-[11rem]`}
+                  >
+                    <div className="flex min-w-0 items-start gap-0.5">
+                      <div className="min-w-0 flex-1">
+                        <TableColumnSortHeader
+                          label={salesSummaryAlignedMiddleColumnLabel(id)}
+                          columnKey={k}
+                          sortState={summarySort}
+                          onSortChange={setSummarySort}
+                          wrapLabel
+                        />
+                      </div>
+                      <ColumnReorderHandle
+                        dragging={isDragging}
+                        isDropTarget={isDropTarget}
+                        onDragStart={(e) => onDragStart(e, id)}
+                        onDragOver={(e) => onDragOverCol(e, id)}
+                        onDrop={(e) => onDropOnCol(e, id)}
+                        onDragEnd={onDragEnd}
+                      />
+                    </div>
+                  </th>
+                )
+              })}
+              <th scope="col" className={`${thBase} min-w-[5.5rem]`}>
+                Detail
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {!rows.length && emptyBodyMessage ? (
+              <tr>
+                <td
+                  colSpan={colSpanEmpty}
+                  className="border-b border-slate-100 px-4 py-8 text-center text-sm text-slate-600"
+                >
+                  {emptyBodyMessage}
+                </td>
+              </tr>
+            ) : null}
+            {displayRows.map((row, idx) => {
+              const weekRaw = row.pay_week_start
+              const weekStart =
+                weekRaw != null && String(weekRaw).trim() !== ''
+                  ? String(weekRaw).trim()
+                  : ''
+              const rk = stableAdminSummaryRowKey(row as AdminPayrollSummaryRow, idx)
+              return (
+                <tr
+                  key={rk}
+                  className="group border-b border-slate-100 odd:bg-white even:bg-slate-50/90 hover:bg-violet-50/60"
+                >
+                  <td
+                    className={`${tdBase} sticky left-0 z-10 min-w-[8.5rem] border-slate-100 font-medium ${
+                      idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/90'
+                    } group-hover:bg-violet-50/60`}
+                  >
+                    {weekStart ? (
+                      <Cell rowKey="pay_week_start" value={row.pay_week_start} />
+                    ) : (
+                      <span className="text-slate-400">—</span>
+                    )}
+                  </td>
+                  {keys.map((k) => (
+                    <td key={k} className={tdBase}>
+                      <Cell
+                        rowKey={k}
+                        value={adminSummaryCellValue(
+                          row as AdminPayrollSummaryRow,
+                          k,
+                        )}
+                        workPerformedBySelfMatchNames={
+                          workPerformedBySelfMatchNames
+                        }
+                      />
+                    </td>
+                  ))}
+                  <td className={`${tdBase} min-w-[5.5rem]`}>
+                    {weekStart ? (
+                      <Link
+                        to={`/app/my-sales/${encodeURIComponent(weekStart)}`}
+                        onClick={(e) => {
+                          if (
+                            e.ctrlKey ||
+                            e.metaKey ||
+                            e.shiftKey ||
+                            e.altKey ||
+                            e.button !== 0
+                          ) {
+                            return
+                          }
+                          e.preventDefault()
+                          setPreviewSummaryRow(row)
+                        }}
+                        className="font-medium text-violet-700 hover:text-violet-900"
+                        data-testid="weekly-summary-view-lines"
+                      >
+                        View lines
+                      </Link>
+                    ) : (
+                      <span className="text-slate-400">—</span>
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </TableScrollArea>
+      <PayrollLinesPreviewModal
+        summaryRow={previewSummaryRow}
+        onClose={() => setPreviewSummaryRow(null)}
+      />
+    </div>
+  )
+}
+
+export function AdminSummaryTable({
+  rows,
+  splitByLocation,
+  tableStructureSample = null,
+  emptyBodyMessage,
+  toolbarDataSources,
+  toolbarDateRange,
+  mySalesTableOptions = null,
+}: AdminSummaryTableProps) {
+  if (mySalesTableOptions != null) {
+    return (
+      <AdminSummaryTableMySales
+        rows={rows}
+        splitByLocation={splitByLocation}
+        tableStructureSample={tableStructureSample}
+        emptyBodyMessage={emptyBodyMessage}
+        toolbarDataSources={toolbarDataSources}
+        toolbarDateRange={toolbarDateRange}
+        mySales={mySalesTableOptions}
+      />
+    )
+  }
+  return (
+    <AdminSummaryTableAdmin
+      rows={rows}
+      splitByLocation={splitByLocation}
+      tableStructureSample={tableStructureSample}
+      emptyBodyMessage={emptyBodyMessage}
+      toolbarDataSources={toolbarDataSources}
+      toolbarDateRange={toolbarDateRange}
+    />
   )
 }
