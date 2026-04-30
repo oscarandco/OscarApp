@@ -287,7 +287,7 @@ export function PayrollSummaryPage() {
     return (
       <div data-testid="payroll-summary-page">
         <LoadingState
-          message="Loading weekly commission…"
+          message="Loading weekly sales..."
           testId="payroll-summary-loading"
         />
       </div>
