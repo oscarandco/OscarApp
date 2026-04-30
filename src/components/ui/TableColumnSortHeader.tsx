@@ -49,8 +49,8 @@ export function TableColumnSortHeader({
       <span
         className={
           wrapLabel
-            ? 'min-w-0 whitespace-normal break-words text-left font-inherit leading-snug'
-            : 'min-w-0 truncate font-inherit'
+            ? `min-w-0 whitespace-normal break-words font-inherit leading-snug ${textAlign}`
+            : `min-w-0 truncate font-inherit ${textAlign}`
         }
       >
         {mobileLabel != null ? (

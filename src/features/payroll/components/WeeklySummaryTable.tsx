@@ -96,16 +96,108 @@ type WeeklySummaryTableProps = {
   mobileDetailLabel?: string | null
 }
 
-// Mobile (`<sm`) gets noticeably tighter horizontal padding and a
-// smaller per-column min-width so the visible columns sit closer
-// together; the existing `sm:` upgrades restore the original desktop
-// spacing untouched (px-4, min-w 6.5rem). Vertical padding (py-2.5)
-// is preserved on both widths so row heights / tap targets do not
-// change.
+// Mobile (`<sm`) keeps slightly roomier vertical padding for tap
+// targets; from `sm:` up, padding is a touch tighter so more columns
+// fit on laptop widths without horizontal scroll.
 const thBase =
-  'border-b border-slate-200 px-1.5 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 sm:px-4 sm:py-3 sm:normal-case sm:text-sm sm:tracking-normal sm:text-slate-700'
+  'border-b border-slate-200 px-1.5 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 sm:px-2.5 sm:py-2 sm:normal-case sm:text-sm sm:tracking-normal sm:text-slate-700 min-w-0'
 const tdBase =
-  'whitespace-nowrap px-1.5 py-2.5 text-slate-700 sm:px-4 sm:py-3 min-w-[4rem] sm:min-w-[6.5rem]'
+  'px-1.5 py-2.5 align-top text-slate-700 sm:px-2.5 sm:py-2 min-w-0'
+
+const CURRENCY_MIDDLE_IDS: ReadonlySet<MiddleColumnId> = new Set([
+  'total_sales_ex_gst',
+  'total_actual_commission_ex_gst',
+  'total_theoretical_commission_ex_gst',
+  'total_assistant_commission_ex_gst',
+])
+
+const NUMERIC_COUNT_MIDDLE_IDS: ReadonlySet<MiddleColumnId> = new Set([
+  'row_count',
+  'payable_line_count',
+  'expected_no_commission_line_count',
+  'zero_value_line_count',
+  'review_line_count',
+  'unconfigured_paid_staff_line_count',
+  'derived_staff_paid_id',
+])
+
+/** Middle columns where body text truncates with ellipsis + native title tooltip. */
+const TRUNCATE_WITH_TITLE_IDS: ReadonlySet<MiddleColumnId> = new Set([
+  'work_performed_by',
+  'derived_staff_paid_full_name',
+  'derived_staff_paid_remuneration_plan',
+  'location',
+])
+
+function sortAlignForMiddleColumn(id: MiddleColumnId): 'left' | 'right' {
+  return CURRENCY_MIDDLE_IDS.has(id) ? 'right' : 'left'
+}
+
+function thClassForMiddleColumn(id: MiddleColumnId): string {
+  const parts: string[] = []
+  if (CURRENCY_MIDDLE_IDS.has(id)) {
+    parts.push('text-right', 'max-w-[7rem]')
+  }
+  if (id === 'pay_week_end') {
+    parts.push('whitespace-nowrap', 'w-[6.25rem]', 'max-w-[6.75rem]')
+  }
+  if (id === 'work_performed_by') {
+    parts.push('max-w-[9rem]', 'sm:max-w-[11rem]', 'lg:max-w-[13rem]')
+  }
+  if (id === 'derived_staff_paid_full_name') {
+    parts.push('max-w-[6.5rem]', 'sm:max-w-[8rem]')
+  }
+  if (id === 'derived_staff_paid_remuneration_plan') {
+    parts.push('max-w-[4.75rem]', 'sm:max-w-[5.5rem]')
+  }
+  if (id === 'location') {
+    parts.push('max-w-[7rem]', 'sm:max-w-[8.5rem]')
+  }
+  if (NUMERIC_COUNT_MIDDLE_IDS.has(id)) {
+    parts.push('whitespace-nowrap')
+  }
+  return parts.join(' ')
+}
+
+function tdClassForMiddleColumn(id: MiddleColumnId): string {
+  const parts: string[] = []
+  if (CURRENCY_MIDDLE_IDS.has(id)) {
+    parts.push(
+      'whitespace-nowrap',
+      'text-right',
+      'tabular-nums',
+      'w-[1%]',
+      'max-w-[7rem]',
+    )
+  }
+  if (id === 'pay_week_end') {
+    parts.push('whitespace-nowrap')
+  }
+  if (id === 'work_performed_by') {
+    parts.push('max-w-[9rem]', 'sm:max-w-[11rem]', 'lg:max-w-[13rem]')
+  }
+  if (id === 'derived_staff_paid_full_name') {
+    parts.push('max-w-[6.5rem]', 'sm:max-w-[8rem]')
+  }
+  if (id === 'derived_staff_paid_remuneration_plan') {
+    parts.push('max-w-[4.75rem]', 'sm:max-w-[5.5rem]')
+  }
+  if (id === 'location') {
+    parts.push('max-w-[7rem]', 'sm:max-w-[8.5rem]')
+  }
+  if (NUMERIC_COUNT_MIDDLE_IDS.has(id)) {
+    parts.push('whitespace-nowrap', 'tabular-nums')
+  }
+  if (
+    !CURRENCY_MIDDLE_IDS.has(id) &&
+    id !== 'pay_week_end' &&
+    !NUMERIC_COUNT_MIDDLE_IDS.has(id) &&
+    !TRUNCATE_WITH_TITLE_IDS.has(id)
+  ) {
+    parts.push('break-words')
+  }
+  return parts.join(' ')
+}
 
 function isDateLikeKey(rowKey: string): boolean {
   if (rowKey === 'pay_week_start') return false
@@ -117,9 +209,11 @@ function isDateLikeKey(rowKey: string): boolean {
 function Cell({
   rowKey,
   value,
+  middleColumnId,
 }: {
   rowKey: string
   value: unknown
+  middleColumnId?: MiddleColumnId
 }) {
   if (isEmptyish(value)) return <span className="text-slate-400">—</span>
   if (typeof value === 'boolean') {
@@ -150,6 +244,19 @@ function Cell({
   }
   if (isDateLikeKey(rowKey)) {
     return <span>{formatShortDate(String(value))}</span>
+  }
+  if (
+    middleColumnId &&
+    TRUNCATE_WITH_TITLE_IDS.has(middleColumnId) &&
+    typeof value !== 'object'
+  ) {
+    const text = formatScalarText(value)
+    if (text === '') return <span className="text-slate-400">—</span>
+    return (
+      <span className="block min-w-0 truncate" title={text}>
+        {text}
+      </span>
+    )
   }
   if (typeof value === 'object' && value !== null) {
     return (
@@ -270,7 +377,7 @@ export function WeeklySummaryTable({
         </div>
       ) : null}
       <TableScrollArea testId="weekly-summary-table">
-        <table className="w-full border-collapse text-left text-sm sm:min-w-[760px]">
+        <table className="w-full min-w-0 border-collapse text-left text-sm">
           <thead className="sticky top-0 z-20 bg-slate-50 shadow-[0_1px_0_0_rgb(226_232_240)]">
             <tr>
               {/* Start-of-week is now the leftmost (and sticky) column;
@@ -278,13 +385,14 @@ export function WeeklySummaryTable({
                   removed as part of the My Sales redesign. */}
               <th
                 scope="col"
-                className={`${thBase} sticky left-0 z-30 min-w-[5.25rem] bg-slate-50 sm:min-w-[8.5rem]`}
+                className={`${thBase} sticky left-0 z-30 min-w-0 w-[5.5rem] max-w-[6rem] bg-slate-50 sm:w-[6rem] sm:max-w-[6.5rem]`}
               >
                 <TableColumnSortHeader
                   label="Start of week"
                   columnKey={STYLIST_SUMMARY_SORT_PAY_WEEK_START}
                   sortState={summarySort}
                   onSortChange={setSummarySort}
+                  wrapLabel
                 />
               </th>
               {visibleMiddle.map(({ id, rowKey: k }) => {
@@ -295,15 +403,16 @@ export function WeeklySummaryTable({
                 const desktopLabel =
                   columnLabelOverrides?.[id] ?? COLUMN_LABEL[id]
                 const mobileLabel = mobileColumnLabelOverrides?.[id]
+                const thExtra = thClassForMiddleColumn(id)
                 return (
                   <th
                     key={k}
                     scope="col"
-                    className={`${thBase} ${
+                    className={`${thBase} ${thExtra} ${
                       mobileHidden ? 'hidden lg:table-cell' : ''
                     }`}
                   >
-                    <div className="flex min-w-0 items-center gap-0.5">
+                    <div className="flex min-w-0 items-start gap-0.5">
                       <div className="min-w-0 flex-1">
                         <TableColumnSortHeader
                           label={desktopLabel}
@@ -311,6 +420,8 @@ export function WeeklySummaryTable({
                           sortState={summarySort}
                           onSortChange={setSummarySort}
                           mobileLabel={mobileLabel ?? undefined}
+                          wrapLabel
+                          align={sortAlignForMiddleColumn(id)}
                         />
                       </div>
                       <ColumnReorderHandle
@@ -325,7 +436,10 @@ export function WeeklySummaryTable({
                   </th>
                 )
               })}
-              <th scope="col" className={`${thBase} min-w-[3rem] sm:min-w-[5.5rem]`}>
+              <th
+                scope="col"
+                className={`${thBase} w-[4.5rem] min-w-0 max-w-[5.5rem] whitespace-normal sm:max-w-[6rem]`}
+              >
                 {mobileDetailLabel != null ? (
                   <>
                     <span className="lg:hidden">{mobileDetailLabel}</span>
@@ -361,7 +475,7 @@ export function WeeklySummaryTable({
                   className="group border-b border-slate-100 odd:bg-white even:bg-slate-50/90 hover:bg-violet-50/60"
                 >
                   <td
-                    className={`${tdBase} sticky left-0 z-10 min-w-[5.25rem] border-slate-100 font-medium sm:min-w-[8.5rem] ${
+                    className={`${tdBase} sticky left-0 z-10 min-w-0 w-[5.5rem] max-w-[6rem] whitespace-nowrap border-slate-100 font-medium sm:w-[6rem] sm:max-w-[6.5rem] ${
                       idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/90'
                     } group-hover:bg-violet-50/60`}
                   >
@@ -374,21 +488,25 @@ export function WeeklySummaryTable({
                   {visibleMiddle.map(({ id, rowKey: k }) => {
                     const mobileHidden =
                       mobileHiddenColumnIds?.has(id) ?? false
+                    const tdExtra = tdClassForMiddleColumn(id)
                     return (
                       <td
                         key={k}
-                        className={`${tdBase} ${
+                        className={`${tdBase} ${tdExtra} ${
                           mobileHidden ? 'hidden lg:table-cell' : ''
                         }`}
                       >
                         <Cell
                           rowKey={k}
                           value={row[k as keyof WeeklyCommissionSummaryRow]}
+                          middleColumnId={id}
                         />
                       </td>
                     )
                   })}
-                  <td className={`${tdBase} min-w-[3rem] sm:min-w-[5.5rem]`}>
+                  <td
+                    className={`${tdBase} w-[4.5rem] min-w-0 max-w-[5.5rem] whitespace-nowrap sm:max-w-[6rem]`}
+                  >
                     {weekStart ? (
                       <Link
                         to={`/app/my-sales/${encodeURIComponent(weekStart)}`}

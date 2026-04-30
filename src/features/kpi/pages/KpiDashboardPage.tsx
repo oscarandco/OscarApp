@@ -164,7 +164,7 @@ export function KpiDashboardPage() {
     locationId: effectiveLocationId,
     staffMemberId: comparisonStaffMemberId,
     enabled: comparisonsRpcEnabled,
-    includeComparisonLeaders: elevated && isIndividualStaffKpiView,
+    includeComparisonLeaders: isIndividualStaffKpiView,
   })
   const comparisonRows = comparisonPayload?.rows
   const topStylistDisplayNameByKpi =
@@ -401,11 +401,8 @@ export function KpiDashboardPage() {
               row={row}
               selected={row.kpi_code === selectedRow?.kpi_code}
               onSelect={setSelectedKpiCode}
-              useNamedTopComparisonStylist={
-                elevated && isIndividualStaffKpiView
-              }
               comparisonTopStylistDisplayName={
-                elevated && isIndividualStaffKpiView
+                isIndividualStaffKpiView
                   ? topStylistDisplayNameByKpi[row.kpi_code]
                   : undefined
               }

@@ -14,9 +14,9 @@ import { requireSupabaseClient } from '@/lib/supabase'
 export type KpiStylistComparisonsQueryPayload = {
   rows: KpiStylistComparisonRow[]
   /**
-   * Top cohort stylist display name per `kpi_code` (admin/manager staff
-   * view only). Empty when not requested, the leader RPC failed, or the
-   * backend returned no usable name.
+   * Top cohort stylist display name per `kpi_code` from
+   * `get_kpi_stylist_comparison_leaders_live` when requested. Empty when
+   * not requested, the leader RPC failed, or the backend returned no usable name.
    */
   topStylistDisplayNameByKpi: Record<string, string>
   /** True when the RPC failed — UI can show a soft message without breaking the page. */

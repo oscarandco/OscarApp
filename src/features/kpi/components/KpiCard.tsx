@@ -69,9 +69,9 @@ type KpiCardProps = {
    */
   comparison?: KpiStylistComparisonRow | null
   /**
-   * When set with `useNamedTopComparisonStylist`, used as the parenthetical
-   * in `Top Stylist (…): …` instead of "all salons". From
-   * `get_kpi_stylist_comparison_leaders_live` (admin/manager staff view only).
+   * When non-empty, used as the parenthetical in `Top Stylist (…): …`
+   * instead of "all salons". From `get_kpi_stylist_comparison_leaders_live`
+   * for any individual staff KPI view (self or elevated staff picker).
    */
   comparisonTopStylistDisplayName?: string | null
   /**
@@ -87,11 +87,6 @@ type KpiCardProps = {
    * and are never normalised.
    */
   fte?: number | null
-  /**
-   * When true (elevated staff-on-member view), the Top Stylist pill uses
-   * `comparisonTopStylistDisplayName` when non-empty; otherwise "all salons".
-   */
-  useNamedTopComparisonStylist?: boolean
 }
 
 /**
@@ -109,7 +104,6 @@ export function KpiCard({
   comparison = null,
   comparisonTopStylistDisplayName = null,
   fte = null,
-  useNamedTopComparisonStylist = false,
 }: KpiCardProps) {
   const meta = metaFor(row.kpi_code)
 
@@ -222,7 +216,6 @@ export function KpiCard({
     .join(' ')
 
   const topStylistLabel =
-    useNamedTopComparisonStylist &&
     comparisonTopStylistDisplayName != null &&
     String(comparisonTopStylistDisplayName).trim() !== ''
       ? String(comparisonTopStylistDisplayName).trim()

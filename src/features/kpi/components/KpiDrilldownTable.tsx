@@ -105,11 +105,19 @@ function resolveInvoiceRef(row: KpiDrilldownRow): InvoiceRef | null {
   return { invoice, locationId, saleDate }
 }
 
+type VisitInvoiceEntry = {
+  sale_date: string | null
+  location_id: string | null
+  invoice: string
+  /** Present when the RPC includes per-visit spend (optional). */
+  amount_ex_gst?: number | string | null
+}
+
 function readVisitInvoicesFromPayload(
   payload: Record<string, unknown> | null | undefined,
-): { sale_date: string | null; location_id: string | null; invoice: string }[] {
+): VisitInvoiceEntry[] {
   if (!payload || !Array.isArray(payload.visit_invoices)) return []
-  const out: { sale_date: string | null; location_id: string | null; invoice: string }[] = []
+  const out: VisitInvoiceEntry[] = []
   for (const item of payload.visit_invoices as unknown[]) {
     if (item == null || typeof item !== 'object') continue
     const o = item as Record<string, unknown>
@@ -119,16 +127,20 @@ function readVisitInvoicesFromPayload(
     const lid = o.location_id
     const location_id =
       typeof lid === 'string' && lid.trim() !== '' ? lid.trim() : null
-    out.push({ sale_date, location_id, invoice })
+    const rawAmt =
+      o.amount_ex_gst ?? o.price_ex_gst ?? o.line_ex_gst ?? o.sale_ex_gst
+    let amount_ex_gst: number | string | null | undefined
+    if (typeof rawAmt === 'number' && !Number.isNaN(rawAmt)) {
+      amount_ex_gst = rawAmt
+    } else if (typeof rawAmt === 'string' && rawAmt.trim() !== '') {
+      amount_ex_gst = rawAmt.trim()
+    }
+    out.push({ sale_date, location_id, invoice, amount_ex_gst })
   }
   return out
 }
 
-function visitEntryToInvoiceRef(entry: {
-  sale_date: string | null
-  location_id: string | null
-  invoice: string
-}): InvoiceRef {
+function visitEntryToInvoiceRef(entry: VisitInvoiceEntry): InvoiceRef {
   return {
     invoice: entry.invoice,
     locationId: entry.location_id,
@@ -136,40 +148,156 @@ function visitEntryToInvoiceRef(entry: {
   }
 }
 
-function guestKeyForInvoiceNumbering(r: KpiDrilldownRow): string {
-  return (titleCaseGuestName(r.primary_label) ?? r.primary_label ?? '').trim().toLowerCase()
+/** Oldest visit first, then invoice ascending — matches semicolon lists in Date / Spend. */
+function visitInvoicesChronological(
+  payload: Record<string, unknown> | null | undefined,
+): VisitInvoiceEntry[] {
+  const list = readVisitInvoicesFromPayload(payload)
+  return [...list].sort((a, b) => {
+    const c = String(a.sale_date ?? '').localeCompare(String(b.sale_date ?? ''))
+    if (c !== 0) return c
+    return a.invoice.localeCompare(b.invoice, undefined, { numeric: true })
+  })
 }
 
-/** Per-row "View Invoice" / "View Invoice n" for assistant utilisation (one row per line). */
-function buildAssistantInvoiceLinkLabels(rows: KpiDrilldownRow[]): (string | null)[] {
-  const labels: (string | null)[] = rows.map(() => null)
-  type RowRef = { i: number; r: KpiDrilldownRow; ref: InvoiceRef }
-  const withRef: RowRef[] = []
-  for (let i = 0; i < rows.length; i++) {
-    const ref = resolveInvoiceRef(rows[i])
-    if (ref) withRef.push({ i, r: rows[i], ref })
+const INVOICE_NUMBER_BTN_CLASS =
+  'text-xs font-medium text-violet-700 hover:text-violet-900 focus:outline-none focus-visible:underline'
+
+function invoiceRefsForDrilldownRow(row: KpiDrilldownRow): InvoiceRef[] {
+  const chronological = visitInvoicesChronological(row.raw_payload)
+  if (chronological.length > 0) {
+    return chronological.map((v) => visitEntryToInvoiceRef(v))
   }
-  const byGuest = new Map<string, RowRef[]>()
-  for (const x of withRef) {
-    const k = guestKeyForInvoiceNumbering(x.r)
-    const arr = byGuest.get(k) ?? []
-    arr.push(x)
-    byGuest.set(k, arr)
-  }
-  for (const group of byGuest.values()) {
-    group.sort((a, b) => {
-      const da = String(a.r.event_date ?? '')
-      const db = String(b.r.event_date ?? '')
-      if (da !== db) return da.localeCompare(db)
-      return a.ref.invoice.localeCompare(b.ref.invoice)
-    })
-    group.forEach((x, ord) => {
-      labels[x.i] =
-        group.length <= 1 ? 'View Invoice' : `View Invoice ${ord + 1}`
-    })
-  }
-  return labels
+  const single = resolveInvoiceRef(row)
+  return single ? [single] : []
 }
+
+function ClickableInvoiceNumberList({
+  refs,
+  onOpenInvoice,
+}: {
+  refs: InvoiceRef[]
+  onOpenInvoice: (ref: InvoiceRef) => void
+}) {
+  if (refs.length === 0) {
+    return <span className="text-slate-400">—</span>
+  }
+  return (
+    <>
+      {refs.map((ref, i) => (
+        <Fragment key={`${ref.invoice}-${String(ref.saleDate)}-${i}`}>
+          {i > 0 ? <span className="text-slate-500">; </span> : null}
+          <button
+            type="button"
+            className={INVOICE_NUMBER_BTN_CLASS}
+            onClick={() => onOpenInvoice(ref)}
+          >
+            {ref.invoice}
+          </button>
+        </Fragment>
+      ))}
+    </>
+  )
+}
+
+/** Descending invoice / document id for stable drilldown ordering. */
+function compareInvoiceNumberDesc(a: string, b: string): number {
+  return b.localeCompare(a, undefined, { numeric: true })
+}
+
+function compareEventDateDesc(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): number {
+  return String(b ?? '').localeCompare(String(a ?? ''))
+}
+
+function sortSaleLineRows(rows: KpiDrilldownRow[]): KpiDrilldownRow[] {
+  return [...rows].sort((x, y) => {
+    const c = compareEventDateDesc(x.event_date, y.event_date)
+    if (c !== 0) return c
+    const ix = readRawString(x.raw_payload, 'invoice') ?? ''
+    const iy = readRawString(y.raw_payload, 'invoice') ?? ''
+    return compareInvoiceNumberDesc(ix, iy)
+  })
+}
+
+function guestAggregateSortKeys(row: KpiDrilldownRow): {
+  date: string
+  invoice: string
+} {
+  const visits = readVisitInvoicesFromPayload(row.raw_payload)
+  if (visits.length === 0) {
+    return {
+      date: String(row.event_date ?? ''),
+      invoice: readRawString(row.raw_payload, 'invoice') ?? '',
+    }
+  }
+  const maxDate = visits.reduce(
+    (best, v) => {
+      const d = String(v.sale_date ?? '')
+      return d > best ? d : best
+    },
+    '',
+  )
+  const maxInv = [...visits]
+    .map((v) => v.invoice)
+    .sort((a, b) => compareInvoiceNumberDesc(a, b))[0] ?? ''
+  return {
+    date: maxDate || String(row.event_date ?? ''),
+    invoice: maxInv,
+  }
+}
+
+function sortGuestAggregateRows(rows: KpiDrilldownRow[]): KpiDrilldownRow[] {
+  return [...rows].sort((x, y) => {
+    const kx = guestAggregateSortKeys(x)
+    const ky = guestAggregateSortKeys(y)
+    const c = compareEventDateDesc(kx.date, ky.date)
+    if (c !== 0) return c
+    return compareInvoiceNumberDesc(kx.invoice, ky.invoice)
+  })
+}
+
+function formatGuestDateCellSemicolon(row: KpiDrilldownRow): string {
+  const visits = visitInvoicesChronological(row.raw_payload)
+  if (visits.length === 0) {
+    return row.event_date ? formatShortDate(row.event_date) : '—'
+  }
+  const uniq: string[] = []
+  const seen = new Set<string>()
+  for (const v of visits) {
+    const d = String(v.sale_date ?? '')
+    if (!d || seen.has(d)) continue
+    seen.add(d)
+    uniq.push(d)
+  }
+  if (uniq.length === 0) {
+    return row.event_date ? formatShortDate(row.event_date) : '—'
+  }
+  return uniq.map((d) => formatShortDate(d)).join('; ')
+}
+
+function formatGuestSpendCellSemicolon(
+  visits: VisitInvoiceEntry[],
+  spendAgg: number | string | null,
+): string {
+  if (visits.length <= 1) return formatNzd(spendAgg)
+  const parts: string[] = []
+  for (const v of visits) {
+    if (v.amount_ex_gst == null) continue
+    if (typeof v.amount_ex_gst === 'string' && v.amount_ex_gst.trim() === '') continue
+    parts.push(formatNzd(v.amount_ex_gst))
+  }
+  if (parts.length === visits.length && parts.length > 1) {
+    return parts.join('; ')
+  }
+  return formatNzd(spendAgg)
+}
+
+/** Shared tighter cell padding for sales-line / guest-metric / assistant drilldowns. */
+const DRILL_TH = 'px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500'
+const DRILL_TD = 'px-2.5 py-1.5'
 
 type Props = {
   kpiCode: string
@@ -188,8 +316,8 @@ type Props = {
  *
  * Mobile-safe: the table wrapper scrolls horizontally on narrow
  * screens so the columns do not crush each other. Sales-line KPIs
- * (revenue, assistant_utilisation_ratio) also offer a per-row
- * "View Invoice" action that opens an invoice-detail modal.
+ * (revenue, assistant_utilisation_ratio) open the invoice-detail modal
+ * from clickable invoice number(s) in the last column.
  */
 export function KpiDrilldownTable(props: Props) {
   const {
@@ -351,117 +479,57 @@ function GuestMetricsDrilldownTable({
   rows: KpiDrilldownRow[]
   onOpenInvoice: (ref: InvoiceRef) => void
 }) {
-  const [expanded, setExpanded] = useState<Set<number>>(() => new Set())
-
-  const toggle = (idx: number) => {
-    setExpanded((prev) => {
-      const next = new Set(prev)
-      if (next.has(idx)) next.delete(idx)
-      else next.add(idx)
-      return next
-    })
-  }
+  const displayRows = useMemo(() => sortGuestAggregateRows(rows), [rows])
 
   const visitsValue = (row: KpiDrilldownRow) =>
     kpiCode === 'average_client_spend' ? row.metric_value_2 : row.metric_value
   const spendValue = (row: KpiDrilldownRow) =>
     kpiCode === 'average_client_spend' ? row.metric_value : row.metric_value_2
 
-  const expandedColSpan = 7
-
   return (
     <div className="-mx-5 overflow-x-auto sm:mx-0">
-      <table className="w-full min-w-[720px] text-left text-sm">
-        <thead className="border-b border-slate-200 text-[11px] uppercase tracking-wide text-slate-500">
+      <table className="w-full min-w-[560px] text-left text-sm">
+        <thead className="border-b border-slate-200">
           <tr>
-            <th scope="col" className="px-3 py-2 font-semibold">
-              Type
-            </th>
-            <th scope="col" className="px-3 py-2 font-semibold">
-              Guest Name
-            </th>
-            <th scope="col" className="px-3 py-2 font-semibold">
+            <th scope="col" className={DRILL_TH}>
               Date
             </th>
-            <th scope="col" className="px-3 py-2 text-right font-semibold">
-              Visits
+            <th scope="col" className={DRILL_TH}>
+              Guest Name
             </th>
-            <th scope="col" className="px-3 py-2 text-right font-semibold">
-              Spend
+            <th scope="col" className={`${DRILL_TH} text-right`}>
+              Spend (ex GST)
             </th>
-            <th
-              scope="col"
-              className="px-3 py-2 font-semibold"
-              aria-label="Invoice actions"
-            />
-            <th
-              scope="col"
-              className="px-3 py-2 font-semibold"
-              aria-label="Raw details"
-            />
+            <th scope="col" className={`${DRILL_TH} text-right`}>
+              Invoice
+            </th>
           </tr>
         </thead>
         <tbody>
-          {rows.map((row, idx) => {
-            const isOpen = expanded.has(idx)
-            const hasPayload = row.raw_payload != null
+          {displayRows.map((row, idx) => {
             const guestName = titleCaseGuestName(row.primary_label) ?? '—'
-            const visitInvoices = readVisitInvoicesFromPayload(row.raw_payload)
             return (
-              <Fragment key={idx}>
-                <tr className="border-b border-slate-100 align-top">
-                  <td className="px-3 py-2 text-xs font-medium text-slate-700">
-                    {row.row_type || '—'}
-                  </td>
-                  <td className="px-3 py-2 text-slate-900">{guestName}</td>
-                  <td className="px-3 py-2 text-slate-700">
-                    {formatShortDate(row.event_date)}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums text-slate-800">
-                    {formatRawNumber(visitsValue(row))}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums text-slate-800">
-                    {formatNzd(spendValue(row))}
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    <div className="flex flex-wrap justify-end gap-x-2 gap-y-1">
-                      {visitInvoices.map((v, j) => (
-                        <button
-                          key={`${String(v.sale_date)}-${v.invoice}-${j}`}
-                          type="button"
-                          onClick={() => onOpenInvoice(visitEntryToInvoiceRef(v))}
-                          className="text-xs font-medium text-violet-700 hover:text-violet-900 focus:outline-none focus-visible:underline"
-                        >
-                          {visitInvoices.length === 1
-                            ? 'View Invoice'
-                            : `View Invoice ${j + 1}`}
-                        </button>
-                      ))}
-                    </div>
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    {hasPayload ? (
-                      <button
-                        type="button"
-                        onClick={() => toggle(idx)}
-                        aria-expanded={isOpen}
-                        className="text-xs font-medium text-violet-700 hover:text-violet-900 focus:outline-none focus-visible:underline"
-                      >
-                        {isOpen ? 'Hide' : 'View'}
-                      </button>
-                    ) : null}
-                  </td>
-                </tr>
-                {isOpen && hasPayload ? (
-                  <tr className="border-b border-slate-100 bg-slate-50">
-                    <td colSpan={expandedColSpan} className="px-3 py-2">
-                      <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words text-[11px] leading-snug text-slate-700">
-                        {JSON.stringify(row.raw_payload, null, 2)}
-                      </pre>
-                    </td>
-                  </tr>
-                ) : null}
-              </Fragment>
+              <tr key={idx} className="border-b border-slate-100 align-top">
+                <td className={`${DRILL_TD} text-slate-700`}>
+                  {formatGuestDateCellSemicolon(row)}
+                </td>
+                <td className={`${DRILL_TD} text-slate-900`}>{guestName}</td>
+                <td className={`${DRILL_TD} text-right tabular-nums text-slate-800`}>
+                  {formatRawNumber(visitsValue(row))}
+                </td>
+                <td className={`${DRILL_TD} text-right tabular-nums text-slate-800`}>
+                  {formatGuestSpendCellSemicolon(
+                    visitInvoicesChronological(row.raw_payload),
+                    spendValue(row),
+                  )}
+                </td>
+                <td className={`${DRILL_TD} text-right`}>
+                  <ClickableInvoiceNumberList
+                    refs={invoiceRefsForDrilldownRow(row)}
+                    onOpenInvoice={onOpenInvoice}
+                  />
+                </td>
+              </tr>
             )
           })}
         </tbody>
@@ -681,15 +749,12 @@ function RowFragment(props: {
 }
 
 /**
- * Revenue-specific drilldown table. Column order follows the KPI page
- * contract for sales-line KPIs:
+ * Revenue-specific drilldown table. Column order:
  *
- *   Date | Stylist | Guest Name | Invoice Number | Product | Sales ex GST | View Invoice
+ *   Date | Stylist | Guest Name | Product | Spend (ex GST) | Invoice
  *
- * Invoice + product come from the sales-line branch of
- * `private.debug_kpi_drilldown` in migration 20260501590000+ via the
- * row's raw_payload. Rows without an invoice still render; the "View
- * invoice" action is omitted for those.
+ * The far-right Invoice column shows clickable invoice number(s); the
+ * same modal opens as before.
  */
 function SalesLineTable({
   rows,
@@ -698,38 +763,35 @@ function SalesLineTable({
   rows: KpiDrilldownRow[]
   onOpenInvoice: (ref: InvoiceRef) => void
 }) {
+  const displayRows = useMemo(() => sortSaleLineRows(rows), [rows])
+
   return (
     <div className="-mx-5 overflow-x-auto sm:mx-0">
-      <table className="w-full min-w-[840px] text-left text-sm">
-        <thead className="border-b border-slate-200 text-[11px] uppercase tracking-wide text-slate-500">
+      <table className="w-full min-w-[720px] text-left text-sm">
+        <thead className="border-b border-slate-200">
           <tr>
-            <th scope="col" className="px-3 py-2 font-semibold">
+            <th scope="col" className={DRILL_TH}>
               Date
             </th>
-            <th scope="col" className="px-3 py-2 font-semibold">
+            <th scope="col" className={DRILL_TH}>
               Stylist
             </th>
-            <th scope="col" className="px-3 py-2 font-semibold">
+            <th scope="col" className={DRILL_TH}>
               Guest Name
             </th>
-            <th scope="col" className="px-3 py-2 font-semibold">
-              Invoice Number
-            </th>
-            <th scope="col" className="px-3 py-2 font-semibold">
+            <th scope="col" className={`${DRILL_TH} max-w-[14rem]`}>
               Product
             </th>
-            <th scope="col" className="px-3 py-2 text-right font-semibold">
-              Sales ex GST
+            <th scope="col" className={`${DRILL_TH} text-right`}>
+              Spend (ex GST)
             </th>
-            <th
-              scope="col"
-              className="px-3 py-2 font-semibold"
-              aria-label="Invoice actions"
-            />
+            <th scope="col" className={`${DRILL_TH} text-right`}>
+              Invoice
+            </th>
           </tr>
         </thead>
         <tbody>
-          {rows.map((row, idx) => (
+          {displayRows.map((row, idx) => (
             <SalesLineRow
               key={idx}
               row={row}
@@ -749,47 +811,43 @@ function SalesLineRow(props: {
   const { row, onOpenInvoice } = props
   const stylist = row.secondary_label?.trim() || '—'
   const guestName = titleCaseGuestName(row.primary_label) ?? '—'
-  const invoiceText = readRawString(row.raw_payload, 'invoice') ?? '—'
   const product = readRawString(row.raw_payload, 'product_service_name') ?? '—'
-  const invoiceRef = resolveInvoiceRef(row)
+  const invoiceRefs = invoiceRefsForDrilldownRow(row)
 
   return (
     <tr className="border-b border-slate-100 align-top">
-      <td className="px-3 py-2 text-slate-700">
+      <td className={`${DRILL_TD} text-slate-700`}>
         {formatShortDate(row.event_date)}
       </td>
-      <td className="px-3 py-2 text-slate-700">{stylist}</td>
-      <td className="px-3 py-2 text-slate-900">{guestName}</td>
-      <td className="px-3 py-2 text-slate-700">{invoiceText}</td>
-      <td className="px-3 py-2 text-slate-700">{product}</td>
-      <td className="px-3 py-2 text-right tabular-nums text-slate-800">
+      <td className={`${DRILL_TD} text-slate-700`}>{stylist}</td>
+      <td className={`${DRILL_TD} text-slate-900`}>{guestName}</td>
+      <td className={`${DRILL_TD} max-w-[14rem] text-slate-700`}>
+        <span
+          className="block min-w-0 truncate"
+          title={product === '—' ? undefined : product}
+        >
+          {product}
+        </span>
+      </td>
+      <td className={`${DRILL_TD} text-right tabular-nums text-slate-800`}>
         {formatNzd(row.metric_value)}
       </td>
-      <td className="px-3 py-2 text-right">
-        {invoiceRef ? (
-          <button
-            type="button"
-            onClick={() => onOpenInvoice(invoiceRef)}
-            className="text-xs font-medium text-violet-700 hover:text-violet-900 focus:outline-none focus-visible:underline"
-          >
-            View Invoice
-          </button>
-        ) : null}
+      <td className={`${DRILL_TD} text-right`}>
+        <ClickableInvoiceNumberList
+          refs={invoiceRefs}
+          onOpenInvoice={onOpenInvoice}
+        />
       </td>
     </tr>
   )
 }
 
 /**
- * Assistant-utilisation-specific drilldown table. Splits the former
- * single "Assistant / Owner Context" field into two explicit columns
- * (Owner, Work Performed By) and, since 20260501590000, also exposes
- * Invoice Number + Product + an invoice-detail popup action — all from
- * the raw_payload populated by the assistant branch of
- * `private.debug_kpi_drilldown`.
- *
- * No KPI math changes: numerator (`Counted in Numerator`) still comes
- * straight from `metric_value_2`, sale price from `metric_value`.
+ * Assistant-utilisation drilldown: one row per qualifying line.
+ * Owner + work performer + invoice detail come from `raw_payload`
+ * (`private.debug_kpi_drilldown` assistant branch). Rows with
+ * `row_type === 'assistant_helped'` — entire row is green and bold;
+ * invoice number(s) in the last column stay violet and clickable.
  */
 function AssistantUtilisationTable({
   rows,
@@ -798,56 +856,42 @@ function AssistantUtilisationTable({
   rows: KpiDrilldownRow[]
   onOpenInvoice: (ref: InvoiceRef) => void
 }) {
-  const invoiceLinkLabels = useMemo(
-    () => buildAssistantInvoiceLinkLabels(rows),
-    [rows],
-  )
+  const displayRows = useMemo(() => sortSaleLineRows(rows), [rows])
+
   return (
     <div className="-mx-5 overflow-x-auto sm:mx-0">
-      <table className="w-full min-w-[960px] text-left text-sm">
-        <thead className="border-b border-slate-200 text-[11px] uppercase tracking-wide text-slate-500">
+      <table className="w-full min-w-[720px] text-left text-sm">
+        <thead className="border-b border-slate-200">
           <tr>
-            <th scope="col" className="px-3 py-2 font-semibold">
-              Type
-            </th>
-            <th scope="col" className="px-3 py-2 font-semibold">
-              Guest Name
-            </th>
-            <th scope="col" className="px-3 py-2 font-semibold">
-              Owner
-            </th>
-            <th scope="col" className="px-3 py-2 font-semibold">
-              Work Performed By
-            </th>
-            <th scope="col" className="px-3 py-2 font-semibold">
-              Invoice Number
-            </th>
-            <th scope="col" className="px-3 py-2 font-semibold">
-              Product
-            </th>
-            <th scope="col" className="px-3 py-2 text-right font-semibold">
-              Sales ex GST
-            </th>
-            <th scope="col" className="px-3 py-2 text-right font-semibold">
-              Counted in Numerator
-            </th>
-            <th scope="col" className="px-3 py-2 font-semibold">
+            <th scope="col" className={DRILL_TH}>
               Date
             </th>
-            <th
-              scope="col"
-              className="px-3 py-2 font-semibold"
-              aria-label="Invoice actions"
-            />
+            <th scope="col" className={DRILL_TH}>
+              Guest Name
+            </th>
+            <th scope="col" className={DRILL_TH}>
+              Owner
+            </th>
+            <th scope="col" className={DRILL_TH}>
+              Work Performed By
+            </th>
+            <th scope="col" className={`${DRILL_TH} max-w-[14rem]`}>
+              Product
+            </th>
+            <th scope="col" className={`${DRILL_TH} text-right`}>
+              Spend (ex GST)
+            </th>
+            <th scope="col" className={`${DRILL_TH} text-right`}>
+              Invoice
+            </th>
           </tr>
         </thead>
         <tbody>
-          {rows.map((row, idx) => (
+          {displayRows.map((row, idx) => (
             <AssistantUtilisationRowFragment
               key={idx}
               row={row}
               onOpenInvoice={onOpenInvoice}
-              invoiceLinkLabel={invoiceLinkLabels[idx]}
             />
           ))}
         </tbody>
@@ -859,45 +903,45 @@ function AssistantUtilisationTable({
 function AssistantUtilisationRowFragment(props: {
   row: KpiDrilldownRow
   onOpenInvoice: (ref: InvoiceRef) => void
-  invoiceLinkLabel: string | null
 }) {
-  const { row, onOpenInvoice, invoiceLinkLabel } = props
+  const { row, onOpenInvoice } = props
   const guestNameText = titleCaseGuestName(row.primary_label) ?? '—'
   const ownerText = row.secondary_label?.trim() || '—'
   const workPerformedBy = resolveWorkPerformedBy(row.raw_payload) ?? '—'
-  const invoiceText = readRawString(row.raw_payload, 'invoice') ?? '—'
   const product = readRawString(row.raw_payload, 'product_service_name') ?? '—'
-  const invoiceRef = resolveInvoiceRef(row)
+  const invoiceRefs = invoiceRefsForDrilldownRow(row)
+  const assisted = row.row_type === 'assistant_helped'
+  const cellClass = (fallback: string) =>
+    `${DRILL_TD} ${assisted ? 'font-semibold text-green-700' : fallback}`
 
   return (
     <tr className="border-b border-slate-100 align-top">
-      <td className="px-3 py-2 text-xs font-medium text-slate-700">
-        {row.row_type || '—'}
-      </td>
-      <td className="px-3 py-2 text-slate-900">{guestNameText}</td>
-      <td className="px-3 py-2 text-slate-700">{ownerText}</td>
-      <td className="px-3 py-2 text-slate-700">{workPerformedBy}</td>
-      <td className="px-3 py-2 text-slate-700">{invoiceText}</td>
-      <td className="px-3 py-2 text-slate-700">{product}</td>
-      <td className="px-3 py-2 text-right tabular-nums text-slate-800">
-        {formatRawNumber(row.metric_value)}
-      </td>
-      <td className="px-3 py-2 text-right tabular-nums text-slate-800">
-        {formatRawNumber(row.metric_value_2)}
-      </td>
-      <td className="px-3 py-2 text-slate-700">
+      <td className={cellClass('text-slate-700')}>
         {formatShortDate(row.event_date)}
       </td>
-      <td className="px-3 py-2 text-right">
-        {invoiceRef ? (
-          <button
-            type="button"
-            onClick={() => onOpenInvoice(invoiceRef)}
-            className="text-xs font-medium text-violet-700 hover:text-violet-900 focus:outline-none focus-visible:underline"
-          >
-            {invoiceLinkLabel ?? 'View Invoice'}
-          </button>
-        ) : null}
+      <td className={cellClass('text-slate-900')}>{guestNameText}</td>
+      <td className={cellClass('text-slate-700')}>{ownerText}</td>
+      <td className={cellClass('text-slate-700')}>{workPerformedBy}</td>
+      <td className={`${DRILL_TD} max-w-[14rem] ${assisted ? 'font-semibold text-green-700' : 'text-slate-700'}`}>
+        <span
+          className="block min-w-0 truncate"
+          title={product === '—' ? undefined : product}
+        >
+          {product}
+        </span>
+      </td>
+      <td
+        className={`${DRILL_TD} text-right tabular-nums ${assisted ? 'font-semibold text-green-700' : 'text-slate-800'}`}
+      >
+        {formatNzd(row.metric_value)}
+      </td>
+      <td
+        className={`${DRILL_TD} text-right ${assisted ? 'font-semibold text-green-700' : ''}`}
+      >
+        <ClickableInvoiceNumberList
+          refs={invoiceRefs}
+          onOpenInvoice={onOpenInvoice}
+        />
       </td>
     </tr>
   )
