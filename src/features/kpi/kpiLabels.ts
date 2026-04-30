@@ -92,7 +92,8 @@ export const KPI_DISPLAY_META: Record<string, KpiMeta> = {
     format: 'count',
     order: 20,
     drilldown: {
-      metric1: 'Counted',
+      metric1: 'Visits',
+      metric2: 'Spend',
       guestNameColumn: 'primary',
       hideSecondary: true,
     },
@@ -104,7 +105,8 @@ export const KPI_DISPLAY_META: Record<string, KpiMeta> = {
     format: 'count',
     order: 30,
     drilldown: {
-      metric1: 'Counted',
+      metric1: 'Visits',
+      metric2: 'Spend',
       guestNameColumn: 'primary',
       hideSecondary: true,
     },
@@ -115,8 +117,8 @@ export const KPI_DISPLAY_META: Record<string, KpiMeta> = {
     format: 'nzd_per_guest',
     order: 40,
     drilldown: {
-      metric1: 'Guest sales ex GST',
-      metric2: 'Visit count',
+      metric1: 'Spend',
+      metric2: 'Visits',
       guestNameColumn: 'primary',
       hideSecondary: true,
     },

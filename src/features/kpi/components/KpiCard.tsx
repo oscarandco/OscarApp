@@ -15,7 +15,8 @@ import {
  * comparison pills even if the backend sends a row.
  *
  * `average_client_spend` is special-cased to avoid the awkward
- * "Avg avg spend" phrasing — it reads "Average client spend" instead.
+ * "Avg avg spend" phrasing — the comparison pill reads "Average spend"
+ * while the KPI title still comes from `kpiLabels` ("Average guest spend").
  *
  * Keep in lockstep with `public.get_kpi_stylist_comparisons_live`
  * (set-based migration adds assistant_utilisation_ratio alongside
@@ -25,7 +26,7 @@ const COMPARISON_AVG_LABEL: Record<string, string> = {
   revenue: 'Avg revenue',
   guests_per_month: 'Avg guests',
   new_clients_per_month: 'Avg new guests',
-  average_client_spend: 'Average guest spend',
+  average_client_spend: 'Average spend',
   assistant_utilisation_ratio: 'Avg utilisation',
 }
 
