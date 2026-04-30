@@ -3,6 +3,7 @@ import { useEffect, useId, useRef, useState } from 'react'
 import {
   adminMiddleColumnLabel,
   ADMIN_MIDDLE_LOCKED_VISIBLE,
+  ADMIN_MIDDLE_NEVER_RENDER,
   type AdminColumnPreferences,
   type AdminMiddleColumnId,
 } from '@/features/admin/adminWeeklySummaryTableColumns'
@@ -85,10 +86,12 @@ export function AdminSummaryColumnPicker({
           data-testid="admin-summary-column-picker-panel"
         >
           <p className="mb-2 text-xs text-slate-500">
-            Pay week start, Pay Date, and Detail always stay visible.
+            Pay week start and Detail are fixed columns; they are not listed here.
           </p>
           <ul className="max-h-[min(60vh,20rem)] space-y-1 overflow-y-auto">
-            {prefs.order.map((id) => {
+            {prefs.order
+              .filter((id) => !ADMIN_MIDDLE_NEVER_RENDER.has(id))
+              .map((id) => {
               const locked = ADMIN_MIDDLE_LOCKED_VISIBLE.has(id)
               const visible = locked || !hiddenSet.has(id)
               return (

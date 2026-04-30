@@ -2,11 +2,11 @@ import type { AdminPayrollSummaryRow } from '@/features/admin/types'
 import { tableColumnTitle } from '@/lib/formatters'
 
 /**
- * v2: ignores legacy localStorage (old Week column + middle layout) so Sales
- * Summary defaults to the required column order and labels.
+ * v3: column storage key — defaults without Pay Date in Sales Summary table;
+ * renames commission/sales header labels in adminMiddleColumnLabel.
  */
 export const ADMIN_PAYROLL_SUMMARY_COLUMNS_STORAGE_KEY =
-  'admin-payroll-summary-columns-v2'
+  'admin-payroll-summary-columns-v3'
 
 /** Admin middle columns (between Pay week start and Detail). */
 export type AdminMiddleColumnId =
@@ -58,8 +58,12 @@ const ALL_ADMIN_MIDDLE_IDS: readonly AdminMiddleColumnId[] = [
   'access_role',
 ]
 
-/** Same lock as weekly payroll: Pay Date stays visible. */
+/** Middle columns that cannot be hidden via the column picker (none currently). */
 export const ADMIN_MIDDLE_LOCKED_VISIBLE: ReadonlySet<AdminMiddleColumnId> =
+  new Set()
+
+/** Never shown in Sales Summary table (data may still exist on rows). */
+export const ADMIN_MIDDLE_NEVER_RENDER: ReadonlySet<AdminMiddleColumnId> =
   new Set(['pay_date'])
 
 /** Labels for column picker and draggable headers (Sales Summary middle columns). */
@@ -67,13 +71,17 @@ export function adminMiddleColumnLabel(id: AdminMiddleColumnId): string {
   if (id === 'location') return tableColumnTitle('location_name')
   if (id === 'work_performed_by') return 'Work performed by'
   if (id === 'stylist_paid') return 'Stylist paid'
+  if (id === 'total_sales_ex_gst') return 'Sales (ex GST)'
+  if (id === 'total_theoretical_commission_ex_gst') {
+    return 'Potential Comm. (ex GST)'
+  }
+  if (id === 'total_actual_commission_ex_gst') return 'Commission (ex GST)'
   return tableColumnTitle(id)
 }
 
 /** Default visible middle columns (Sales Summary main table). */
 const DEFAULT_VISIBLE_ADMIN_MIDDLE: readonly AdminMiddleColumnId[] = [
   'pay_week_end',
-  'pay_date',
   'location',
   'work_performed_by',
   'stylist_paid',
@@ -142,6 +150,9 @@ export function parseStoredAdminPreferences(
     const hiddenSet = new Set(
       hidden.filter((id) => !ADMIN_MIDDLE_LOCKED_VISIBLE.has(id)),
     )
+    for (const id of ADMIN_MIDDLE_NEVER_RENDER) {
+      hiddenSet.add(id)
+    }
     return { order: deduped, hidden: [...hiddenSet] }
   } catch {
     return null
@@ -162,11 +173,14 @@ export function loadAdminColumnPreferences(): AdminColumnPreferences {
 
 export function saveAdminColumnPreferences(prefs: AdminColumnPreferences): void {
   if (typeof window === 'undefined') return
-  const hidden = prefs.hidden.filter((id) => !ADMIN_MIDDLE_LOCKED_VISIBLE.has(id))
+  const hidden = prefs.hidden
+    .filter((id) => !ADMIN_MIDDLE_LOCKED_VISIBLE.has(id))
+    .concat([...ADMIN_MIDDLE_NEVER_RENDER])
+  const hiddenDedup = [...new Set(hidden)]
   try {
     window.localStorage.setItem(
       ADMIN_PAYROLL_SUMMARY_COLUMNS_STORAGE_KEY,
-      JSON.stringify({ order: prefs.order, hidden }),
+      JSON.stringify({ order: prefs.order, hidden: hiddenDedup }),
     )
   } catch {
     /* quota / private mode */
@@ -231,8 +245,12 @@ export function visibleAdminMiddleColumns(
   const hidden = new Set(
     prefs.hidden.filter((id) => !ADMIN_MIDDLE_LOCKED_VISIBLE.has(id)),
   )
+  for (const id of ADMIN_MIDDLE_NEVER_RENDER) {
+    hidden.add(id)
+  }
   const out: VisibleAdminMiddleColumn[] = []
   for (const id of prefs.order) {
+    if (ADMIN_MIDDLE_NEVER_RENDER.has(id)) continue
     if (hidden.has(id)) continue
     const rk = resolveRowKeyForAdminMiddleColumn(id, sample)
     if (rk != null) out.push({ id, rowKey: rk })

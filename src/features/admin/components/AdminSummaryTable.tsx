@@ -36,9 +36,9 @@ import {
 import { rpcGetAdminPayrollLinesWeekly } from '@/lib/supabaseRpc'
 
 const thBase =
-  'border-b border-slate-200 px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 sm:px-4 sm:py-3 sm:normal-case sm:text-sm sm:tracking-normal sm:text-slate-700'
+  'border-b border-slate-200 px-3 py-2 text-left align-top text-xs font-semibold uppercase tracking-wide text-slate-600 sm:px-3.5 sm:py-2 sm:normal-case sm:text-sm sm:tracking-normal sm:text-slate-700 whitespace-normal'
 const tdBase =
-  'whitespace-nowrap px-3 py-2.5 text-slate-700 sm:px-4 sm:py-3 min-w-[6.5rem]'
+  'whitespace-nowrap px-3 py-2 text-slate-700 sm:px-3.5 sm:py-2 min-w-[6.5rem]'
 
 function isDateLikeKey(rowKey: string): boolean {
   if (rowKey === 'pay_week_start') return false
@@ -233,6 +233,7 @@ export function AdminSummaryTable({
                   columnKey={ADMIN_SUMMARY_SORT_PAY_WEEK_START}
                   sortState={summarySort}
                   onSortChange={setSummarySort}
+                  wrapLabel
                 />
               </th>
               {visibleMiddle.map(({ id, rowKey: k }) => {
@@ -240,14 +241,19 @@ export function AdminSummaryTable({
                 const isDropTarget =
                   dropTargetId === id && draggingId != null && draggingId !== id
                 return (
-                  <th key={`${id}-${k}`} scope="col" className={thBase}>
-                    <div className="flex min-w-0 items-center gap-0.5">
+                  <th
+                    key={`${id}-${k}`}
+                    scope="col"
+                    className={`${thBase} max-w-[9.5rem] sm:max-w-[11rem]`}
+                  >
+                    <div className="flex min-w-0 items-start gap-0.5">
                       <div className="min-w-0 flex-1">
                         <TableColumnSortHeader
                           label={adminMiddleColumnLabel(id)}
                           columnKey={k}
                           sortState={summarySort}
                           onSortChange={setSummarySort}
+                          wrapLabel
                         />
                       </div>
                       <ColumnReorderHandle
