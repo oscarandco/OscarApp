@@ -37,13 +37,13 @@ export function AccessManagementStaffCell({
 
   return (
     <div className="flex min-w-0 items-center gap-1.5">
+      {letter ? <StaffLocationNavBadge letter={letter} /> : null}
       <span className="min-w-0">
         <span className="font-medium">{primary}</span>
         {showSecondary ? (
           <span className="ml-1 text-slate-500">({row.staff_full_name})</span>
         ) : null}
       </span>
-      {letter ? <StaffLocationNavBadge letter={letter} /> : null}
     </div>
   )
 }
