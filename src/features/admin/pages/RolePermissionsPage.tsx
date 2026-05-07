@@ -98,8 +98,6 @@ type PermissionSelectProps = {
   canEdit: boolean
   pendingKey: string | null
   updateMut: UpdateMutShape
-  /** Extra classes on the &lt;select&gt; (layout only). */
-  selectClassName?: string
 }
 
 function PermissionLevelSelect({
@@ -109,7 +107,6 @@ function PermissionLevelSelect({
   canEdit,
   pendingKey,
   updateMut,
-  selectClassName = '',
 }: PermissionSelectProps) {
   const cellKey = `${pageId}:${roleKey}`
   const value = matrix[pageId][roleKey]
@@ -121,13 +118,11 @@ function PermissionLevelSelect({
   return (
     <select
       className={[
-        'rounded-md border px-2 py-1.5 text-sm shadow-sm focus:outline-none focus:ring-1',
+        'w-full min-w-0 max-w-full rounded-md border shadow-sm focus:outline-none focus:ring-1',
+        'px-1 py-1 text-[11px] leading-tight md:px-2 md:py-1.5 md:text-sm md:leading-normal',
         LEVEL_SELECT_SURFACE[value],
         'disabled:cursor-not-allowed disabled:opacity-60',
-        selectClassName,
-      ]
-        .filter(Boolean)
-        .join(' ')}
+      ].join(' ')}
       value={value}
       disabled={disabled}
       aria-busy={busy}
@@ -164,9 +159,11 @@ function PermissionMatrixRow(props: PermissionMatrixRowProps) {
 
   return (
     <tr className="border-b border-slate-100 last:border-b-0">
-      <td className="px-3 py-2 font-medium text-slate-900">{PAGE_FEATURE_LABELS[pageId]}</td>
+      <td className="max-w-[110px] px-1 py-1 align-middle text-[11px] font-medium leading-tight text-slate-900 md:max-w-none md:px-3 md:py-2 md:text-sm md:leading-normal">
+        <span className="block truncate md:whitespace-normal">{PAGE_FEATURE_LABELS[pageId]}</span>
+      </td>
       {ROLE_KEYS.map((roleKey) => (
-        <td key={roleKey} className="px-2 py-1.5 align-middle">
+        <td key={roleKey} className="min-w-0 px-1 py-1 align-middle md:px-2 md:py-1.5">
           <PermissionLevelSelect
             pageId={pageId}
             roleKey={roleKey}
@@ -174,39 +171,10 @@ function PermissionMatrixRow(props: PermissionMatrixRowProps) {
             canEdit={canEdit}
             pendingKey={pendingKey}
             updateMut={updateMut}
-            selectClassName="w-full min-w-[6.5rem]"
           />
         </td>
       ))}
     </tr>
-  )
-}
-
-function PermissionFeatureCard(props: PermissionMatrixRowProps) {
-  const { pageId, matrix, canEdit, pendingKey, updateMut } = props
-
-  return (
-    <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
-      <p className="text-sm font-semibold text-slate-900">{PAGE_FEATURE_LABELS[pageId]}</p>
-      <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-        {ROLE_KEYS.map((roleKey) => (
-          <div key={roleKey} className="min-w-0">
-            <label className="mb-0.5 block text-[11px] font-medium capitalize text-slate-600">
-              {roleKey}
-            </label>
-            <PermissionLevelSelect
-              pageId={pageId}
-              roleKey={roleKey}
-              matrix={matrix}
-              canEdit={canEdit}
-              pendingKey={pendingKey}
-              updateMut={updateMut}
-              selectClassName="w-full min-w-0"
-            />
-          </div>
-        ))}
-      </div>
-    </div>
   )
 }
 
@@ -327,66 +295,53 @@ export function RolePermissionsPage() {
         </div>
       ) : null}
 
-      {/* md+: wide table, left-aligned with shell; no forced min-width scroll */}
-      <div className="mt-6 hidden md:block">
-        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-          <table className="w-full min-w-0 border-collapse text-left text-sm">
-            <thead>
-              <tr className="border-b border-slate-200 bg-slate-50/90">
-                <th className="min-w-[8rem] px-3 py-3 font-semibold text-slate-900">
-                  Page / feature
-                </th>
-                {ROLE_KEYS.map((rk) => (
-                  <th
-                    key={rk}
-                    className="px-2 py-3 text-center font-semibold capitalize text-slate-800"
-                  >
-                    {rk}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            {PERMISSION_MATRIX_SECTIONS.map((section, sectionIndex) => (
-              <tbody key={section.id}>
-                <tr
-                  className={
-                    sectionIndex === 0
-                      ? 'bg-slate-50/40'
-                      : 'border-t border-slate-200 bg-slate-50/40'
-                  }
+      {/* Single responsive matrix: compact on small screens, full spacing from md up */}
+      <div className="mt-6 overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+        <table className="w-full min-w-0 table-fixed border-collapse text-left">
+          <colgroup>
+            <col className="w-[30%] md:w-[32%]" />
+            <col className="w-[17.5%]" />
+            <col className="w-[17.5%]" />
+            <col className="w-[17.5%]" />
+            <col className="w-[17.5%]" />
+          </colgroup>
+          <thead>
+            <tr className="border-b border-slate-200 bg-slate-50/90">
+              <th className="px-1 py-2 text-left text-[10px] font-semibold leading-tight text-slate-900 md:px-3 md:py-3 md:text-sm">
+                Page / feature
+              </th>
+              {ROLE_KEYS.map((rk) => (
+                <th
+                  key={rk}
+                  className="px-1 py-2 text-center text-[10px] font-semibold capitalize leading-tight text-slate-800 md:px-2 md:py-3 md:text-sm"
                 >
-                  <td
-                    colSpan={1 + ROLE_KEYS.length}
-                    className={`px-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400 ${sectionIndex === 0 ? 'pt-3' : 'pt-4'}`}
-                  >
-                    {section.label}
-                  </td>
-                </tr>
-                {section.pageIds.map((pageId) => (
-                  <PermissionMatrixRow key={pageId} pageId={pageId} {...rowProps} />
-                ))}
-              </tbody>
-            ))}
-          </table>
-        </div>
-      </div>
-
-      {/* &lt; md: stacked cards, no horizontal page scroll */}
-      <div className="mt-6 space-y-6 md:hidden">
-        {PERMISSION_MATRIX_SECTIONS.map((section, sectionIndex) => (
-          <section key={section.id} className="space-y-3">
-            <p
-              className={`text-[11px] font-semibold uppercase tracking-wide text-slate-400 ${sectionIndex > 0 ? 'border-t border-slate-200 pt-5' : ''}`}
-            >
-              {section.label}
-            </p>
-            <div className="space-y-3">
-              {section.pageIds.map((pageId) => (
-                <PermissionFeatureCard key={pageId} pageId={pageId} {...rowProps} />
+                  {rk}
+                </th>
               ))}
-            </div>
-          </section>
-        ))}
+            </tr>
+          </thead>
+          {PERMISSION_MATRIX_SECTIONS.map((section, sectionIndex) => (
+            <tbody key={section.id}>
+              <tr
+                className={
+                  sectionIndex === 0
+                    ? 'bg-slate-50/40'
+                    : 'border-t border-slate-200 bg-slate-50/40'
+                }
+              >
+                <td
+                  colSpan={1 + ROLE_KEYS.length}
+                  className={`px-1 pb-0.5 text-[10px] font-semibold uppercase leading-tight tracking-wide text-slate-400 md:px-3 md:pb-1 md:text-[11px] ${sectionIndex === 0 ? 'pt-2 md:pt-3' : 'pt-3 md:pt-4'}`}
+                >
+                  {section.label}
+                </td>
+              </tr>
+              {section.pageIds.map((pageId) => (
+                <PermissionMatrixRow key={pageId} pageId={pageId} {...rowProps} />
+              ))}
+            </tbody>
+          ))}
+        </table>
       </div>
     </div>
   )
