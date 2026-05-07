@@ -10,10 +10,10 @@ type RequirePageAccessProps = {
 }
 
 /**
- * Route-level guard backed by the central `PAGE_ACCESS_MATRIX` in
- * `src/features/access/pageAccess.ts`. Used instead of page-specific
- * access checks so that sidebar visibility and URL guards stay in
- * lockstep with the same matrix.
+ * Route-level guard backed by the effective page matrix from access context
+ * (`PAGE_ACCESS_MATRIX` merged with DB permissions when loaded). Used instead
+ * of page-specific access checks so that sidebar visibility and URL guards stay
+ * in lockstep.
  *
  * Redirect target mirrors `RequireAdminAccess` — blocked users land on
  * `/app/my-sales`, which every authenticated role is allowed to view.

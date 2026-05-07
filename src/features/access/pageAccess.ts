@@ -1,14 +1,17 @@
 import { useAccessProfile } from '@/features/access/accessContext'
 import type { NormalizedAccess } from '@/features/access/types'
+import {
+  PAGE_ACCESS_MATRIX,
+  type EffectivePageMatrix,
+  type PageAccessLevel,
+  type PageId,
+  type RoleKey,
+} from '@/features/access/pageAccessMatrix'
+
+export type { EffectivePageMatrix, PageAccessLevel, PageId, RoleKey }
+export { PAGE_ACCESS_MATRIX } from '@/features/access/pageAccessMatrix'
 
 /**
- * Centralised page access matrix.
- *
- * Goal: every page-visibility and route-guard decision in the app reads
- * from one place. This keeps sidebar hiding and URL guards in lockstep
- * and leaves room to add per-page rules for Assistant / Stylist later
- * without reworking the nav or router.
- *
  * Semantics of an access level:
  *   • `'full'` — user can view the page AND perform mutations on it.
  *   • `'view'` — user can view the page, but write actions must be
@@ -16,120 +19,6 @@ import type { NormalizedAccess } from '@/features/access/types'
  *   • `'none'` — page is hidden from the sidebar AND the route guard
  *                redirects away on direct URL access.
  */
-
-/** App-ready role keys. Legacy/DB values are folded into these four. */
-export type RoleKey = 'assistant' | 'stylist' | 'manager' | 'admin'
-
-/**
- * One `PageId` per navigable page in the app. The three "Main" pages
- * intentionally use a single id even when the page has detail routes
- * (e.g. `/app/my-sales/:payWeekStart` shares `my_payroll`) because the
- * matrix rule is identical for both.
- */
-export type PageId =
-  | 'my_payroll'
-  | 'guest_quote'
-  | 'previous_quotes'
-  | 'kpi_dashboard'
-  | 'weekly_payroll'
-  | 'commission_breakdown'
-  | 'imports'
-  | 'staff'
-  | 'products'
-  | 'quotes'
-  | 'remuneration'
-  | 'access'
-
-export type PageAccessLevel = 'none' | 'view' | 'full'
-
-/**
- * Exact access matrix from the spec. Keep this as the single source of
- * truth — `SideNav` reads it via `useCanViewPage`, `RequirePageAccess`
- * reads it via `getPageAccess`, and pages that need to branch on
- * view-only mode can call `usePageAccess(pageId)`.
- */
-export const PAGE_ACCESS_MATRIX: Record<
-  PageId,
-  Record<RoleKey, PageAccessLevel>
-> = {
-  my_payroll: {
-    assistant: 'full',
-    stylist: 'full',
-    manager: 'full',
-    admin: 'full',
-  },
-  guest_quote: {
-    assistant: 'full',
-    stylist: 'full',
-    manager: 'full',
-    admin: 'full',
-  },
-  previous_quotes: {
-    assistant: 'full',
-    stylist: 'full',
-    manager: 'full',
-    admin: 'full',
-  },
-  // KPI dashboard is open to all four roles. The backend
-  // (`private.kpi_resolve_scope`) silently restricts stylist /
-  // assistant callers to their own staff scope, so the page shows
-  // self-scope KPIs for them and business-scope KPIs for manager /
-  // admin. No UI scope picker yet.
-  kpi_dashboard: {
-    assistant: 'full',
-    stylist: 'full',
-    manager: 'full',
-    admin: 'full',
-  },
-  weekly_payroll: {
-    assistant: 'none',
-    stylist: 'none',
-    manager: 'none',
-    admin: 'full',
-  },
-  commission_breakdown: {
-    assistant: 'none',
-    stylist: 'none',
-    manager: 'none',
-    admin: 'full',
-  },
-  imports: {
-    assistant: 'none',
-    stylist: 'none',
-    manager: 'full',
-    admin: 'full',
-  },
-  staff: {
-    assistant: 'none',
-    stylist: 'none',
-    manager: 'none',
-    admin: 'full',
-  },
-  products: {
-    assistant: 'none',
-    stylist: 'none',
-    manager: 'none',
-    admin: 'full',
-  },
-  quotes: {
-    assistant: 'none',
-    stylist: 'none',
-    manager: 'none',
-    admin: 'full',
-  },
-  remuneration: {
-    assistant: 'none',
-    stylist: 'none',
-    manager: 'none',
-    admin: 'full',
-  },
-  access: {
-    assistant: 'none',
-    stylist: 'none',
-    manager: 'view',
-    admin: 'full',
-  },
-}
 
 /**
  * Collapses any stored access_role (including legacy values like
@@ -153,10 +42,11 @@ export function resolveRole(
 export function getPageAccess(
   pageId: PageId,
   normalized: NormalizedAccess | null,
+  matrix: EffectivePageMatrix = PAGE_ACCESS_MATRIX,
 ): PageAccessLevel {
   const role = resolveRole(normalized)
   if (role == null) return 'none'
-  return PAGE_ACCESS_MATRIX[pageId][role]
+  return matrix[pageId][role]
 }
 
 /**
@@ -164,11 +54,14 @@ export function getPageAccess(
  * given page. Returns `'none'` while the access profile is still
  * loading, so callers do not flash allowed UI before we know the
  * user's role.
+ *
+ * Uses `effectivePageMatrix` from context (DB-backed when available,
+ * otherwise the static `PAGE_ACCESS_MATRIX`).
  */
 export function usePageAccess(pageId: PageId): PageAccessLevel {
-  const { accessState, normalized } = useAccessProfile()
+  const { accessState, normalized, effectivePageMatrix } = useAccessProfile()
   if (accessState !== 'ready') return 'none'
-  return getPageAccess(pageId, normalized)
+  return getPageAccess(pageId, normalized, effectivePageMatrix)
 }
 
 /** True when the user can at least view the page (view-only OR full). */

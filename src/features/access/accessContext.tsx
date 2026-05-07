@@ -2,15 +2,21 @@
 import {
   createContext,
   useContext,
+  useEffect,
   useMemo,
   type ReactNode,
 } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
 import { normalizeAccessProfile } from '@/features/access/normalizeAccessProfile'
+import {
+  mergeRolePagePermissionRows,
+  PAGE_ACCESS_MATRIX,
+  type EffectivePageMatrix,
+} from '@/features/access/pageAccessMatrix'
 import type { AccessProfile, NormalizedAccess } from '@/features/access/types'
 import { useAuth } from '@/features/auth/authContext'
-import { rpcGetMyAccessProfile } from '@/lib/supabaseRpc'
+import { rpcGetMyAccessProfile, rpcGetRolePagePermissions } from '@/lib/supabaseRpc'
 
 /** High-level access resolution for bootstrap and UI. */
 export type AccessBootstrapState =
@@ -26,6 +32,11 @@ type AccessContextValue = {
   /** Present when the RPC returned a row (including inactive). */
   normalized: NormalizedAccess | null
   accessState: AccessBootstrapState
+  /**
+   * Effective matrix: DB-backed rows merged over `PAGE_ACCESS_MATRIX` when
+   * `get_role_page_permissions` succeeds; otherwise the static defaults (no flicker).
+   */
+  effectivePageMatrix: EffectivePageMatrix
   isLoading: boolean
   isError: boolean
   error: Error | null
@@ -70,6 +81,29 @@ export function AccessProvider({ children }: { children: ReactNode }) {
     normalized,
   ])
 
+  const rolePermQuery = useQuery({
+    queryKey: ['role-page-permissions', user?.id],
+    queryFn: () => rpcGetRolePagePermissions(),
+    enabled: accessState === 'ready',
+  })
+
+  useEffect(() => {
+    if (rolePermQuery.isError && rolePermQuery.error) {
+      console.warn(
+        '[access] get_role_page_permissions failed; using default PAGE_ACCESS_MATRIX',
+        rolePermQuery.error,
+      )
+    }
+  }, [rolePermQuery.isError, rolePermQuery.error])
+
+  const effectivePageMatrix = useMemo((): EffectivePageMatrix => {
+    if (accessState !== 'ready') return PAGE_ACCESS_MATRIX
+    if (rolePermQuery.isError || rolePermQuery.data == null) {
+      return PAGE_ACCESS_MATRIX
+    }
+    return mergeRolePagePermissionRows(rolePermQuery.data)
+  }, [accessState, rolePermQuery.isError, rolePermQuery.data])
+
   const error =
     query.error instanceof Error ? query.error : query.error != null
       ? new Error(String(query.error))
@@ -79,11 +113,13 @@ export function AccessProvider({ children }: { children: ReactNode }) {
     rawProfile,
     normalized,
     accessState,
+    effectivePageMatrix,
     isLoading: Boolean(user) && (query.isPending || query.isLoading),
     isError: query.isError,
     error,
     refetch: () => {
       void query.refetch()
+      void rolePermQuery.refetch()
     },
   }
 

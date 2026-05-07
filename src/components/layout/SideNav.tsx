@@ -47,13 +47,19 @@ function NavBody({ onNavigate }: { onNavigate?: () => void }) {
   const canProducts = useCanViewPage('products')
   const canQuotes = useCanViewPage('quotes')
   const canRemuneration = useCanViewPage('remuneration')
+  const canRolePermissions = useCanViewPage('role_permissions')
   const canAccess = useCanViewPage('access')
 
   const anyMain =
     canMyPayroll || canGuestQuote || canPreviousQuotes || canKpiDashboard
   const anyAdmin = canWeeklyPayroll || canCommissionBreakdown || canImports
   const anyConfig =
-    canStaff || canProducts || canQuotes || canRemuneration || canAccess
+    canStaff ||
+    canProducts ||
+    canQuotes ||
+    canRemuneration ||
+    canRolePermissions ||
+    canAccess
 
   const handleClick = onNavigate ? () => onNavigate() : undefined
 
@@ -174,6 +180,15 @@ function NavBody({ onNavigate }: { onNavigate?: () => void }) {
               Remuneration
             </NavLink>
           ) : null}
+          {canRolePermissions ? (
+            <NavLink
+              to="/app/admin/role-permissions"
+              className={linkClass}
+              onClick={handleClick}
+            >
+              Role permissions
+            </NavLink>
+          ) : null}
           {canAccess ? (
             <NavLink
               to="/app/admin/access"
@@ -199,9 +214,9 @@ function NavBody({ onNavigate }: { onNavigate?: () => void }) {
  * backdrop dismisses it via `onMobileClose`.
  *
  * Visibility of individual links is driven by `useCanViewPage(pageId)`,
- * which reads the centralised `PAGE_ACCESS_MATRIX`. The same matrix
- * also backs `RequirePageAccess` on every admin/config route, so a
- * hidden sidebar item can never be reached by URL either.
+ * which reads the effective page matrix (DB-backed when available, else
+ * `PAGE_ACCESS_MATRIX`). The same rules back `RequirePageAccess` on every
+ * admin/config route, so a hidden sidebar item can never be reached by URL either.
  */
 export function SideNav({
   mobileOpen = false,

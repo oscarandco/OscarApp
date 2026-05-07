@@ -14,6 +14,7 @@ import { AdminQuoteSectionDetailPage } from '@/features/admin/pages/AdminQuoteSe
 import { AdminWeeklyCommissionDashboardPage } from '@/features/admin/pages/AdminWeeklyCommissionDashboardPage'
 import { ProductConfigurationPage } from '@/features/admin/pages/ProductConfigurationPage'
 import { RemunerationConfigurationPage } from '@/features/admin/pages/RemunerationConfigurationPage'
+import { RolePermissionsPage } from '@/features/admin/pages/RolePermissionsPage'
 import { StaffConfigurationPage } from '@/features/admin/pages/StaffConfigurationPage'
 import { HomeRoute } from '@/features/auth/pages/HomeRoute'
 import { LoginPage } from '@/features/auth/pages/LoginPage'
@@ -177,6 +178,14 @@ export function AppRouter() {
             element={
               <RequirePageAccess pageId="access">
                 <AdminAccessManagementPage />
+              </RequirePageAccess>
+            }
+          />
+          <Route
+            path="admin/role-permissions"
+            element={
+              <RequirePageAccess pageId="role_permissions">
+                <RolePermissionsPage />
               </RequirePageAccess>
             }
           />

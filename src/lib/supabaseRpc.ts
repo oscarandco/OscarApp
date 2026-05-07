@@ -41,6 +41,34 @@ export async function rpcGetMyAccessProfile(): Promise<AccessProfile | null> {
   return firstRow(data as AccessProfile | AccessProfile[] | null)
 }
 
+export type RolePagePermissionRow = {
+  page_id: string
+  role_key: string
+  access_level: string
+}
+
+/** Matrix rows for sidebar/route access (all authenticated callers). */
+export async function rpcGetRolePagePermissions(): Promise<RolePagePermissionRow[]> {
+  const { data, error } = await requireSupabaseClient().rpc('get_role_page_permissions')
+  if (error) throw toError('get_role_page_permissions', error)
+  return asRows(data as RolePagePermissionRow[])
+}
+
+/** Admin-only upsert for `role_page_permissions`. */
+export async function rpcUpdateRolePagePermission(args: {
+  pageId: string
+  roleKey: string
+  accessLevel: string
+}): Promise<unknown> {
+  const { data, error } = await requireSupabaseClient().rpc('update_role_page_permission', {
+    p_page_id: args.pageId,
+    p_role_key: args.roleKey,
+    p_access_level: args.accessLevel,
+  })
+  if (error) throw toError('update_role_page_permission', error)
+  return data
+}
+
 function coerceNullableRpcNumber(data: unknown): number | null {
   if (data == null) return null
   const n = typeof data === 'number' ? data : Number(data as string)
