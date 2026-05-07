@@ -22,9 +22,8 @@ export { PAGE_ACCESS_MATRIX } from '@/features/access/pageAccessMatrix'
 
 /**
  * Collapses any stored access_role (including legacy values like
- * `'self'` / `'superadmin'`) into one of the four `RoleKey` buckets
- * the matrix uses. Inactive profiles and unrecognised roles resolve to
- * `null`, which the matrix treats as "no access to anything".
+ * `'self'` / `'superadmin'`) into one of the `RoleKey` values the matrix
+ * uses. Inactive profiles and unrecognised roles resolve to `null`.
  */
 export function resolveRole(
   normalized: NormalizedAccess | null,
@@ -33,8 +32,13 @@ export function resolveRole(
   const r = (normalized.accessRole ?? '').trim().toLowerCase()
   if (r === 'admin' || r === 'superadmin') return 'admin'
   if (r === 'manager') return 'manager'
+  if (r === 'manager_uat') return 'manager_uat'
   if (r === 'stylist' || r === 'self') return 'stylist'
+  if (r === 'stylist_uat') return 'stylist_uat'
   if (r === 'assistant') return 'assistant'
+  if (r === 'assistant_uat') return 'assistant_uat'
+  if (r === 'reception') return 'reception'
+  if (r === 'reception_uat') return 'reception_uat'
   return null
 }
 

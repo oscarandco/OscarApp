@@ -3,10 +3,51 @@
  * Kept free of React hooks so `accessContext` can merge RPC rows without cycles.
  */
 
-/** App-ready role keys. Legacy/DB values are folded into these four. */
-export type RoleKey = 'assistant' | 'stylist' | 'manager' | 'admin'
+/** App role keys (stored in role_page_permissions + resolved from staff_member_user_access.access_role). */
+export type RoleKey =
+  | 'assistant'
+  | 'stylist'
+  | 'reception'
+  | 'manager'
+  | 'assistant_uat'
+  | 'stylist_uat'
+  | 'reception_uat'
+  | 'manager_uat'
+  | 'admin'
 
-export const ROLE_KEYS: RoleKey[] = ['assistant', 'stylist', 'manager', 'admin']
+/** Canonical column order for Role Permissions UI and Access Management dropdown order within groups. */
+export const ROLE_KEYS: RoleKey[] = [
+  'assistant',
+  'stylist',
+  'reception',
+  'manager',
+  'assistant_uat',
+  'stylist_uat',
+  'reception_uat',
+  'manager_uat',
+  'admin',
+]
+
+/** Short labels for compact table headers (same order as ROLE_KEYS). */
+export const ROLE_DISPLAY_LABELS: Record<RoleKey, string> = {
+  assistant: 'Assistant',
+  stylist: 'Stylist',
+  reception: 'Reception',
+  manager: 'Manager',
+  assistant_uat: 'Assistant UAT',
+  stylist_uat: 'Stylist UAT',
+  reception_uat: 'Reception UAT',
+  manager_uat: 'Manager UAT',
+  admin: 'Admin',
+}
+
+/** Subtle vertical divider before Standard→UAT and UAT→Admin column groups. */
+export function roleColumnDividerClass(roleKey: RoleKey): string {
+  if (roleKey === 'assistant_uat' || roleKey === 'admin') {
+    return 'border-l border-slate-200'
+  }
+  return ''
+}
 
 /**
  * One `PageId` per navigable page in the app. The three "Main" pages
@@ -31,7 +72,7 @@ export type PageId =
 
 export type PageAccessLevel = 'none' | 'view' | 'full'
 
-/** Row order for the Role permissions admin matrix UI. */
+/** Row order for documentation / legacy tooling. */
 export const PAGE_MATRIX_ROW_ORDER: PageId[] = [
   'my_payroll',
   'guest_quote',
@@ -48,105 +89,170 @@ export const PAGE_MATRIX_ROW_ORDER: PageId[] = [
   'role_permissions',
 ]
 
+const O = 'none' as const
+const V = 'view' as const
+const F = 'full' as const
+
 /**
  * Exact access matrix default/fallback. DB `role_page_permissions` is seeded
  * to match; merged rows override at runtime when loaded.
+ *
+ * Reception defaults (non-UAT): quotes-focused; UAT mirrors base role where noted.
  */
-export const PAGE_ACCESS_MATRIX: Record<
-  PageId,
-  Record<RoleKey, PageAccessLevel>
-> = {
+export const PAGE_ACCESS_MATRIX: Record<PageId, Record<RoleKey, PageAccessLevel>> = {
   my_payroll: {
-    assistant: 'full',
-    stylist: 'full',
-    manager: 'full',
-    admin: 'full',
+    assistant: F,
+    stylist: F,
+    reception: O,
+    manager: F,
+    assistant_uat: F,
+    stylist_uat: F,
+    reception_uat: O,
+    manager_uat: F,
+    admin: F,
   },
   guest_quote: {
-    assistant: 'full',
-    stylist: 'full',
-    manager: 'full',
-    admin: 'full',
+    assistant: F,
+    stylist: F,
+    reception: F,
+    manager: F,
+    assistant_uat: F,
+    stylist_uat: F,
+    reception_uat: F,
+    manager_uat: F,
+    admin: F,
   },
   previous_quotes: {
-    assistant: 'full',
-    stylist: 'full',
-    manager: 'full',
-    admin: 'full',
+    assistant: F,
+    stylist: F,
+    reception: F,
+    manager: F,
+    assistant_uat: F,
+    stylist_uat: F,
+    reception_uat: F,
+    manager_uat: F,
+    admin: F,
   },
   kpi_dashboard: {
-    assistant: 'full',
-    stylist: 'full',
-    manager: 'full',
-    admin: 'full',
+    assistant: F,
+    stylist: F,
+    reception: O,
+    manager: F,
+    assistant_uat: F,
+    stylist_uat: F,
+    reception_uat: O,
+    manager_uat: F,
+    admin: F,
   },
   weekly_payroll: {
-    assistant: 'none',
-    stylist: 'none',
-    manager: 'none',
-    admin: 'full',
+    assistant: O,
+    stylist: O,
+    reception: O,
+    manager: O,
+    assistant_uat: O,
+    stylist_uat: O,
+    reception_uat: O,
+    manager_uat: O,
+    admin: F,
   },
   commission_breakdown: {
-    assistant: 'none',
-    stylist: 'none',
-    manager: 'none',
-    admin: 'full',
+    assistant: O,
+    stylist: O,
+    reception: O,
+    manager: O,
+    assistant_uat: O,
+    stylist_uat: O,
+    reception_uat: O,
+    manager_uat: O,
+    admin: F,
   },
   imports: {
-    assistant: 'none',
-    stylist: 'none',
-    manager: 'full',
-    admin: 'full',
+    assistant: O,
+    stylist: O,
+    reception: O,
+    manager: F,
+    assistant_uat: O,
+    stylist_uat: O,
+    reception_uat: O,
+    manager_uat: F,
+    admin: F,
   },
   staff: {
-    assistant: 'none',
-    stylist: 'none',
-    manager: 'none',
-    admin: 'full',
+    assistant: O,
+    stylist: O,
+    reception: O,
+    manager: O,
+    assistant_uat: O,
+    stylist_uat: O,
+    reception_uat: O,
+    manager_uat: O,
+    admin: F,
   },
   products: {
-    assistant: 'none',
-    stylist: 'none',
-    manager: 'none',
-    admin: 'full',
+    assistant: O,
+    stylist: O,
+    reception: O,
+    manager: O,
+    assistant_uat: O,
+    stylist_uat: O,
+    reception_uat: O,
+    manager_uat: O,
+    admin: F,
   },
   quotes: {
-    assistant: 'none',
-    stylist: 'none',
-    manager: 'none',
-    admin: 'full',
+    assistant: O,
+    stylist: O,
+    reception: O,
+    manager: O,
+    assistant_uat: O,
+    stylist_uat: O,
+    reception_uat: O,
+    manager_uat: O,
+    admin: F,
   },
   remuneration: {
-    assistant: 'none',
-    stylist: 'none',
-    manager: 'none',
-    admin: 'full',
+    assistant: O,
+    stylist: O,
+    reception: O,
+    manager: O,
+    assistant_uat: O,
+    stylist_uat: O,
+    reception_uat: O,
+    manager_uat: O,
+    admin: F,
   },
   access: {
-    assistant: 'none',
-    stylist: 'none',
-    manager: 'view',
-    admin: 'full',
+    assistant: O,
+    stylist: O,
+    reception: O,
+    manager: V,
+    assistant_uat: O,
+    stylist_uat: O,
+    reception_uat: O,
+    manager_uat: V,
+    admin: F,
   },
   role_permissions: {
-    assistant: 'none',
-    stylist: 'none',
-    manager: 'none',
-    admin: 'full',
+    assistant: O,
+    stylist: O,
+    reception: O,
+    manager: O,
+    assistant_uat: O,
+    stylist_uat: O,
+    reception_uat: O,
+    manager_uat: O,
+    admin: F,
   },
 }
 
-export type EffectivePageMatrix = Record<
-  PageId,
-  Record<RoleKey, PageAccessLevel>
->
+export type EffectivePageMatrix = Record<PageId, Record<RoleKey, PageAccessLevel>>
 
 function isPageAccessLevel(v: string): v is PageAccessLevel {
   return v === 'none' || v === 'view' || v === 'full'
 }
 
 function isRoleKey(v: string): v is RoleKey {
-  return v === 'assistant' || v === 'stylist' || v === 'manager' || v === 'admin'
+  return (ROLE_KEYS as readonly string[]).includes(v)
 }
 
 function isPageId(v: string): v is PageId {

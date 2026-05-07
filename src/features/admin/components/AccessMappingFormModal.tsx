@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 
 import {
+  ACCESS_ROLE_OPTGROUPS,
   ACCESS_ROLE_OPTIONS,
   accessRoleDisplayLabel,
   normalizeAccessRoleForForm,
@@ -167,8 +168,8 @@ export function AccessMappingFormModal({
         </h2>
         <p className="mt-1 text-sm text-slate-600">
           {mode === 'create'
-            ? 'Choose the account and role. Stylist and Assistant require a staff member. Manager and Admin may optionally be linked to a staff profile.'
-            : 'Update role and access. Stylist and Assistant require a staff member. Manager and Admin may optionally be linked to a staff profile.'}
+            ? 'Choose the account and role. Stylist, Assistant, Stylist UAT, and Assistant UAT require a staff member. Other roles may optionally link a profile.'
+            : 'Update role and access. Stylist, Assistant, Stylist UAT, and Assistant UAT require a staff member. Other roles may optionally link a profile.'}
         </p>
 
         <form className="mt-6 space-y-5" onSubmit={(e) => void onSubmit(e)}>
@@ -272,10 +273,14 @@ export function AccessMappingFormModal({
               className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
               data-testid="access-modal-role"
             >
-              {ACCESS_ROLE_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
+              {ACCESS_ROLE_OPTGROUPS.map((group) => (
+                <optgroup key={group.label} label={group.label}>
+                  {group.options.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </optgroup>
               ))}
               {accessRole &&
               !ACCESS_ROLE_OPTIONS.some((o) => o.value === accessRole) ? (
@@ -290,15 +295,15 @@ export function AccessMappingFormModal({
           </div>
 
           {showStaffField ? (
-            <div>
-              <label className="block text-sm font-medium text-slate-700">
-                Staff member
-              </label>
-              <p className="mt-0.5 text-xs text-slate-500">
-                {strictStaff
-                  ? 'Required for Stylist and Assistant.'
-                  : 'Optional for Manager and Admin — leave empty if this login is not tied to one staff profile.'}
-              </p>
+          <div>
+            <label className="block text-sm font-medium text-slate-700">
+              Staff member
+            </label>
+            <p className="mt-0.5 text-xs text-slate-500">
+              {strictStaff
+                ? 'Required for Stylist, Assistant, Stylist UAT, and Assistant UAT.'
+                : 'Optional for Manager, Manager UAT, Reception, Reception UAT, and Admin — leave empty if this login is not tied to one staff profile.'}
+            </p>
               <input
                 type="search"
                 value={staffSearch}

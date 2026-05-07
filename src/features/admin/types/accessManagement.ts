@@ -35,34 +35,73 @@ export type AuthUserSearchRow = {
   last_sign_in_at?: string | null
 }
 
-/** Stored values for `staff_member_user_access.access_role` (DB check constraint). */
-export const ACCESS_ROLE_OPTIONS = [
-  { value: 'stylist', label: 'Stylist' },
-  { value: 'assistant', label: 'Assistant' },
-  { value: 'manager', label: 'Manager' },
-  { value: 'admin', label: 'Admin' },
+/** Grouped options for Access Management role &lt;select&gt; (optgroup order). */
+export const ACCESS_ROLE_OPTGROUPS = [
+  {
+    label: 'Standard access',
+    options: [
+      { value: 'assistant', label: 'Assistant' },
+      { value: 'stylist', label: 'Stylist' },
+      { value: 'reception', label: 'Reception' },
+      { value: 'manager', label: 'Manager' },
+    ],
+  },
+  {
+    label: 'User Acceptance Testing',
+    options: [
+      { value: 'assistant_uat', label: 'Assistant UAT' },
+      { value: 'stylist_uat', label: 'Stylist UAT' },
+      { value: 'reception_uat', label: 'Reception UAT' },
+      { value: 'manager_uat', label: 'Manager UAT' },
+    ],
+  },
+  {
+    label: 'Admin',
+    options: [{ value: 'admin', label: 'Admin' }],
+  },
 ] as const
+
+/** Flat list in canonical order (for legacy callers / validation). */
+export const ACCESS_ROLE_OPTIONS = ACCESS_ROLE_OPTGROUPS.flatMap((g) => [...g.options])
 
 export type StoredAccessRole = (typeof ACCESS_ROLE_OPTIONS)[number]['value']
 
-/** Stylist and Assistant must have a linked staff member before save. */
+/** Stylist / Assistant (+ UAT) must have a linked staff member before save. */
 export function staffMemberRequiredForRole(role: string | null | undefined): boolean {
   const r = (role ?? '').trim().toLowerCase()
-  return r === 'stylist' || r === 'assistant'
+  return (
+    r === 'stylist' ||
+    r === 'assistant' ||
+    r === 'stylist_uat' ||
+    r === 'assistant_uat'
+  )
 }
 
-/** Show staff picker for all roles; Stylist/Assistant require a selection before save. */
+/** Show staff picker for these roles (required or optional per strictStaff). */
 export function roleShowsStaffMemberField(role: string | null | undefined): boolean {
   const r = (role ?? '').trim().toLowerCase()
   return (
-    r === 'stylist' || r === 'assistant' || r === 'manager' || r === 'admin'
+    r === 'stylist' ||
+    r === 'assistant' ||
+    r === 'stylist_uat' ||
+    r === 'assistant_uat' ||
+    r === 'reception' ||
+    r === 'reception_uat' ||
+    r === 'manager' ||
+    r === 'manager_uat' ||
+    r === 'admin'
   )
 }
 
 const DISPLAY_BY_STORED: Record<string, string> = {
-  stylist: 'Stylist',
   assistant: 'Assistant',
+  stylist: 'Stylist',
+  reception: 'Reception',
   manager: 'Manager',
+  assistant_uat: 'Assistant UAT',
+  stylist_uat: 'Stylist UAT',
+  reception_uat: 'Reception UAT',
+  manager_uat: 'Manager UAT',
   admin: 'Admin',
   /** Legacy before `stylist` rename */
   self: 'Stylist',
@@ -76,14 +115,11 @@ export function accessRoleDisplayLabel(stored: string | null | undefined): strin
   return DISPLAY_BY_STORED[k] ?? stored
 }
 
-const VALID_FORM_ROLES = new Set<string>([
-  'stylist',
-  'assistant',
-  'manager',
-  'admin',
-])
+const VALID_FORM_ROLES = new Set<string>(
+  ACCESS_ROLE_OPTIONS.map((o) => o.value),
+)
 
-/** Maps DB / legacy values to a form-safe role (stylist | assistant | manager | admin). */
+/** Maps DB / legacy values to a form-safe stored role key. */
 export function normalizeAccessRoleForForm(
   raw: string | null | undefined,
 ): StoredAccessRole {

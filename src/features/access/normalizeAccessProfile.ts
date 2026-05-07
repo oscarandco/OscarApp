@@ -23,10 +23,9 @@ function pickNumber(v: unknown): number | null {
 
 /**
  * Primary source of truth: access_role.
- * Stored roles are `stylist` | `assistant` | `manager` | `admin` (see DB constraint).
- * `stylist` and `assistant` are self-only (own payroll rows); neither is elevated.
- * Legacy `self` (pre-rename) behaves like `stylist` for elevation. `superadmin` maps to admin for elevation.
- * Optional is_admin / is_manager from RPC are applied as extras when present.
+ * Stored roles match `staff_member_user_access.access_role` (see DB constraint).
+ * Elevated = admin/superadmin, manager, manager_uat (imports/admin shell); stylist/assistant/reception UAT variants are not elevated unless flagged.
+ * Legacy `self` behaves like stylist. Optional is_admin / is_manager from RPC are applied as extras when present.
  */
 export function normalizeAccessProfile(
   row: AccessProfile,
@@ -38,8 +37,7 @@ export function normalizeAccessProfile(
   const role = accessRole?.trim().toLowerCase() ?? ''
 
   const fromRoleAdmin = role === 'admin' || role === 'superadmin'
-  const fromRoleManager = role === 'manager'
-  // stylist / assistant / legacy self: not elevated from role — payroll-only unless flags apply
+  const fromRoleManager = role === 'manager' || role === 'manager_uat'
 
   const fromFlagAdmin = pickBool(row.is_admin, false)
   const fromFlagManager = pickBool(row.is_manager, false)

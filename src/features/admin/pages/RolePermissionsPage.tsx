@@ -6,7 +6,9 @@ import { canManageStaffAccessMappings } from '@/features/access/accessPermission
 import {
   mergeRolePagePermissionRows,
   PAGE_ACCESS_MATRIX,
+  ROLE_DISPLAY_LABELS,
   ROLE_KEYS,
+  roleColumnDividerClass,
   type EffectivePageMatrix,
   type PageAccessLevel,
   type PageId,
@@ -163,7 +165,10 @@ function PermissionMatrixRow(props: PermissionMatrixRowProps) {
         <span className="block truncate md:whitespace-normal">{PAGE_FEATURE_LABELS[pageId]}</span>
       </td>
       {ROLE_KEYS.map((roleKey) => (
-        <td key={roleKey} className="min-w-0 px-1 py-1 align-middle md:px-2 md:py-1.5">
+        <td
+          key={roleKey}
+          className={`min-w-0 px-1 py-1 align-middle md:px-2 md:py-1.5 ${roleColumnDividerClass(roleKey)}`}
+        >
           <PermissionLevelSelect
             pageId={pageId}
             roleKey={roleKey}
@@ -299,11 +304,10 @@ export function RolePermissionsPage() {
       <div className="mt-6 overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="w-full min-w-0 table-fixed border-collapse text-left">
           <colgroup>
-            <col className="w-[30%] md:w-[32%]" />
-            <col className="w-[17.5%]" />
-            <col className="w-[17.5%]" />
-            <col className="w-[17.5%]" />
-            <col className="w-[17.5%]" />
+            <col className="min-w-0 w-[18%] md:w-[22%]" />
+            {ROLE_KEYS.map((rk) => (
+              <col key={rk} className="min-w-0 w-[9.1%]" />
+            ))}
           </colgroup>
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50/90">
@@ -313,9 +317,9 @@ export function RolePermissionsPage() {
               {ROLE_KEYS.map((rk) => (
                 <th
                   key={rk}
-                  className="px-1 py-2 text-center text-[10px] font-semibold capitalize leading-tight text-slate-800 md:px-2 md:py-3 md:text-sm"
+                  className={`px-0.5 py-2 text-center text-[9px] font-semibold leading-tight text-slate-800 md:px-2 md:py-3 md:text-xs lg:text-sm ${roleColumnDividerClass(rk)}`}
                 >
-                  {rk}
+                  <span className="block truncate">{ROLE_DISPLAY_LABELS[rk]}</span>
                 </th>
               ))}
             </tr>

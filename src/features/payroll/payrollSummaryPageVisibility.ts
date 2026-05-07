@@ -86,6 +86,7 @@ export function mySalesVisibilityForRole(
   switch (role) {
     case 'admin':
     case 'manager':
+    case 'manager_uat':
       return {
         showSearchFilter: true,
         showLocationFilter: true,
@@ -115,6 +116,7 @@ export function mySalesVisibilityForRole(
         mobileDetailLabel: null,
       }
     case 'stylist':
+    case 'stylist_uat':
       return {
         showSearchFilter: false,
         showLocationFilter: false,
@@ -135,6 +137,9 @@ export function mySalesVisibilityForRole(
         mobileDetailLabel: null,
       }
     case 'assistant':
+    case 'assistant_uat':
+    case 'reception':
+    case 'reception_uat':
     default:
       return {
         showSearchFilter: false,
