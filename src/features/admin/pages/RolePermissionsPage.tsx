@@ -82,70 +82,137 @@ function optionsForCell(pageId: PageId, roleKey: RoleKey): PageAccessLevel[] {
   return ['none', 'view', 'full']
 }
 
-type PermissionRowRendererProps = {
+type UpdateMutShape = {
+  isPending: boolean
+  mutate: (input: {
+    pageId: PageId
+    roleKey: RoleKey
+    accessLevel: PageAccessLevel
+  }) => void
+}
+
+type PermissionSelectProps = {
+  pageId: PageId
+  roleKey: RoleKey
+  matrix: EffectivePageMatrix
+  canEdit: boolean
+  pendingKey: string | null
+  updateMut: UpdateMutShape
+  /** Extra classes on the &lt;select&gt; (layout only). */
+  selectClassName?: string
+}
+
+function PermissionLevelSelect({
+  pageId,
+  roleKey,
+  matrix,
+  canEdit,
+  pendingKey,
+  updateMut,
+  selectClassName = '',
+}: PermissionSelectProps) {
+  const cellKey = `${pageId}:${roleKey}`
+  const value = matrix[pageId][roleKey]
+  const opts = optionsForCell(pageId, roleKey)
+  const locked = pageId === 'role_permissions' && roleKey === 'admin'
+  const busy = pendingKey === cellKey && updateMut.isPending
+  const disabled = !canEdit || locked || busy
+
+  return (
+    <select
+      className={[
+        'rounded-md border px-2 py-1.5 text-sm shadow-sm focus:outline-none focus:ring-1',
+        LEVEL_SELECT_SURFACE[value],
+        'disabled:cursor-not-allowed disabled:opacity-60',
+        selectClassName,
+      ]
+        .filter(Boolean)
+        .join(' ')}
+      value={value}
+      disabled={disabled}
+      aria-busy={busy}
+      aria-label={`${PAGE_FEATURE_LABELS[pageId]} — ${roleKey}`}
+      onChange={(e) => {
+        const next = e.target.value as PageAccessLevel
+        if (next === value) return
+        updateMut.mutate({
+          pageId,
+          roleKey,
+          accessLevel: next,
+        })
+      }}
+    >
+      {opts.map((lvl) => (
+        <option key={lvl} value={lvl}>
+          {LEVEL_LABELS[lvl]}
+        </option>
+      ))}
+    </select>
+  )
+}
+
+type PermissionMatrixRowProps = {
   pageId: PageId
   matrix: EffectivePageMatrix
   canEdit: boolean
   pendingKey: string | null
-  updateMut: {
-    isPending: boolean
-    mutate: (input: {
-      pageId: PageId
-      roleKey: RoleKey
-      accessLevel: PageAccessLevel
-    }) => void
-  }
+  updateMut: UpdateMutShape
 }
 
-function PermissionMatrixRow(props: PermissionRowRendererProps) {
+function PermissionMatrixRow(props: PermissionMatrixRowProps) {
   const { pageId, matrix, canEdit, pendingKey, updateMut } = props
 
   return (
     <tr className="border-b border-slate-100 last:border-b-0">
       <td className="px-3 py-2 font-medium text-slate-900">{PAGE_FEATURE_LABELS[pageId]}</td>
-      {ROLE_KEYS.map((roleKey) => {
-        const cellKey = `${pageId}:${roleKey}`
-        const value = matrix[pageId][roleKey]
-        const opts = optionsForCell(pageId, roleKey)
-        const locked = pageId === 'role_permissions' && roleKey === 'admin'
-        const busy = pendingKey === cellKey && updateMut.isPending
-        const disabled = !canEdit || locked || busy
-
-        return (
-          <td key={roleKey} className="px-2 py-1.5 align-middle">
-            <label className="sr-only">
-              {PAGE_FEATURE_LABELS[pageId]} — {roleKey}
-            </label>
-            <select
-              className={[
-                'w-full min-w-[6.5rem] rounded-md border px-2 py-1.5 text-sm shadow-sm focus:outline-none focus:ring-1',
-                LEVEL_SELECT_SURFACE[value],
-                'disabled:cursor-not-allowed disabled:opacity-60',
-              ].join(' ')}
-              value={value}
-              disabled={disabled}
-              aria-busy={busy}
-              onChange={(e) => {
-                const next = e.target.value as PageAccessLevel
-                if (next === value) return
-                updateMut.mutate({
-                  pageId,
-                  roleKey,
-                  accessLevel: next,
-                })
-              }}
-            >
-              {opts.map((lvl) => (
-                <option key={lvl} value={lvl}>
-                  {LEVEL_LABELS[lvl]}
-                </option>
-              ))}
-            </select>
-          </td>
-        )
-      })}
+      {ROLE_KEYS.map((roleKey) => (
+        <td key={roleKey} className="px-2 py-1.5 align-middle">
+          <PermissionLevelSelect
+            pageId={pageId}
+            roleKey={roleKey}
+            matrix={matrix}
+            canEdit={canEdit}
+            pendingKey={pendingKey}
+            updateMut={updateMut}
+            selectClassName="w-full min-w-[6.5rem]"
+          />
+        </td>
+      ))}
     </tr>
   )
+}
+
+function PermissionFeatureCard(props: PermissionMatrixRowProps) {
+  const { pageId, matrix, canEdit, pendingKey, updateMut } = props
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+      <p className="text-sm font-semibold text-slate-900">{PAGE_FEATURE_LABELS[pageId]}</p>
+      <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {ROLE_KEYS.map((roleKey) => (
+          <div key={roleKey} className="min-w-0">
+            <label className="mb-0.5 block text-[11px] font-medium capitalize text-slate-600">
+              {roleKey}
+            </label>
+            <PermissionLevelSelect
+              pageId={pageId}
+              roleKey={roleKey}
+              matrix={matrix}
+              canEdit={canEdit}
+              pendingKey={pendingKey}
+              updateMut={updateMut}
+              selectClassName="w-full min-w-0"
+            />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function pageShellClassName(): string {
+  /** Align with other admin routes: full width of AppShell inner column (no mx-auto centre strip). */
+  return 'w-full min-w-0 py-4 sm:py-6'
 }
 
 export function RolePermissionsPage() {
@@ -205,7 +272,7 @@ export function RolePermissionsPage() {
 
   if (permQuery.isLoading || permQuery.isPending) {
     return (
-      <div className="mx-auto max-w-6xl px-4 py-6">
+      <div className={pageShellClassName()}>
         <PageHeader title="Role permissions" description="Configuration" />
         <LoadingState message="Loading permissions…" />
       </div>
@@ -214,7 +281,7 @@ export function RolePermissionsPage() {
 
   if (permQuery.isError) {
     return (
-      <div className="mx-auto max-w-6xl px-4 py-6">
+      <div className={pageShellClassName()}>
         <PageHeader title="Role permissions" description="Configuration" />
         <ErrorState
           title="Could not load permissions"
@@ -225,8 +292,15 @@ export function RolePermissionsPage() {
     )
   }
 
+  const rowProps = {
+    matrix,
+    canEdit,
+    pendingKey,
+    updateMut,
+  }
+
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6">
+    <div className={pageShellClassName()} data-testid="role-permissions-page">
       <PageHeader title="Role permissions" description="Configuration" />
 
       <p className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-600">
@@ -253,49 +327,67 @@ export function RolePermissionsPage() {
         </div>
       ) : null}
 
-      <div className="mt-6 overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-        <table className="w-full min-w-[640px] border-collapse text-left text-sm">
-          <thead>
-            <tr className="border-b border-slate-200 bg-slate-50/90">
-              <th className="px-3 py-3 font-semibold text-slate-900">Page / feature</th>
-              {ROLE_KEYS.map((rk) => (
-                <th key={rk} className="px-2 py-3 text-center font-semibold capitalize text-slate-800">
-                  {rk}
+      {/* md+: wide table, left-aligned with shell; no forced min-width scroll */}
+      <div className="mt-6 hidden md:block">
+        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+          <table className="w-full min-w-0 border-collapse text-left text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 bg-slate-50/90">
+                <th className="min-w-[8rem] px-3 py-3 font-semibold text-slate-900">
+                  Page / feature
                 </th>
-              ))}
-            </tr>
-          </thead>
-          {PERMISSION_MATRIX_SECTIONS.map((section, sectionIndex) => (
-            <tbody key={section.id}>
-              <tr
-                className={
-                  sectionIndex === 0
-                    ? 'bg-slate-50/40'
-                    : 'border-t border-slate-200 bg-slate-50/40'
-                }
-              >
-                <td
-                  colSpan={1 + ROLE_KEYS.length}
-                  className={`px-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400 ${sectionIndex === 0 ? 'pt-3' : 'pt-4'}`}
-                >
-                  {section.label}
-                </td>
+                {ROLE_KEYS.map((rk) => (
+                  <th
+                    key={rk}
+                    className="px-2 py-3 text-center font-semibold capitalize text-slate-800"
+                  >
+                    {rk}
+                  </th>
+                ))}
               </tr>
-              {section.pageIds.map((pageId) => (
-                <PermissionMatrixRow
-                  key={pageId}
-                  pageId={pageId}
-                  matrix={matrix}
-                  canEdit={canEdit}
-                  pendingKey={pendingKey}
-                  updateMut={updateMut}
-                />
-              ))}
-            </tbody>
-          ))}
-        </table>
+            </thead>
+            {PERMISSION_MATRIX_SECTIONS.map((section, sectionIndex) => (
+              <tbody key={section.id}>
+                <tr
+                  className={
+                    sectionIndex === 0
+                      ? 'bg-slate-50/40'
+                      : 'border-t border-slate-200 bg-slate-50/40'
+                  }
+                >
+                  <td
+                    colSpan={1 + ROLE_KEYS.length}
+                    className={`px-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400 ${sectionIndex === 0 ? 'pt-3' : 'pt-4'}`}
+                  >
+                    {section.label}
+                  </td>
+                </tr>
+                {section.pageIds.map((pageId) => (
+                  <PermissionMatrixRow key={pageId} pageId={pageId} {...rowProps} />
+                ))}
+              </tbody>
+            ))}
+          </table>
+        </div>
       </div>
 
+      {/* &lt; md: stacked cards, no horizontal page scroll */}
+      <div className="mt-6 space-y-6 md:hidden">
+        {PERMISSION_MATRIX_SECTIONS.map((section, sectionIndex) => (
+          <section key={section.id} className="space-y-3">
+            <p
+              className={`text-[11px] font-semibold uppercase tracking-wide text-slate-400 ${sectionIndex > 0 ? 'border-t border-slate-200 pt-5' : ''}`}
+            >
+              {section.label}
+            </p>
+            <div className="space-y-3">
+              {section.pageIds.map((pageId) => (
+                <PermissionFeatureCard key={pageId} pageId={pageId} {...rowProps} />
+              ))}
+            </div>
+          </section>
+        ))}
+      </div>
     </div>
   )
 }
