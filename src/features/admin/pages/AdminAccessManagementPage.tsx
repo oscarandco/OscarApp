@@ -1,6 +1,7 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 
+import { AccessManagementStaffCell } from '@/features/admin/components/AccessManagementStaffCell'
 import { AccessMappingFormModal } from '@/features/admin/components/AccessMappingFormModal'
 import { InviteUserModal } from '@/features/admin/components/InviteUserModal'
 import { useAdminAccessMappings } from '@/features/admin/hooks/useAdminAccessMappings'
@@ -28,6 +29,11 @@ import { queryErrorDetail } from '@/lib/queryError'
 import { invokeInviteAccessUser } from '@/lib/inviteAccessUser'
 import { invokeAdminSendPasswordReset } from '@/lib/adminSendPasswordReset'
 import { invokeAdminDeleteUser } from '@/lib/adminDeleteUser'
+import { fetchStaffMembers } from '@/lib/staffMembersApi'
+import {
+  rpcListActiveLocationsForImport,
+  type ImportLocationRow,
+} from '@/lib/supabaseRpc'
 
 /**
  * Minimal status-banner model. Using a single shared banner (rather
@@ -60,6 +66,22 @@ export function AdminAccessManagementPage() {
   // staff_member_user_access row, i.e. exactly our "pending mapping" set.
   const pendingQ = useAuthUserSearch('', canManage)
   const updateMut = useUpdateAccessMappingMutation()
+
+  const staffLocationLookupQ = useQuery({
+    queryKey: ['admin-access-staff-location-lookup'],
+    queryFn: async () => {
+      const [staff, locations] = await Promise.all([
+        fetchStaffMembers(),
+        rpcListActiveLocationsForImport(),
+      ])
+      const primaryLocationByStaffId = new Map<string, string | null>()
+      for (const s of staff) {
+        primaryLocationByStaffId.set(s.id, s.primary_location_id ?? null)
+      }
+      return { primaryLocationByStaffId, locations }
+    },
+    staleTime: 60_000,
+  })
 
   const [modalMode, setModalMode] = useState<'create' | 'edit' | null>(null)
   const [editRow, setEditRow] = useState<AdminAccessMappingRow | null>(null)
@@ -406,6 +428,7 @@ export function AdminAccessManagementPage() {
         <MappingTable
           rows={activeRows}
           variant="active"
+          staffLocationLookup={staffLocationLookupQ.data}
           canManage={canManage}
           anyMutBusy={anyMutBusy}
           updateBusyMappingId={
@@ -441,6 +464,7 @@ export function AdminAccessManagementPage() {
         <MappingTable
           rows={inactiveRows}
           variant="inactive"
+          staffLocationLookup={staffLocationLookupQ.data}
           canManage={canManage}
           anyMutBusy={anyMutBusy}
           updateBusyMappingId={
@@ -565,6 +589,7 @@ function SectionHeader({
 function MappingTable({
   rows,
   variant,
+  staffLocationLookup,
   canManage,
   anyMutBusy,
   updateBusyMappingId,
@@ -577,6 +602,12 @@ function MappingTable({
 }: {
   rows: readonly AdminAccessMappingRow[]
   variant: 'active' | 'inactive'
+  staffLocationLookup:
+    | {
+        primaryLocationByStaffId: Map<string, string | null>
+        locations: ImportLocationRow[]
+      }
+    | undefined
   canManage: boolean
   anyMutBusy: boolean
   updateBusyMappingId: string | null
@@ -622,17 +653,13 @@ function MappingTable({
                   {row.email ?? '—'}
                 </td>
                 <td className="px-3 py-2 text-slate-800">
-                  <span className="font-medium">
-                    {row.staff_display_name ?? row.staff_full_name ?? '—'}
-                  </span>
-                  {row.staff_display_name &&
-                  row.staff_full_name &&
-                  row.staff_display_name.trim() !==
-                    row.staff_full_name.trim() ? (
-                    <span className="ml-1 text-slate-500">
-                      ({row.staff_full_name})
-                    </span>
-                  ) : null}
+                  <AccessManagementStaffCell
+                    row={row}
+                    primaryLocationByStaffId={
+                      staffLocationLookup?.primaryLocationByStaffId
+                    }
+                    locations={staffLocationLookup?.locations}
+                  />
                 </td>
                 <td className="px-3 py-2 text-sm text-slate-800">
                   {accessRoleDisplayLabel(row.access_role)}

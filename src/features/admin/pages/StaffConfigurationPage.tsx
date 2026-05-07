@@ -375,6 +375,9 @@ export function StaffConfigurationPage() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['staff-configuration'] })
+      void queryClient.invalidateQueries({
+        queryKey: ['admin-access-staff-location-lookup'],
+      })
       void queryClient.invalidateQueries({ queryKey: ['remuneration-configuration'] })
     },
   })
@@ -386,6 +389,9 @@ export function StaffConfigurationPage() {
       }),
     onSuccess: (row) => {
       void queryClient.invalidateQueries({ queryKey: ['staff-configuration'] })
+      void queryClient.invalidateQueries({
+        queryKey: ['admin-access-staff-location-lookup'],
+      })
       setSelectedId(row.id)
     },
   })
@@ -394,6 +400,9 @@ export function StaffConfigurationPage() {
     mutationFn: (id: string) => deleteStaffMember(id),
     onSuccess: (_, deletedId) => {
       void queryClient.invalidateQueries({ queryKey: ['staff-configuration'] })
+      void queryClient.invalidateQueries({
+        queryKey: ['admin-access-staff-location-lookup'],
+      })
       void queryClient.invalidateQueries({ queryKey: ['admin-access-mappings'] })
       void queryClient.invalidateQueries({ queryKey: ['remuneration-configuration'] })
       setSelectedId((cur) => (cur === deletedId ? null : cur))
