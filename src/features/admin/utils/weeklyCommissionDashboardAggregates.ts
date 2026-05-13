@@ -9,8 +9,13 @@ const TABLE_A_SERVICE_CATEGORIES = new Set<string>([
   'extensions_product',
 ])
 
-const TABLE_A_PROF = 'professional_product'
 const TABLE_A_RETAIL = 'retail_product'
+
+/** Matches `v_admin_payroll_lines` short label (`product_type_short_derived` AS `product_type_short`). */
+const PROF_PROD_SHORT_LABEL = 'Prof. Prod.'
+
+/** Matches `v_admin_payroll_lines` actual type (`product_type_actual_derived` AS `product_type_actual`). */
+const PROF_PROD_ACTUAL_LABEL = 'professional product'
 
 const COMM_PRODUCTS_LABEL = 'Comm - Products'
 const COMM_SERVICES_LABEL = 'Comm - Services'
@@ -81,6 +86,25 @@ function normLoc(name: string | null | undefined): string {
     .toLowerCase()
 }
 
+/**
+ * Weekly Payroll “Prof. Prod.” — Power BI / reporting basis: derived **product**
+ * type, not `commission_category_final` (toner professional lines use
+ * `toner_with_other_service` for rates but `Prof. Prod.` / `Professional Product` for display).
+ */
+export function isWeeklyPayrollProfProdLine(row: AdminPayrollLineRow): boolean {
+  const r = row as Record<string, unknown>
+  const short = String(
+    r.product_type_short_derived ?? r.product_type_short ?? '',
+  ).trim()
+  if (short === PROF_PROD_SHORT_LABEL) return true
+  const actual = String(
+    r.product_type_actual_derived ?? r.product_type_actual ?? '',
+  )
+    .trim()
+    .toLowerCase()
+  return actual === PROF_PROD_ACTUAL_LABEL
+}
+
 export function isOrewaLocation(locationName: string | null | undefined): boolean {
   return normLoc(locationName).includes('orewa')
 }
@@ -131,7 +155,10 @@ export type TableARow = {
   total: number
 }
 
-/** Table A: by commission_category_final — prof / retail / services bucket. */
+/**
+ * Table A: Prof. Prod. by derived product type (short / actual); retail and
+ * services still by `commission_category_final` (mutually exclusive order).
+ */
 export function aggregateTableAByStaff(lines: AdminPayrollLineRow[]): TableARow[] {
   const map = new Map<
     string,
@@ -164,7 +191,7 @@ export function aggregateTableAByStaff(lines: AdminPayrollLineRow[]): TableARow[
     ensureStaffId(b, row)
     mergePaidPrimaryLocation(b, row)
 
-    if (cat === TABLE_A_PROF) b.profProd += amt
+    if (isWeeklyPayrollProfProdLine(row)) b.profProd += amt
     else if (cat === TABLE_A_RETAIL) b.retailProd += amt
     else if (TABLE_A_SERVICE_CATEGORIES.has(cat)) b.services += amt
   }
