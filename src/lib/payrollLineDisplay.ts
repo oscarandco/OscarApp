@@ -40,3 +40,24 @@ export function stylistPaidFromLine(row: WeeklyCommissionLineRow): string {
   }
   return ''
 }
+
+/**
+ * Reporting bucket from `product_type_short_derived` (view/RPC may expose the
+ * same value as `product_type_short` on `v_admin_payroll_lines`).
+ */
+export function productTypeShortLabelFromLine(row: WeeklyCommissionLineRow): string {
+  const r = row as Record<string, unknown>
+  const raw = r.product_type_short_derived ?? r.product_type_short
+  if (raw == null || String(raw).trim() === '') return '-'
+  return String(raw).trim()
+}
+
+/** Sort key: null sorts empty labels last. */
+export function productTypeShortSortKeyFromLine(
+  row: WeeklyCommissionLineRow,
+): string | null {
+  const r = row as Record<string, unknown>
+  const raw = r.product_type_short_derived ?? r.product_type_short
+  if (raw == null || String(raw).trim() === '') return null
+  return String(raw).trim()
+}

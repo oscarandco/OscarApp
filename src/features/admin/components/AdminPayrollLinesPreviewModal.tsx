@@ -9,7 +9,7 @@ import {
   formatNzd,
   formatShortDate,
 } from '@/lib/formatters'
-import { stylistPaidFromLine, workPerformedByFromLine } from '@/lib/payrollLineDisplay'
+import { stylistPaidFromLine, workPerformedByFromLine, productTypeShortLabelFromLine } from '@/lib/payrollLineDisplay'
 import { sortCommissionLinePreviewRows } from '@/lib/payrollLineTableSort'
 import type { ColumnSortState } from '@/lib/tableSort'
 
@@ -124,7 +124,7 @@ export function AdminPayrollLinesPreviewModal({
                 </p>
               ) : (
                 <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200">
-                  <table className="w-full min-w-[820px] border-collapse text-left text-xs">
+                  <table className="w-full min-w-[920px] border-collapse text-left text-xs">
                     <thead className="bg-slate-50">
                       <tr>
                         <th className={`${thLeft} w-[1%] max-w-[5.5rem]`} scope="col">
@@ -158,6 +158,15 @@ export function AdminPayrollLinesPreviewModal({
                           <TableColumnSortHeader
                             label="Product / service"
                             columnKey="product_service_name"
+                            sortState={previewSort}
+                            onSortChange={setPreviewSort}
+                            wrapLabel
+                          />
+                        </th>
+                        <th className={`${thLeft} w-[1%] max-w-[5rem]`} scope="col">
+                          <TableColumnSortHeader
+                            label="Product type"
+                            columnKey="product_type_short"
                             sortState={previewSort}
                             onSortChange={setPreviewSort}
                             wrapLabel
@@ -259,6 +268,9 @@ export function AdminPayrollLinesPreviewModal({
                               <span className="block truncate">
                                 {productStr !== '' ? productStr : '—'}
                               </span>
+                            </td>
+                            <td className={`${tdBase} max-w-[5rem] whitespace-nowrap text-slate-700`}>
+                              {productTypeShortLabelFromLine(row)}
                             </td>
                             <td
                               className={`${tdBase} max-w-[7.5rem] min-w-0`}

@@ -16,10 +16,10 @@ export type LineColumnId =
   | 'pay_date'
   | 'customer_name'
   | 'product_service_name'
+  | 'product_type_short'
   | 'work_performed_by'
   | 'stylist_paid'
   | 'product_type_actual'
-  | 'product_type_short'
   | 'commission_product_service'
   | 'commission_category_final'
   | 'quantity'
@@ -52,10 +52,10 @@ const ALL_LINE_IDS: readonly LineColumnId[] = [
   'pay_date',
   'customer_name',
   'product_service_name',
+  'product_type_short',
   'work_performed_by',
   'stylist_paid',
   'product_type_actual',
-  'product_type_short',
   'commission_product_service',
   'commission_category_final',
   'quantity',
@@ -94,7 +94,8 @@ export const LINE_COLUMN_LABEL: Record<LineColumnId, string> = {
   work_performed_by: 'Work performed by',
   stylist_paid: 'Stylist paid',
   product_type_actual: 'Commission product type (actual)',
-  product_type_short: 'Product type (short)',
+  /** Same data as `product_type_short_derived` (view alias `product_type_short`). */
+  product_type_short: 'Product type',
   commission_product_service: 'Actual commission product/service',
   commission_category_final: 'Commission category',
   quantity: 'Quantity',
@@ -128,6 +129,7 @@ const DEFAULT_VISIBLE_LINE: readonly LineColumnId[] = [
   'pay_week_end',
   'customer_name',
   'product_service_name',
+  'product_type_short',
   'work_performed_by',
   'stylist_paid',
   'price_ex_gst',
@@ -136,7 +138,6 @@ const DEFAULT_VISIBLE_LINE: readonly LineColumnId[] = [
   'actual_commission_rate',
   'actual_commission_amt_ex_gst',
   'commission_product_service',
-  'product_type_actual',
   'commission_category_final',
 ]
 
@@ -233,6 +234,9 @@ export function resolveRowKeyForLineColumn(
 ): string | null {
   if (id === 'work_performed_by') return '__work_performed_by'
   if (id === 'stylist_paid') return '__stylist_paid'
+  if (id === 'product_type_short') {
+    return 'product_type_short'
+  }
   if (id === 'location') {
     if (row.location_name != null && String(row.location_name).trim() !== '') {
       return 'location_name'

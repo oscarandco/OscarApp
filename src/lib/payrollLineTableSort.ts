@@ -1,6 +1,10 @@
 import type { WeeklyCommissionLineRow } from '@/features/payroll/types'
 
-import { stylistPaidFromLine, workPerformedByFromLine } from '@/lib/payrollLineDisplay'
+import {
+  productTypeShortSortKeyFromLine,
+  stylistPaidFromLine,
+  workPerformedByFromLine,
+} from '@/lib/payrollLineDisplay'
 import {
   compareScalarsForSort,
   type ColumnSortState,
@@ -43,6 +47,9 @@ export function getPayrollLineSortValue(
     const t = stylistPaidFromLine(row)
     return t === '' ? null : t
   }
+  if (rowKey === 'product_type_short') {
+    return productTypeShortSortKeyFromLine(row)
+  }
   return row[rowKey as keyof WeeklyCommissionLineRow]
 }
 
@@ -68,6 +75,7 @@ export type CommissionLinePreviewSortKey =
   | 'sale_date'
   | 'customer_name'
   | 'product_service_name'
+  | 'product_type_short'
   | 'work_performed_by'
   | 'stylist_paid'
   | 'price_ex_gst'
@@ -100,6 +108,9 @@ function getPreviewLineSortValue(
   if (key === 'stylist_paid') {
     const t = stylistPaidFromLine(row)
     return t === '' ? null : t
+  }
+  if (key === 'product_type_short') {
+    return productTypeShortSortKeyFromLine(row)
   }
   if (key === 'actual_commission') {
     return raw.actual_commission_amt_ex_gst ?? raw.actual_commission_amount ?? null

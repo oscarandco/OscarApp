@@ -23,7 +23,7 @@ import {
   formatShortDate,
   tableColumnTitle,
 } from '@/lib/formatters'
-import { stylistPaidFromLine, workPerformedByFromLine } from '@/lib/payrollLineDisplay'
+import { stylistPaidFromLine, workPerformedByFromLine, productTypeShortLabelFromLine } from '@/lib/payrollLineDisplay'
 import type { ColumnSortState } from '@/lib/tableSort'
 import { sortPayrollLineRows } from '@/lib/payrollLineTableSort'
 
@@ -104,6 +104,9 @@ function lineCellValue(row: WeeklyCommissionLineRow, rowKey: string): unknown {
   if (rowKey === '__stylist_paid') {
     const t = stylistPaidFromLine(row)
     return t === '' ? null : t
+  }
+  if (rowKey === 'product_type_short') {
+    return productTypeShortLabelFromLine(row)
   }
   return row[rowKey as keyof WeeklyCommissionLineRow]
 }

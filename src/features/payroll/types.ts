@@ -86,6 +86,12 @@ export interface WeeklyCommissionLineRow {
   pay_date?: string | null
   customer_name?: string | null
   product_service_name?: string | null
+  /**
+   * `product_type_short_derived` from commission core; `v_admin_payroll_lines`
+   * often exposes it as `product_type_short`. Used for Weekly Payroll vs summary buckets.
+   */
+  product_type_short_derived?: string | null
+  product_type_short?: string | null
   /** Work performer (from `v_admin_payroll_lines_weekly`); exposed on stylist lines after migration. */
   work_display_name?: string | null
   work_full_name?: string | null
