@@ -1,21 +1,10 @@
 import type { AdminPayrollLineRow } from '@/features/admin/types'
 import { badgeFromPaidPrimaryLocation } from '@/lib/locationNavBadge'
 
-/** Categories grouped under “Services” in dashboard Table A (non product-type retail/prof splits). */
-const TABLE_A_SERVICE_CATEGORIES = new Set<string>([
-  'service',
-  'toner_with_other_service',
-  'extensions_service',
-  'extensions_product',
-])
-
-const TABLE_A_RETAIL = 'retail_product'
-
-/** Matches `v_admin_payroll_lines` short label (`product_type_short_derived` AS `product_type_short`). */
-const PROF_PROD_SHORT_LABEL = 'Prof. Prod.'
-
-/** Matches `v_admin_payroll_lines` actual type (`product_type_actual_derived` AS `product_type_actual`). */
-const PROF_PROD_ACTUAL_LABEL = 'professional product'
+/** Broad reporting labels from `product_type_short_derived` (alias `product_type_short` on lines). */
+const TABLE_A_SHORT_PROF = 'Prof. Prod.'
+const TABLE_A_SHORT_RETAIL = 'Retail Prod.'
+const TABLE_A_SHORT_SERVICES = 'Services'
 
 const COMM_PRODUCTS_LABEL = 'Comm - Products'
 const COMM_SERVICES_LABEL = 'Comm - Services'
@@ -86,23 +75,24 @@ function normLoc(name: string | null | undefined): string {
     .toLowerCase()
 }
 
-/**
- * Weekly Payroll “Prof. Prod.” — Power BI / reporting basis: derived **product**
- * type, not `commission_category_final` (toner professional lines use
- * `toner_with_other_service` for rates but `Prof. Prod.` / `Professional Product` for display).
- */
-export function isWeeklyPayrollProfProdLine(row: AdminPayrollLineRow): boolean {
+function productTypeShortDerivedTrimmed(row: AdminPayrollLineRow): string {
   const r = row as Record<string, unknown>
-  const short = String(
-    r.product_type_short_derived ?? r.product_type_short ?? '',
-  ).trim()
-  if (short === PROF_PROD_SHORT_LABEL) return true
-  const actual = String(
-    r.product_type_actual_derived ?? r.product_type_actual ?? '',
-  )
-    .trim()
-    .toLowerCase()
-  return actual === PROF_PROD_ACTUAL_LABEL
+  return String(r.product_type_short_derived ?? r.product_type_short ?? '').trim()
+}
+
+/**
+ * Broad reporting bucket for Weekly Payroll Table A — uses `product_type_short_derived`
+ * only (not `commission_category_final`), so e.g. `extensions_product` lines still
+ * roll up by short label (`Retail Prod.`, `Services`, …).
+ */
+function tableAReportingBucketFromProductTypeShort(
+  row: AdminPayrollLineRow,
+): 'prof' | 'retail' | 'services' | 'other' {
+  const s = productTypeShortDerivedTrimmed(row)
+  if (s === TABLE_A_SHORT_PROF) return 'prof'
+  if (s === TABLE_A_SHORT_RETAIL) return 'retail'
+  if (s === TABLE_A_SHORT_SERVICES) return 'services'
+  return 'other'
 }
 
 export function isOrewaLocation(locationName: string | null | undefined): boolean {
@@ -152,12 +142,18 @@ export type TableARow = {
   profProd: number
   retailProd: number
   services: number
+  /**
+   * Commission on lines whose `product_type_short_derived` is not one of the three
+   * standard short labels (e.g. `-`). Included in `total` so the row matches line sums.
+   */
+  other: number
   total: number
 }
 
 /**
- * Table A: Prof. Prod. by derived product type (short / actual); retail and
- * services still by `commission_category_final` (mutually exclusive order).
+ * Table A: Prof. / Retail / Services from `product_type_short_derived` only.
+ * Unmatched shorts accumulate in `other`; `total` is the sum of all four so it matches
+ * line-level `actual_commission_amt_ex_gst` for the staff bucket.
  */
 export function aggregateTableAByStaff(lines: AdminPayrollLineRow[]): TableARow[] {
   const map = new Map<
@@ -166,6 +162,7 @@ export function aggregateTableAByStaff(lines: AdminPayrollLineRow[]): TableARow[
       profProd: number
       retailProd: number
       services: number
+      other: number
       staffPaidId: string | null
       paidPrimaryCode: string | null
       paidPrimaryName: string | null
@@ -175,13 +172,13 @@ export function aggregateTableAByStaff(lines: AdminPayrollLineRow[]): TableARow[
   for (const row of lines) {
     const key = staffKey(row)
     const amt = num(row.actual_commission_amt_ex_gst)
-    const cat = String(row.commission_category_final ?? '').trim().toLowerCase()
 
     if (!map.has(key)) {
       map.set(key, {
         profProd: 0,
         retailProd: 0,
         services: 0,
+        other: 0,
         staffPaidId: null,
         paidPrimaryCode: null,
         paidPrimaryName: null,
@@ -191,9 +188,20 @@ export function aggregateTableAByStaff(lines: AdminPayrollLineRow[]): TableARow[
     ensureStaffId(b, row)
     mergePaidPrimaryLocation(b, row)
 
-    if (isWeeklyPayrollProfProdLine(row)) b.profProd += amt
-    else if (cat === TABLE_A_RETAIL) b.retailProd += amt
-    else if (TABLE_A_SERVICE_CATEGORIES.has(cat)) b.services += amt
+    switch (tableAReportingBucketFromProductTypeShort(row)) {
+      case 'prof':
+        b.profProd += amt
+        break
+      case 'retail':
+        b.retailProd += amt
+        break
+      case 'services':
+        b.services += amt
+        break
+      default:
+        b.other += amt
+        break
+    }
   }
 
   const rows: TableARow[] = [...map.entries()].map(([staffPaid, v]) => ({
@@ -206,7 +214,8 @@ export function aggregateTableAByStaff(lines: AdminPayrollLineRow[]): TableARow[
     profProd: v.profProd,
     retailProd: v.retailProd,
     services: v.services,
-    total: v.profProd + v.retailProd + v.services,
+    other: v.other,
+    total: v.profProd + v.retailProd + v.services + v.other,
   }))
 
   rows.sort((a, b) => a.staffPaid.localeCompare(b.staffPaid, undefined, { sensitivity: 'base' }))

@@ -121,6 +121,14 @@ export function AdminWeeklyCommissionDashboardPage() {
     [linesForTables],
   )
 
+  /** Show “Other” when any staff has commission outside the three standard short labels. */
+  const showTableAOtherColumn = useMemo(
+    () => tableA.some((r) => Math.abs(r.other) >= 0.005),
+    [tableA],
+  )
+
+  const tableAColSpan = showTableAOtherColumn ? 7 : 6
+
   const displayTableA = useMemo(
     () => sortWeeklyDashboardTableARows(tableA, tableASort),
     [tableA, tableASort],
@@ -152,6 +160,7 @@ export function AdminWeeklyCommissionDashboardPage() {
       profProd: sumColumn(tableA, 'profProd'),
       retailProd: sumColumn(tableA, 'retailProd'),
       services: sumColumn(tableA, 'services'),
+      other: sumColumn(tableA, 'other'),
       total: sumColumn(tableA, 'total'),
     }),
     [tableA],
@@ -397,6 +406,17 @@ export function AdminWeeklyCommissionDashboardPage() {
                         align="right"
                       />
                     </th>
+                    {showTableAOtherColumn ? (
+                      <th className={dashThRight} scope="col">
+                        <TableColumnSortHeader
+                          label="Other"
+                          columnKey="other"
+                          sortState={tableASort}
+                          onSortChange={setTableASort}
+                          align="right"
+                        />
+                      </th>
+                    ) : null}
                     <th className={dashThRight} scope="col">
                       <TableColumnSortHeader
                         label="Total"
@@ -412,7 +432,7 @@ export function AdminWeeklyCommissionDashboardPage() {
                 <tbody>
                   {tableA.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className={dashTdText}>
+                      <td colSpan={tableAColSpan} className={dashTdText}>
                         {weekLines.length === 0
                           ? 'No lines for this week.'
                           : 'No lines match the selected card filter.'}
@@ -433,6 +453,9 @@ export function AdminWeeklyCommissionDashboardPage() {
                           <td className={dashTdNumRight}>{formatNzd(r.profProd)}</td>
                           <td className={dashTdNumRight}>{formatNzd(r.retailProd)}</td>
                           <td className={dashTdNumRight}>{formatNzd(r.services)}</td>
+                          {showTableAOtherColumn ? (
+                            <td className={dashTdNumRight}>{formatNzd(r.other)}</td>
+                          ) : null}
                           <td className={dashTdNumRight}>
                             <span className="font-medium tabular-nums">{formatNzd(r.total)}</span>
                           </td>
@@ -469,6 +492,11 @@ export function AdminWeeklyCommissionDashboardPage() {
                         <td className={`${dashTdNumRight} font-semibold`}>
                           {formatNzd(totalsA.services)}
                         </td>
+                        {showTableAOtherColumn ? (
+                          <td className={`${dashTdNumRight} font-semibold`}>
+                            {formatNzd(totalsA.other)}
+                          </td>
+                        ) : null}
                         <td className={`${dashTdNumRight} font-semibold`}>
                           {formatNzd(totalsA.total)}
                         </td>

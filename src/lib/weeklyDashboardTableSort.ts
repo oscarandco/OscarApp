@@ -11,6 +11,7 @@ export type WeeklyDashboardTableAKey =
   | 'profProd'
   | 'retailProd'
   | 'services'
+  | 'other'
   | 'total'
 
 export type WeeklyDashboardTableBKey =
