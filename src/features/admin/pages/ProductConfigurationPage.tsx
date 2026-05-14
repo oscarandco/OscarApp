@@ -1,9 +1,10 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { ErrorState } from '@/components/feedback/ErrorState'
 import { LoadingState } from '@/components/feedback/LoadingState'
 import { PageHeader } from '@/components/layout/PageHeader'
+import type { ProductConfigurationBundle } from '@/features/admin/hooks/useProductConfiguration'
 import { useProductConfiguration } from '@/features/admin/hooks/useProductConfiguration'
 import type { ProductMasterRow } from '@/features/admin/types/productConfiguration'
 import {
@@ -12,6 +13,27 @@ import {
   type ProductMasterUpdatePayload,
 } from '@/lib/productMasterApi'
 import { queryErrorDetail } from '@/lib/queryError'
+
+/**
+ * `YYYY-MM-DD HH:mm` in Pacific/Auckland (NZ display time) for placeholder product
+ * descriptions. Prefixing the description guarantees lexical sort after creation
+ * roughly matches creation order, which helps even before we apply the
+ * "recently created first" client sort.
+ */
+function nzDateTimePrefix(d: Date = new Date()): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Pacific/Auckland',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(d)
+  const get = (t: Intl.DateTimeFormatPartTypes) =>
+    parts.find((p) => p.type === t)?.value ?? ''
+  return `${get('year')}-${get('month')}-${get('day')} ${get('hour')}:${get('minute')}`
+}
 
 type StatusFilter = 'all' | 'active' | 'inactive'
 
@@ -82,6 +104,11 @@ export function ProductConfigurationPage() {
   const [systemTypeFilter, setSystemTypeFilter] = useState('')
   const [productTypeFilter, setProductTypeFilter] = useState('')
   const [draft, setDraft] = useState<ProductFormDraft | null>(null)
+  /** IDs created in this session, most-recent first. Sorted to top of left list. */
+  const [recentlyCreatedIds, setRecentlyCreatedIds] = useState<string[]>([])
+  /** When set, the description input is focused after the matching product is selected. */
+  const [pendingFocusId, setPendingFocusId] = useState<string | null>(null)
+  const descriptionInputRef = useRef<HTMLInputElement | null>(null)
 
   const products = data?.products ?? []
 
@@ -105,7 +132,11 @@ export function ProductConfigurationPage() {
 
   const filteredProducts = useMemo(() => {
     const q = search.trim().toLowerCase()
-    return products.filter((p) => {
+    const recentSet = new Set(recentlyCreatedIds)
+    const matches = products.filter((p) => {
+      // Always surface products created in this session — they ignore filters so
+      // the user can immediately rename/classify them in the left list.
+      if (recentSet.has(p.id)) return true
       if (statusFilter === 'active' && !p.is_active) return false
       if (statusFilter === 'inactive' && p.is_active) return false
       if (systemTypeFilter !== '') {
@@ -119,7 +150,18 @@ export function ProductConfigurationPage() {
         `${p.product_description} ${p.system_type ?? ''} ${p.product_type ?? ''}`.toLowerCase()
       return hay.includes(q)
     })
-  }, [products, search, statusFilter, systemTypeFilter, productTypeFilter])
+    if (recentlyCreatedIds.length === 0) return matches
+    const recentRank = new Map<string, number>()
+    recentlyCreatedIds.forEach((id, i) => recentRank.set(id, i))
+    const recents: ProductMasterRow[] = []
+    const rest: ProductMasterRow[] = []
+    for (const p of matches) {
+      if (recentRank.has(p.id)) recents.push(p)
+      else rest.push(p)
+    }
+    recents.sort((a, b) => (recentRank.get(a.id) ?? 0) - (recentRank.get(b.id) ?? 0))
+    return [...recents, ...rest]
+  }, [products, search, statusFilter, systemTypeFilter, productTypeFilter, recentlyCreatedIds])
 
   const selected = useMemo(
     () => products.find((p) => p.id === selectedId) ?? null,
@@ -186,13 +228,44 @@ export function ProductConfigurationPage() {
   const createMut = useMutation({
     mutationFn: () =>
       insertProductMaster({
-        product_description: `New product ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`,
+        product_description: `${nzDateTimePrefix()} New product`,
       }),
     onSuccess: (row) => {
-      void queryClient.invalidateQueries({ queryKey: ['product-configuration'] })
+      // Insert into the cache immediately so the row exists in `products` before the
+      // refetch returns. Without this, the auto-select effect resets `selectedId`
+      // to whatever was first in the (still stale) filtered list.
+      queryClient.setQueryData<ProductConfigurationBundle | undefined>(
+        ['product-configuration'],
+        (old) => {
+          if (!old) return { products: [row] }
+          if (old.products.some((p) => p.id === row.id)) return old
+          return { products: [row, ...old.products] }
+        },
+      )
+      setRecentlyCreatedIds((prev) => (prev.includes(row.id) ? prev : [row.id, ...prev]))
       setSelectedId(row.id)
+      setPendingFocusId(row.id)
+      void queryClient.invalidateQueries({ queryKey: ['product-configuration'] })
     },
   })
+
+  // Focus the description input once the just-created product is selected and
+  // its draft has populated the input. Select-all so the user can immediately
+  // rename the placeholder description.
+  useEffect(() => {
+    if (pendingFocusId == null) return
+    if (!selected || selected.id !== pendingFocusId) return
+    if (!draft || draft.id !== pendingFocusId) return
+    const el = descriptionInputRef.current
+    if (el == null) return
+    el.focus()
+    try {
+      el.select()
+    } catch {
+      // ignore focus/select errors in non-DOM environments
+    }
+    setPendingFocusId(null)
+  }, [pendingFocusId, selected, draft])
 
   if (isLoading) {
     return (
@@ -378,6 +451,7 @@ export function ProductConfigurationPage() {
                     </label>
                     <input
                       id="product_description"
+                      ref={descriptionInputRef}
                       value={draft.product_description}
                       onChange={(e) =>
                         setDraft((d) =>
