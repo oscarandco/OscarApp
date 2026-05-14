@@ -61,3 +61,21 @@ export function productTypeShortSortKeyFromLine(
   if (raw == null || String(raw).trim() === '') return null
   return String(raw).trim()
 }
+
+/**
+ * True when the resolved "Work performed by" stylist is genuinely different
+ * from the "Stylist paid" recipient — e.g. an assistant performed the service
+ * but commission is being paid to the senior stylist. Used by line-preview
+ * tables to highlight the work-performed cell so the assistant case is
+ * obvious. Returns false when either side is blank so we don't flag missing
+ * data as a mismatch.
+ */
+export function isWorkPerformedByDifferentFromStylistPaid(
+  workPerformedBy: string | null | undefined,
+  stylistPaid: string | null | undefined,
+): boolean {
+  const a = String(workPerformedBy ?? '').trim()
+  const b = String(stylistPaid ?? '').trim()
+  if (a === '' || b === '') return false
+  return a.toLowerCase() !== b.toLowerCase()
+}

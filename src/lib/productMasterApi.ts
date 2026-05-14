@@ -27,20 +27,41 @@ export async function fetchProductMaster(): Promise<ProductMasterRow[]> {
   return asRows(data as ProductMasterRow[])
 }
 
-export async function insertProductMaster(args: {
+export type ProductMasterInsertPayload = {
   product_description: string
-}): Promise<ProductMasterRow> {
+  system_type?: string | null
+  product_type?: string | null
+  is_active?: boolean
+}
+
+export async function insertProductMaster(
+  args: ProductMasterInsertPayload,
+): Promise<ProductMasterRow> {
   const supabase = requireSupabaseClient()
   const { data, error } = await supabase
     .from('product_master')
     .insert({
       product_description: args.product_description.trim(),
-      is_active: true,
+      system_type: emptyToNull(args.system_type ?? null),
+      product_type: emptyToNull(args.product_type ?? null),
+      is_active: args.is_active ?? true,
     })
     .select('*')
     .single()
   if (error) throw toError('product_master insert', error)
   return data as ProductMasterRow
+}
+
+/**
+ * Soft-delete (deactivate) a product. Product rows are kept for classification
+ * history and reporting; we never hard-delete from the UI by default.
+ */
+export async function deactivateProductMaster(id: string): Promise<void> {
+  const { error } = await requireSupabaseClient()
+    .from('product_master')
+    .update({ is_active: false })
+    .eq('id', id)
+  if (error) throw toError('product_master deactivate', error)
 }
 
 export type ProductMasterUpdatePayload = {

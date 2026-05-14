@@ -9,7 +9,12 @@ import {
   formatNzd,
   formatShortDate,
 } from '@/lib/formatters'
-import { stylistPaidFromLine, workPerformedByFromLine, productTypeShortLabelFromLine } from '@/lib/payrollLineDisplay'
+import {
+  isWorkPerformedByDifferentFromStylistPaid,
+  productTypeShortLabelFromLine,
+  stylistPaidFromLine,
+  workPerformedByFromLine,
+} from '@/lib/payrollLineDisplay'
 import { sortCommissionLinePreviewRows } from '@/lib/payrollLineTableSort'
 import type { ColumnSortState } from '@/lib/tableSort'
 
@@ -239,6 +244,8 @@ export function AdminPayrollLinesPreviewModal({
                           raw.actual_commission_amt_ex_gst ?? raw.actual_commission_amount
                         const workBy = workPerformedByFromLine(row)
                         const paid = stylistPaidFromLine(row)
+                        const workByDiffersFromPaid =
+                          isWorkPerformedByDifferentFromStylistPaid(workBy, paid)
                         const invoiceStr = row.invoice != null ? String(row.invoice) : ''
                         const productStr =
                           row.product_service_name != null
@@ -276,7 +283,13 @@ export function AdminPayrollLinesPreviewModal({
                               className={`${tdBase} max-w-[7.5rem] min-w-0`}
                               title={workBy !== '' ? workBy : undefined}
                             >
-                              <span className="block truncate whitespace-nowrap">
+                              <span
+                                className={`block truncate whitespace-nowrap ${
+                                  workByDiffersFromPaid
+                                    ? 'font-bold text-emerald-700'
+                                    : ''
+                                }`}
+                              >
                                 {workBy !== '' ? workBy : '—'}
                               </span>
                             </td>

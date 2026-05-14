@@ -7,7 +7,12 @@ import { TableColumnSortHeader } from '@/components/ui/TableColumnSortHeader'
 import { PayrollLineStats } from '@/features/payroll/components/PayrollLineStats'
 import type { WeeklyCommissionLineRow, WeeklyCommissionSummaryRow } from '@/features/payroll/types'
 import { filterCommissionLinesForSummaryRow } from '@/lib/payrollSummaryFilters'
-import { stylistPaidFromLine, workPerformedByFromLine, productTypeShortLabelFromLine } from '@/lib/payrollLineDisplay'
+import {
+  isWorkPerformedByDifferentFromStylistPaid,
+  productTypeShortLabelFromLine,
+  stylistPaidFromLine,
+  workPerformedByFromLine,
+} from '@/lib/payrollLineDisplay'
 import { rpcGetMyCommissionLinesWeekly } from '@/lib/supabaseRpc'
 import type { ColumnSortState } from '@/lib/tableSort'
 import { sortCommissionLinePreviewRows } from '@/lib/payrollLineTableSort'
@@ -271,6 +276,8 @@ export function PayrollLinesPreviewModal({
                           raw.actual_commission_amount
                         const workBy = workPerformedByFromLine(row)
                         const paid = stylistPaidFromLine(row)
+                        const workByDiffersFromPaid =
+                          isWorkPerformedByDifferentFromStylistPaid(workBy, paid)
                         const invoiceStr = row.invoice != null ? String(row.invoice) : ''
                         const productStr =
                           row.product_service_name != null
@@ -310,7 +317,13 @@ export function PayrollLinesPreviewModal({
                               className={`${tdBase} max-w-[7.5rem] min-w-0`}
                               title={workBy !== '' ? workBy : undefined}
                             >
-                              <span className="block truncate whitespace-nowrap">
+                              <span
+                                className={`block truncate whitespace-nowrap ${
+                                  workByDiffersFromPaid
+                                    ? 'font-bold text-emerald-700'
+                                    : ''
+                                }`}
+                              >
                                 {workBy !== '' ? workBy : '—'}
                               </span>
                             </td>
