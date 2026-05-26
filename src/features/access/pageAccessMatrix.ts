@@ -61,12 +61,14 @@ export type PageId =
   | 'previous_quotes'
   | 'kpi_dashboard'
   | 'weekly_payroll'
+  | 'contractor_invoices'
   | 'commission_breakdown'
   | 'imports'
   | 'staff'
   | 'products'
   | 'quotes'
   | 'remuneration'
+  | 'business_settings'
   | 'access'
   | 'role_permissions'
 
@@ -79,12 +81,14 @@ export const PAGE_MATRIX_ROW_ORDER: PageId[] = [
   'previous_quotes',
   'kpi_dashboard',
   'weekly_payroll',
+  'contractor_invoices',
   'commission_breakdown',
   'imports',
   'staff',
   'products',
   'quotes',
   'remuneration',
+  'business_settings',
   'access',
   'role_permissions',
 ]
@@ -155,6 +159,17 @@ export const PAGE_ACCESS_MATRIX: Record<PageId, Record<RoleKey, PageAccessLevel>
     manager_uat: O,
     admin: F,
   },
+  contractor_invoices: {
+    assistant: O,
+    stylist: O,
+    reception: O,
+    manager: O,
+    assistant_uat: O,
+    stylist_uat: O,
+    reception_uat: O,
+    manager_uat: O,
+    admin: F,
+  },
   commission_breakdown: {
     assistant: O,
     stylist: O,
@@ -211,6 +226,17 @@ export const PAGE_ACCESS_MATRIX: Record<PageId, Record<RoleKey, PageAccessLevel>
     admin: F,
   },
   remuneration: {
+    assistant: O,
+    stylist: O,
+    reception: O,
+    manager: O,
+    assistant_uat: O,
+    stylist_uat: O,
+    reception_uat: O,
+    manager_uat: O,
+    admin: F,
+  },
+  business_settings: {
     assistant: O,
     stylist: O,
     reception: O,

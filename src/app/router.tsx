@@ -5,6 +5,9 @@ import { RequireAdminAccess } from '@/components/auth/RequireAdminAccess'
 import { RequireAuth } from '@/components/auth/RequireAuth'
 import { RequirePageAccess } from '@/components/auth/RequirePageAccess'
 import { AdminAccessManagementPage } from '@/features/admin/pages/AdminAccessManagementPage'
+import { AdminBusinessSettingsPage } from '@/features/admin/pages/AdminBusinessSettingsPage'
+import { AdminContractorInvoiceDetailPage } from '@/features/admin/pages/AdminContractorInvoiceDetailPage'
+import { AdminContractorInvoicesPage } from '@/features/admin/pages/AdminContractorInvoicesPage'
 import { AdminHomePage } from '@/features/admin/pages/AdminHomePage'
 import { AdminImportsPage } from '@/features/admin/pages/AdminImportsPage'
 import { AdminPayrollDetailPage } from '@/features/admin/pages/AdminPayrollDetailPage'
@@ -114,6 +117,30 @@ export function AppRouter() {
             element={
               <RequirePageAccess pageId="weekly_payroll">
                 <AdminWeeklyCommissionDashboardPage />
+              </RequirePageAccess>
+            }
+          />
+          <Route
+            path="admin/contractor-invoices"
+            element={
+              <RequirePageAccess pageId="contractor_invoices">
+                <AdminContractorInvoicesPage />
+              </RequirePageAccess>
+            }
+          />
+          <Route
+            path="admin/contractor-invoices/:invoiceId"
+            element={
+              <RequirePageAccess pageId="contractor_invoices">
+                <AdminContractorInvoiceDetailPage />
+              </RequirePageAccess>
+            }
+          />
+          <Route
+            path="admin/business-settings"
+            element={
+              <RequirePageAccess pageId="business_settings">
+                <AdminBusinessSettingsPage />
               </RequirePageAccess>
             }
           />

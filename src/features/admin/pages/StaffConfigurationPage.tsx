@@ -44,6 +44,8 @@ type StaffFormDraft = {
   contractor_street_address: string
   contractor_suburb: string
   contractor_city_postcode: string
+  contractor_email: string
+  contractor_invoice_code: string
 }
 
 function normalizeEmploymentKind(raw: string | null | undefined): EmploymentKind {
@@ -171,6 +173,8 @@ function draftFromRow(row: StaffMemberRow): StaffFormDraft {
     contractor_street_address: row.contractor_street_address ?? '',
     contractor_suburb: row.contractor_suburb ?? '',
     contractor_city_postcode: row.contractor_city_postcode ?? '',
+    contractor_email: row.contractor_email ?? '',
+    contractor_invoice_code: row.contractor_invoice_code ?? '',
   }
 }
 
@@ -322,6 +326,8 @@ export function StaffConfigurationPage() {
       'contractor_street_address',
       'contractor_suburb',
       'contractor_city_postcode',
+      'contractor_email',
+      'contractor_invoice_code',
     ]
     for (const k of keys) {
       const a = draft[k]
@@ -370,6 +376,8 @@ export function StaffConfigurationPage() {
         contractor_street_address: draft.contractor_street_address || null,
         contractor_suburb: draft.contractor_suburb || null,
         contractor_city_postcode: draft.contractor_city_postcode || null,
+        contractor_email: draft.contractor_email || null,
+        contractor_invoice_code: draft.contractor_invoice_code || null,
       }
       await updateStaffMember(payload)
     },
@@ -993,6 +1001,57 @@ export function StaffConfigurationPage() {
                           }
                           className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
                         />
+                      </div>
+                      <div>
+                        <label
+                          className="block text-sm font-medium text-slate-700"
+                          htmlFor="c_email"
+                        >
+                          Contractor Email
+                        </label>
+                        <input
+                          id="c_email"
+                          type="email"
+                          value={draft.contractor_email}
+                          onChange={(e) =>
+                            setDraft((d) =>
+                              d ? { ...d, contractor_email: e.target.value } : d,
+                            )
+                          }
+                          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                          placeholder="optional"
+                        />
+                        <p className="mt-1 text-xs text-slate-500">
+                          Optional. Shown on the contractor invoice when set.
+                        </p>
+                      </div>
+                      <div>
+                        <label
+                          className="block text-sm font-medium text-slate-700"
+                          htmlFor="c_invoice_code"
+                        >
+                          Contractor Invoice Code
+                        </label>
+                        <input
+                          id="c_invoice_code"
+                          type="text"
+                          value={draft.contractor_invoice_code}
+                          onChange={(e) =>
+                            setDraft((d) =>
+                              d
+                                ? { ...d, contractor_invoice_code: e.target.value }
+                                : d,
+                            )
+                          }
+                          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                          placeholder="e.g. EF"
+                          maxLength={12}
+                        />
+                        <p className="mt-1 text-xs text-slate-500">
+                          Short stable code used in invoice numbers (e.g.{' '}
+                          <code className="rounded bg-slate-100 px-1">EF</code>{' '}
+                          → <code className="rounded bg-slate-100 px-1">EF-25-0608</code>).
+                        </p>
                       </div>
                     </div>
                   </div>

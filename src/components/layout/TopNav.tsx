@@ -50,7 +50,7 @@ export function TopNav({
   }
 
   return (
-    <header className="border-b border-slate-200 bg-white">
+    <header className="border-b border-slate-200 bg-white print:hidden">
       <div className="flex h-14 items-center justify-between gap-2 px-3 sm:px-4 lg:px-6">
         <div className="flex min-w-0 items-center gap-1.5">
           {onOpenMobileNav ? (

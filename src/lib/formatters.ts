@@ -64,6 +64,29 @@ export function formatCommissionRatePercent(value: unknown): string {
   )
 }
 
+/**
+ * Same source convention as {@link formatCommissionRatePercent} (fraction
+ * vs. percentage-points auto-detected via |value| ≤ 1), but rounded to the
+ * nearest 0.5% for display on contractor tax invoices. Examples:
+ *   34.9945% → 35%, 22.46% → 22.5%, 22.74% → 22.5%, 22.76% → 23%, 45% → 45%.
+ * Display-only — the underlying numeric value is unchanged.
+ */
+export function formatCommissionRateNearestHalfPercent(value: unknown): string {
+  if (value == null || value === '') return '—'
+  const raw =
+    typeof value === 'string' ? value.replace(/,/g, '').trim() : value
+  const n = typeof raw === 'number' ? raw : Number(raw)
+  if (Number.isNaN(n)) return String(value)
+  const pct = Math.abs(n) <= 1 ? n * 100 : n
+  const rounded = Math.round(pct * 2) / 2
+  return (
+    new Intl.NumberFormat(undefined, {
+      maximumFractionDigits: 1,
+      minimumFractionDigits: 0,
+    }).format(rounded) + '%'
+  )
+}
+
 /** Display a date-only ISO string or timestamp in the user locale. */
 export function formatDateLabel(isoDate: string | null | undefined): string {
   if (!isoDate) return '—'
@@ -87,6 +110,27 @@ export function formatShortDate(isoDate: string | null | undefined): string {
     month: 'short',
     day: 'numeric',
   })
+}
+
+/**
+ * Compact weekday + day + month label for line descriptions on the
+ * contractor invoice, e.g. `Tue, 12 May`. en-NZ is pinned so weekdays
+ * don't vary across user locales on a customer-facing document. No time
+ * component — the saved snapshot only stores `sale_date` as a date.
+ */
+const invoiceLineDateFormatter = new Intl.DateTimeFormat('en-NZ', {
+  weekday: 'short',
+  day: 'numeric',
+  month: 'short',
+})
+
+export function formatInvoiceLineDate(
+  isoDate: string | null | undefined,
+): string {
+  if (!isoDate) return '—'
+  const d = new Date(isoDate + (isoDate.includes('T') ? '' : 'T12:00:00'))
+  if (Number.isNaN(d.getTime())) return String(isoDate)
+  return invoiceLineDateFormatter.format(d)
 }
 
 /**

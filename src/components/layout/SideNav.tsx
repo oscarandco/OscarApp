@@ -40,6 +40,7 @@ function NavBody({ onNavigate }: { onNavigate?: () => void }) {
   const canKpiDashboard = useCanViewPage('kpi_dashboard')
 
   const canWeeklyPayroll = useCanViewPage('weekly_payroll')
+  const canContractorInvoices = useCanViewPage('contractor_invoices')
   const canCommissionBreakdown = useCanViewPage('commission_breakdown')
   const canImports = useCanViewPage('imports')
 
@@ -47,17 +48,20 @@ function NavBody({ onNavigate }: { onNavigate?: () => void }) {
   const canProducts = useCanViewPage('products')
   const canQuotes = useCanViewPage('quotes')
   const canRemuneration = useCanViewPage('remuneration')
+  const canBusinessSettings = useCanViewPage('business_settings')
   const canRolePermissions = useCanViewPage('role_permissions')
   const canAccess = useCanViewPage('access')
 
   const anyMain =
     canMyPayroll || canGuestQuote || canPreviousQuotes || canKpiDashboard
-  const anyAdmin = canWeeklyPayroll || canCommissionBreakdown || canImports
+  const anyAdmin =
+    canWeeklyPayroll || canContractorInvoices || canCommissionBreakdown || canImports
   const anyConfig =
     canStaff ||
     canProducts ||
     canQuotes ||
     canRemuneration ||
+    canBusinessSettings ||
     canRolePermissions ||
     canAccess
 
@@ -120,6 +124,15 @@ function NavBody({ onNavigate }: { onNavigate?: () => void }) {
               Weekly payroll
             </NavLink>
           ) : null}
+          {canContractorInvoices ? (
+            <NavLink
+              to="/app/admin/contractor-invoices"
+              className={linkClass}
+              onClick={handleClick}
+            >
+              Contractor invoices
+            </NavLink>
+          ) : null}
           {canCommissionBreakdown ? (
             <NavLink
               to="/app/admin/sales-summary"
@@ -178,6 +191,15 @@ function NavBody({ onNavigate }: { onNavigate?: () => void }) {
               onClick={handleClick}
             >
               Remuneration
+            </NavLink>
+          ) : null}
+          {canBusinessSettings ? (
+            <NavLink
+              to="/app/admin/business-settings"
+              className={linkClass}
+              onClick={handleClick}
+            >
+              Business settings
             </NavLink>
           ) : null}
           {canRolePermissions ? (
@@ -250,14 +272,14 @@ export function SideNav({
   return (
     <>
       <aside
-        className="hidden w-52 shrink-0 overflow-y-auto border-r border-slate-200 bg-white lg:block"
+        className="hidden w-52 shrink-0 overflow-y-auto border-r border-slate-200 bg-white lg:block print:hidden"
         data-testid="side-nav-desktop"
       >
         <NavBody />
       </aside>
       {mobileOpen ? (
         <div
-          className="fixed inset-0 z-40 lg:hidden"
+          className="fixed inset-0 z-40 lg:hidden print:hidden"
           role="dialog"
           aria-modal="true"
           aria-label="Main navigation"

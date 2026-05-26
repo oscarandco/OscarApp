@@ -22,6 +22,10 @@ export type StaffMemberRow = {
   contractor_street_address: string | null
   contractor_suburb: string | null
   contractor_city_postcode: string | null
+  /** Contractor invoicing fields (see migration 20260825120000_staff_members_invoice_columns). */
+  contractor_email: string | null
+  contractor_invoice_name: string | null
+  contractor_invoice_code: string | null
   created_at: string
   updated_at: string
 }

@@ -27,12 +27,14 @@ const PAGE_FEATURE_LABELS: Record<PageId, string> = {
   previous_quotes: 'Previous quotes',
   kpi_dashboard: 'KPIs',
   weekly_payroll: 'Weekly payroll',
+  contractor_invoices: 'Contractor invoices',
   commission_breakdown: 'Sales summary',
   imports: 'Import sales data',
   staff: 'Staff',
   products: 'Products',
   quotes: 'Quotes',
   remuneration: 'Remuneration',
+  business_settings: 'Business settings',
   access: 'Access',
   role_permissions: 'Role permissions',
 }
@@ -60,12 +62,25 @@ const PERMISSION_MATRIX_SECTIONS: { id: string; label: string; pageIds: PageId[]
   {
     id: 'admin',
     label: 'Admin',
-    pageIds: ['weekly_payroll', 'commission_breakdown', 'imports'],
+    pageIds: [
+      'weekly_payroll',
+      'contractor_invoices',
+      'commission_breakdown',
+      'imports',
+    ],
   },
   {
     id: 'configuration',
     label: 'Configuration',
-    pageIds: ['staff', 'products', 'quotes', 'remuneration', 'access', 'role_permissions'],
+    pageIds: [
+      'staff',
+      'products',
+      'quotes',
+      'remuneration',
+      'business_settings',
+      'access',
+      'role_permissions',
+    ],
   },
 ]
 

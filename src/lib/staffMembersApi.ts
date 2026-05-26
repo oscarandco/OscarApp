@@ -73,6 +73,13 @@ export type StaffMemberUpdatePayload = {
   contractor_street_address: string | null
   contractor_suburb: string | null
   contractor_city_postcode: string | null
+  contractor_email: string | null
+  /**
+   * Contractor invoice name is no longer collected via Staff Admin — invoice
+   * person name is taken from `staff_members.full_name`. Column intentionally
+   * left in the DB for now; this form simply does not write to it.
+   */
+  contractor_invoice_code: string | null
 }
 
 export async function updateStaffMember(
@@ -99,6 +106,8 @@ export async function updateStaffMember(
       contractor_street_address: emptyToNull(payload.contractor_street_address),
       contractor_suburb: emptyToNull(payload.contractor_suburb),
       contractor_city_postcode: emptyToNull(payload.contractor_city_postcode),
+      contractor_email: emptyToNull(payload.contractor_email),
+      contractor_invoice_code: emptyToNull(payload.contractor_invoice_code),
     })
     .eq('id', payload.id)
   if (error) throw toError('staff_members update', error)

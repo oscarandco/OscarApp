@@ -27,18 +27,26 @@ export function AppShell() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
 
   return (
-    <div className="flex min-h-dvh flex-col bg-slate-50 lg:h-dvh lg:min-h-0 lg:overflow-hidden">
+    /*
+      Print overrides: release the viewport-height clamp + overflow
+      clipping so the print engine paginates the full document height
+      rather than only the visible viewport. Combined with `print:hidden`
+      on TopNav / SideNav this leaves the printed page with only the
+      routed page content (e.g. the contractor invoice card) — no app
+      chrome, no scrollbars, no clipped pages.
+    */
+    <div className="flex min-h-dvh flex-col bg-slate-50 lg:h-dvh lg:min-h-0 lg:overflow-hidden print:block print:h-auto print:min-h-0 print:overflow-visible print:bg-white">
       <TopNav onOpenMobileNav={() => setMobileNavOpen(true)} />
-      <div className="flex flex-1 flex-col lg:min-h-0 lg:flex-row">
+      <div className="flex flex-1 flex-col lg:min-h-0 lg:flex-row print:block">
         <SideNav
           mobileOpen={mobileNavOpen}
           onMobileClose={() => setMobileNavOpen(false)}
         />
         <main
-          className="min-w-0 flex-1 px-3 py-4 sm:px-4 sm:py-6 lg:flex lg:min-h-0 lg:flex-col lg:overflow-y-auto lg:overflow-x-hidden lg:px-8"
+          className="min-w-0 flex-1 px-3 py-4 sm:px-4 sm:py-6 lg:flex lg:min-h-0 lg:flex-col lg:overflow-y-auto lg:overflow-x-hidden lg:px-8 print:block print:max-h-none print:overflow-visible print:p-0"
           data-testid="app-shell-main"
         >
-          <div className="flex w-full min-w-0 max-w-[85rem] flex-col lg:min-h-0 lg:flex-1">
+          <div className="flex w-full min-w-0 max-w-[85rem] flex-col lg:min-h-0 lg:flex-1 print:block print:max-w-none">
             <Outlet />
           </div>
         </main>
