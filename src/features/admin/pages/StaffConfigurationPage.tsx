@@ -5,10 +5,19 @@ import { ConfirmDialog } from '@/components/feedback/ConfirmDialog'
 import { ErrorState } from '@/components/feedback/ErrorState'
 import { LoadingState } from '@/components/feedback/LoadingState'
 import { PageHeader } from '@/components/layout/PageHeader'
+import {
+  ApplyRoleAssignmentModal,
+  type RoleAssignmentChange,
+} from '@/features/admin/components/ApplyRoleAssignmentModal'
 import { StaffLocationNavBadge } from '@/features/admin/components/StaffLocationNavBadge'
 import { useStaffConfiguration } from '@/features/admin/hooks/useStaffConfiguration'
-import type { StaffMemberRow } from '@/features/admin/types/staffConfiguration'
+import { useStaffRoleAssignments } from '@/features/admin/hooks/useStaffRoleAssignments'
+import type {
+  StaffMemberRow,
+  StaffRoleAssignmentRow,
+} from '@/features/admin/types/staffConfiguration'
 import {
+  applyStaffRoleAssignment,
   deleteStaffMember,
   insertStaffMember,
   updateStaffMember,
@@ -16,6 +25,7 @@ import {
 } from '@/lib/staffMembersApi'
 import { queryErrorDetail } from '@/lib/queryError'
 import { primaryLocationNavBadge } from '@/lib/locationNavBadge'
+import { formatShortDate } from '@/lib/formatters'
 import type { ImportLocationRow, StaffSalesImportMetadataRow } from '@/lib/supabaseRpc'
 
 type StatusFilter = 'all' | 'active' | 'inactive'
@@ -46,6 +56,33 @@ type StaffFormDraft = {
   contractor_city_postcode: string
   contractor_email: string
   contractor_invoice_code: string
+}
+
+/**
+ * Form keys that are sale-date effective. Changes to these go through the
+ * `apply_staff_role_assignment` RPC (which closes the current open
+ * assignment, inserts a new one, and syncs `staff_members`). Everything
+ * NOT in this set is treated as "current snapshot" data and saved via the
+ * existing `updateStaffMember` flow.
+ */
+const ROLE_PAY_KEYS = [
+  'primary_role',
+  'secondary_roles',
+  'remuneration_plan',
+  'employment_type',
+  'primary_location_id',
+  'fte',
+] as const satisfies ReadonlyArray<keyof StaffFormDraft>
+
+type RolePayKey = (typeof ROLE_PAY_KEYS)[number]
+
+const ROLE_PAY_LABELS: Record<RolePayKey, string> = {
+  primary_role: 'Primary role',
+  secondary_roles: 'Secondary roles',
+  remuneration_plan: 'Remuneration plan',
+  employment_type: 'Employment type',
+  primary_location_id: 'Primary location',
+  fte: 'FTE',
 }
 
 function normalizeEmploymentKind(raw: string | null | undefined): EmploymentKind {
@@ -304,8 +341,13 @@ export function StaffConfigurationPage() {
     setSelectedId(filteredStaff[0].id)
   }, [filteredStaff, selectedId])
 
-  const dirty = useMemo(() => {
-    if (!selected || !draft) return false
+  /**
+   * Per-key dirty map across the full form. Drives the save flow's split
+   * between "normal" (direct `updateStaffMember`) and "role/pay" (effective-
+   * dated `apply_staff_role_assignment` via the modal).
+   */
+  const dirtyMap = useMemo<Partial<Record<keyof StaffFormDraft, boolean>>>(() => {
+    if (!selected || !draft) return {}
     const base = draftFromRow(selected)
     const keys: (keyof StaffFormDraft)[] = [
       'full_name',
@@ -329,19 +371,37 @@ export function StaffConfigurationPage() {
       'contractor_email',
       'contractor_invoice_code',
     ]
+    const out: Partial<Record<keyof StaffFormDraft, boolean>> = {}
     for (const k of keys) {
       const a = draft[k]
       const b = base[k]
+      let changed = false
       if (k === 'is_active' || k === 'contractor_gst_registered') {
-        if (a !== b) return true
-        continue
+        changed = a !== b
+      } else {
+        const an = typeof a === 'string' ? a.trim() : a
+        const bn = typeof b === 'string' ? b.trim() : b
+        changed = an !== bn
       }
-      const an = typeof a === 'string' ? a.trim() : a
-      const bn = typeof b === 'string' ? b.trim() : b
-      if (an !== bn) return true
+      if (changed) out[k] = true
     }
-    return false
+    return out
   }, [selected, draft])
+
+  const roleOrPayDirty = useMemo(
+    () => ROLE_PAY_KEYS.some((k) => dirtyMap[k] === true),
+    [dirtyMap],
+  )
+
+  const normalDirty = useMemo(
+    () =>
+      Object.keys(dirtyMap).some(
+        (k) => !(ROLE_PAY_KEYS as readonly string[]).includes(k),
+      ),
+    [dirtyMap],
+  )
+
+  const dirty = roleOrPayDirty || normalDirty
 
   const saveMut = useMutation({
     mutationFn: async () => {
@@ -389,6 +449,141 @@ export function StaffConfigurationPage() {
       void queryClient.invalidateQueries({ queryKey: ['remuneration-configuration'] })
     },
   })
+
+  /**
+   * Effective-dated save path. Used whenever any of `ROLE_PAY_KEYS` are
+   * dirty. If normal (non-role/pay) fields are ALSO dirty, those are
+   * persisted first via the existing `updateStaffMember` call but with
+   * role/pay locked to the SELECTED (old) values — that way, if the
+   * subsequent assignment apply fails, `staff_members` still reflects a
+   * consistent role/pay state and the user can retry the modal without
+   * having to undo their normal-field edits.
+   */
+  const applyAssignmentMut = useMutation({
+    mutationFn: async (modalValues: { effectiveDate: string; reason: string }) => {
+      if (!draft || !selected) return
+      const fteTrimmed = draft.fte.trim()
+      let newFte: number | null = null
+      if (fteTrimmed !== '') {
+        const n = Number(fteTrimmed)
+        if (!Number.isFinite(n)) {
+          throw new Error('FTE must be a number (e.g. 1, 0.5, 0.8).')
+        }
+        newFte = n
+      }
+
+      if (normalDirty) {
+        const oldFteNum =
+          selected.fte == null
+            ? null
+            : (() => {
+                const n = Number(selected.fte)
+                return Number.isFinite(n) ? n : null
+              })()
+        const lockedPayload: StaffMemberUpdatePayload = {
+          id: draft.id,
+          full_name: draft.full_name,
+          display_name: draft.display_name || null,
+          // Role/pay locked to the SELECTED row so this UPDATE only carries
+          // non-role/pay edits. The RPC below will write the new role/pay.
+          primary_role: selected.primary_role,
+          secondary_roles: selected.secondary_roles,
+          remuneration_plan: selected.remuneration_plan,
+          employment_type: selected.employment_type,
+          primary_location_id: selected.primary_location_id ?? null,
+          fte: oldFteNum,
+          // All other fields take their (potentially new) draft value:
+          employment_start_date: draft.employment_start_date || null,
+          employment_end_date: draft.employment_end_date || null,
+          is_active: draft.is_active,
+          notes: draft.notes || null,
+          contractor_company_name: draft.contractor_company_name || null,
+          contractor_gst_registered: draft.contractor_gst_registered,
+          contractor_ird_number: draft.contractor_ird_number || null,
+          contractor_street_address: draft.contractor_street_address || null,
+          contractor_suburb: draft.contractor_suburb || null,
+          contractor_city_postcode: draft.contractor_city_postcode || null,
+          contractor_email: draft.contractor_email || null,
+          contractor_invoice_code: draft.contractor_invoice_code || null,
+        }
+        await updateStaffMember(lockedPayload)
+      }
+
+      await applyStaffRoleAssignment({
+        staffMemberId: draft.id,
+        effectiveStartDate: modalValues.effectiveDate,
+        primaryRole: draft.primary_role || null,
+        secondaryRoles: draft.secondary_roles || null,
+        employmentType: draft.employment_type,
+        remunerationPlan: draft.remuneration_plan || null,
+        fte: newFte,
+        primaryLocationId:
+          draft.primary_location_id.trim() === '' ? null : draft.primary_location_id.trim(),
+        reason: modalValues.reason || null,
+      })
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['staff-configuration'] })
+      void queryClient.invalidateQueries({
+        queryKey: ['admin-access-staff-location-lookup'],
+      })
+      void queryClient.invalidateQueries({ queryKey: ['remuneration-configuration'] })
+      if (draft?.id) {
+        void queryClient.invalidateQueries({
+          queryKey: ['staff-role-assignments', draft.id],
+        })
+      }
+      setApplyModalOpen(false)
+    },
+  })
+
+  const [applyModalOpen, setApplyModalOpen] = useState(false)
+
+  /**
+   * Renderable diff of the role/pay fields that are about to change.
+   * `primary_location_id` is resolved to a human-readable location name
+   * using the `locations` lookup loaded by `useStaffConfiguration`.
+   */
+  const pendingRolePayChanges = useMemo<RoleAssignmentChange[]>(() => {
+    if (!selected || !draft) return []
+    const locName = (id: string | null | undefined): string | null => {
+      const trimmed = (id ?? '').trim()
+      if (trimmed === '') return null
+      const hit = locations.find((l) => l.id === trimmed)
+      return hit ? `${hit.name}${hit.code ? ` (${hit.code})` : ''}` : trimmed
+    }
+    const out: RoleAssignmentChange[] = []
+    for (const key of ROLE_PAY_KEYS) {
+      if (dirtyMap[key] !== true) continue
+      const label = ROLE_PAY_LABELS[key]
+      if (key === 'primary_location_id') {
+        out.push({
+          label,
+          oldValue: locName(selected.primary_location_id ?? null),
+          newValue: locName(draft.primary_location_id),
+        })
+      } else if (key === 'fte') {
+        out.push({
+          label,
+          oldValue: selected.fte == null ? null : String(selected.fte),
+          newValue: draft.fte === '' ? null : draft.fte,
+        })
+      } else if (key === 'employment_type') {
+        out.push({
+          label,
+          oldValue: selected.employment_type ?? null,
+          newValue: draft.employment_type,
+        })
+      } else {
+        out.push({
+          label,
+          oldValue: (selected[key] as string | null) ?? null,
+          newValue: (draft[key] as string) || null,
+        })
+      }
+    }
+    return out
+  }, [selected, draft, dirtyMap, locations])
 
   const createMut = useMutation({
     mutationFn: () =>
@@ -674,7 +869,12 @@ export function StaffConfigurationPage() {
                 className="space-y-6"
                 onSubmit={(e) => {
                   e.preventDefault()
-                  void saveMut.mutateAsync()
+                  if (!draft) return
+                  if (roleOrPayDirty) {
+                    setApplyModalOpen(true)
+                  } else if (normalDirty) {
+                    void saveMut.mutateAsync()
+                  }
                 }}
               >
                 <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -1088,11 +1288,22 @@ export function StaffConfigurationPage() {
                   <div className="flex flex-wrap items-center gap-3">
                     <button
                       type="submit"
-                      disabled={saveMut.isPending || !dirty}
+                      disabled={
+                        saveMut.isPending || applyAssignmentMut.isPending || !dirty
+                      }
                       className="rounded-md bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      {saveMut.isPending ? 'Saving…' : 'Save changes'}
+                      {saveMut.isPending
+                        ? 'Saving…'
+                        : roleOrPayDirty
+                          ? 'Save changes…'
+                          : 'Save changes'}
                     </button>
+                    {roleOrPayDirty ? (
+                      <span className="text-xs text-slate-500">
+                        Role / pay changes will prompt for an effective date.
+                      </span>
+                    ) : null}
                     {saveMut.isError ? (
                       <span className="text-sm text-red-600">
                         {saveMut.error instanceof Error
@@ -1129,9 +1340,41 @@ export function StaffConfigurationPage() {
               </form>
             )}
           </section>
+
+          {selected ? (
+            <StaffRoleAssignmentHistorySection staffMemberId={selected.id} />
+          ) : null}
         </div>
         </div>
       </div>
+
+      <ApplyRoleAssignmentModal
+        open={applyModalOpen}
+        staffDisplayName={
+          selected
+            ? (selected.display_name?.trim() ||
+                selected.full_name?.trim() ||
+                'this staff member')
+            : ''
+        }
+        pendingChanges={pendingRolePayChanges}
+        submitting={applyAssignmentMut.isPending}
+        submitError={
+          applyAssignmentMut.isError
+            ? applyAssignmentMut.error instanceof Error
+              ? applyAssignmentMut.error.message
+              : String(applyAssignmentMut.error)
+            : null
+        }
+        onClose={() => {
+          if (applyAssignmentMut.isPending) return
+          setApplyModalOpen(false)
+          applyAssignmentMut.reset()
+        }}
+        onConfirm={(values) => {
+          void applyAssignmentMut.mutateAsync(values)
+        }}
+      />
 
       <ConfirmDialog
         open={confirmDeleteStaff != null}
@@ -1148,5 +1391,173 @@ export function StaffConfigurationPage() {
         testId="staff-config-delete-confirm"
       />
     </div>
+  )
+}
+
+/* ------------------------------------------------------------------------- */
+/* Role and pay history (read-only)                                          */
+/* ------------------------------------------------------------------------- */
+
+function formatHistoryDate(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  return formatShortDate(iso)
+}
+
+function formatHistoryFte(fte: number | string | null | undefined): string {
+  if (fte == null || fte === '') return '—'
+  const n = typeof fte === 'number' ? fte : Number(fte)
+  if (!Number.isFinite(n)) return String(fte)
+  // Match the Staff form's editing style (trim trailing zeros).
+  return n
+    .toFixed(4)
+    .replace(/\.?0+$/, '')
+}
+
+function formatHistoryText(v: string | null | undefined): string {
+  const s = (v ?? '').trim()
+  return s === '' ? '—' : s
+}
+
+function HistoryRow({ row }: { row: StaffRoleAssignmentRow }) {
+  const isOpen = row.effective_end_date == null
+  return (
+    <tr className="align-top">
+      <td className="px-3 py-2 text-xs text-slate-700">
+        <div className="font-medium text-slate-900">
+          {formatHistoryDate(row.effective_start_date)}
+        </div>
+        <div className="text-slate-500">
+          to{' '}
+          {isOpen ? (
+            <span className="font-medium text-emerald-700">present</span>
+          ) : (
+            formatHistoryDate(row.effective_end_date)
+          )}
+        </div>
+      </td>
+      <td className="px-3 py-2 text-xs text-slate-800">
+        {formatHistoryText(row.primary_role)}
+      </td>
+      <td className="px-3 py-2 text-xs text-slate-800">
+        {formatHistoryText(row.employment_type)}
+      </td>
+      <td className="px-3 py-2 text-xs text-slate-800">
+        {formatHistoryText(row.remuneration_plan)}
+      </td>
+      <td className="px-3 py-2 text-right text-xs text-slate-800 tabular-nums">
+        {formatHistoryFte(row.fte)}
+      </td>
+      <td className="px-3 py-2 text-xs text-slate-800">
+        {formatHistoryText(row.primary_location_name ?? null)}
+      </td>
+      <td className="px-3 py-2 text-xs text-slate-600">
+        {formatHistoryText(row.reason)}
+      </td>
+    </tr>
+  )
+}
+
+function StaffRoleAssignmentHistorySection({
+  staffMemberId,
+}: {
+  staffMemberId: string
+}) {
+  const { data, isLoading, isError, error, refetch } =
+    useStaffRoleAssignments(staffMemberId)
+
+  return (
+    <section className="mt-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+      <header className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-base font-semibold text-slate-900">
+            Role and pay history
+          </h2>
+          <p className="mt-1 text-xs text-slate-600">
+            Effective-dated record of role, remuneration plan, employment type,
+            FTE, and primary location. Commission and KPI calculations use these
+            values as at the sale date. Edits to role / pay fields above open
+            the apply-change dialog and add a new entry here.
+          </p>
+        </div>
+      </header>
+
+      {isLoading ? (
+        <div className="mt-4">
+          <LoadingState message="Loading history…" testId="staff-history-loading" />
+        </div>
+      ) : isError ? (
+        <div className="mt-4">
+          <ErrorState
+            title="Could not load history"
+            error={error instanceof Error ? error : null}
+            message={
+              error instanceof Error ? error.message : String(error ?? 'Unknown error')
+            }
+            onRetry={() => void refetch()}
+            testId="staff-history-error"
+          />
+        </div>
+      ) : !data || data.length === 0 ? (
+        <p className="mt-4 text-sm text-slate-500">
+          No role / pay history yet for this staff member.
+        </p>
+      ) : (
+        <div className="mt-4 overflow-x-auto">
+          <table className="min-w-full divide-y divide-slate-200">
+            <thead className="bg-slate-50/80">
+              <tr>
+                <th
+                  scope="col"
+                  className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500"
+                >
+                  Effective
+                </th>
+                <th
+                  scope="col"
+                  className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500"
+                >
+                  Primary role
+                </th>
+                <th
+                  scope="col"
+                  className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500"
+                >
+                  Employment type
+                </th>
+                <th
+                  scope="col"
+                  className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500"
+                >
+                  Remuneration plan
+                </th>
+                <th
+                  scope="col"
+                  className="px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-wide text-slate-500"
+                >
+                  FTE
+                </th>
+                <th
+                  scope="col"
+                  className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500"
+                >
+                  Primary location
+                </th>
+                <th
+                  scope="col"
+                  className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500"
+                >
+                  Reason
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {data.map((row) => (
+                <HistoryRow key={row.id} row={row} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
   )
 }

@@ -1,7 +1,10 @@
 /**
  * Staff master CRUD (elevated users only; RLS on `staff_members`).
  */
-import type { StaffMemberRow } from '@/features/admin/types/staffConfiguration'
+import type {
+  StaffMemberRow,
+  StaffRoleAssignmentRow,
+} from '@/features/admin/types/staffConfiguration'
 import { requireSupabaseClient } from '@/lib/supabase'
 
 import type { PostgrestError } from '@supabase/supabase-js'
@@ -119,6 +122,81 @@ export async function deleteStaffMember(staffMemberId: string): Promise<void> {
     p_staff_member_id: staffMemberId,
   })
   if (error) throw toError('delete_staff_member_admin', error)
+}
+
+/**
+ * Args for the effective-dated role/pay write path. Mirrors
+ * `public.apply_staff_role_assignment(...)` (migration 20260828120300).
+ * The RPC closes the currently-open assignment and inserts a new one (or
+ * updates in-place when one already starts on `effectiveStartDate`), and
+ * syncs the latest values onto `staff_members`.
+ */
+export type ApplyStaffRoleAssignmentArgs = {
+  staffMemberId: string
+  /** YYYY-MM-DD. */
+  effectiveStartDate: string
+  primaryRole: string | null
+  secondaryRoles: string | null
+  employmentType: string | null
+  remunerationPlan: string | null
+  fte: number | null
+  primaryLocationId: string | null
+  reason: string | null
+}
+
+/** Envelope returned by the RPC. Only the fields the UI uses are typed. */
+export type ApplyStaffRoleAssignmentResult = {
+  success: boolean
+  action: 'updated_existing' | 'inserted_new'
+  assignment_id: string
+  previous_open_id: string | null
+  previous_open_end_date: string | null
+  staff_member_id: string
+  effective_start_date: string
+  synced_staff_members: boolean
+  message: string
+}
+
+export async function applyStaffRoleAssignment(
+  args: ApplyStaffRoleAssignmentArgs,
+): Promise<ApplyStaffRoleAssignmentResult> {
+  const { data, error } = await requireSupabaseClient().rpc(
+    'apply_staff_role_assignment',
+    {
+      p_staff_member_id: args.staffMemberId,
+      p_effective_start_date: args.effectiveStartDate,
+      p_primary_role: emptyToNull(args.primaryRole),
+      p_secondary_roles: emptyToNull(args.secondaryRoles),
+      p_employment_type: emptyToNull(args.employmentType),
+      p_remuneration_plan: emptyToNull(args.remunerationPlan),
+      p_fte: args.fte,
+      p_primary_location_id:
+        args.primaryLocationId && args.primaryLocationId.trim() !== ''
+          ? args.primaryLocationId
+          : null,
+      p_reason: emptyToNull(args.reason),
+    },
+  )
+  if (error) throw toError('apply_staff_role_assignment', error)
+  return data as ApplyStaffRoleAssignmentResult
+}
+
+/**
+ * Returns the effective-dated role/pay history for a staff member,
+ * most-recent-first, with the primary location name joined for display.
+ * Calls `public.list_staff_role_assignments(p_staff_member_id)`.
+ */
+export async function fetchStaffRoleAssignments(
+  staffMemberId: string,
+): Promise<StaffRoleAssignmentRow[]> {
+  const id = String(staffMemberId ?? '').trim()
+  if (id === '') return []
+  const { data, error } = await requireSupabaseClient().rpc(
+    'list_staff_role_assignments',
+    { p_staff_member_id: id },
+  )
+  if (error) throw toError('list_staff_role_assignments', error)
+  return asRows(data as StaffRoleAssignmentRow[])
 }
 
 function emptyToNull(s: string | null): string | null {
