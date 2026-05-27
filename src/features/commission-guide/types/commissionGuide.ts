@@ -2,8 +2,9 @@
  * TypeScript view of the jsonb envelope returned by
  * `public.get_staff_commission_guide(p_staff_member_id, p_as_of_date)`.
  *
- * Keep this in sync with the migration at
- * `supabase/migrations/20260828120500_commission_guide.sql`.
+ * Keep this in sync with the latest RPC migration. The current
+ * personalised-redesign envelope is defined in
+ * `supabase/migrations/20260828120800_commission_guide_personalised.sql`.
  */
 
 /** Wage / commission categories used by `remuneration_plan_rates`. */
@@ -53,7 +54,7 @@ export type CommissionGuideNote = {
   body: string
 }
 
-/** Wage / contractor / commission / none — drives the plan-summary paragraph. */
+/** Wage / contractor / commission / none. Drives the plan-summary paragraph. */
 export type CommissionGuidePlanStyle = 'wage' | 'contractor' | 'commission' | 'none'
 
 export type CommissionGuidePlanSummary = {
@@ -122,16 +123,63 @@ export type CommissionGuideCaller = {
   is_self: boolean
 }
 
+/* -------------------------------------------------------------------------- */
+/* Personalised sections (v4 envelope, returned by 20260828120800).            */
+/* -------------------------------------------------------------------------- */
+
+/** One example for an eligible-category card. */
+export type CommissionGuideSectionExample = {
+  sale_ex_gst: number
+  commission: number
+  plain_english: string
+}
+
+/** A "you earn N% on …" card the staff page renders prominently. */
+export type CommissionGuideEligibleSection = {
+  category: CommissionRateCategory | string
+  label: string
+  rate: number
+  summary: string
+  example: CommissionGuideSectionExample
+}
+
+/** A compact "this category does not earn commission for you" card. */
+export type CommissionGuideNotEligibleSection = {
+  category: string
+  label: string
+  plain_english: string
+}
+
+/** One product / service the staff has recently been involved in that needs explaining. */
+export type CommissionGuideRecentItem = {
+  product_or_service: string
+  commission_category: CommissionCategoryAny
+  treatment: string
+  plain_english: string
+  recent_line_count: number
+  last_seen: string | null
+}
+
 export type CommissionGuideEnvelope = {
   as_of_date: string
   staff: CommissionGuideStaff
   plan: CommissionGuidePlan | null
   plan_summary: CommissionGuidePlanSummary
+
+  /* New personalised sections (used by the redesigned staff page). */
+  eligible_sections: CommissionGuideEligibleSection[]
+  not_eligible_sections: CommissionGuideNotEligibleSection[]
+  recent_items_to_be_aware_of: CommissionGuideRecentItem[]
+  recent_lookback_days: number
+  admin_full_product_guide: CommissionGuideClassificationRow[]
+
+  /* Legacy fields, still returned but no longer rendered on the page. */
   rate_cards: CommissionGuideRateCard[]
   classification_table: CommissionGuideClassificationRow[]
   exclusions: CommissionGuideExclusion[]
   special_cases: CommissionGuideSpecialCase[]
   examples: CommissionGuideExample[]
+
   caller: CommissionGuideCaller
 }
 
@@ -158,14 +206,14 @@ export const COMMISSION_CATEGORY_LABELS: Record<string, string> = {
 }
 
 export function friendlyCategoryLabel(code: string | null | undefined): string {
-  if (!code) return '—'
+  if (!code) return 'Not classified'
   return COMMISSION_CATEGORY_LABELS[code] ?? code
 }
 
 /**
  * Short, staff-facing label for the "How Oscar & Co treats it" column.
- * All `no_commission_*` codes collapse to a single user-friendly phrase
- * — the plain-English explanation column carries the "why".
+ * All `no_commission_*` codes collapse to a single user-friendly phrase.
+ * The plain-English explanation column carries the "why".
  */
 export function howWeTreatItLabel(
   code: CommissionCategoryAny | undefined,
