@@ -127,20 +127,34 @@ export type CommissionGuideCaller = {
 /* Personalised sections (v4 envelope, returned by 20260828120800).            */
 /* -------------------------------------------------------------------------- */
 
-/** One example for an eligible-category card. */
+/**
+ * Real sale-line example shown inside an eligible-category card.
+ * Returned by the v5 RPC migration (20260828120900). The rate and
+ * commission are computed using the selected staff's current plan rate
+ * (not the original sale line's rate), so the math always reflects the
+ * viewer's plan.
+ */
 export type CommissionGuideSectionExample = {
-  sale_ex_gst: number
+  product_service_name: string
+  price_incl_gst: number
+  price_ex_gst: number
+  rate: number
   commission: number
-  plain_english: string
+  /** True when this example is a real sale line for the selected staff. */
+  is_staff_specific: boolean
+  /** Display name of the staff member the example was taken from. */
+  source_staff_display_name: string | null
 }
 
-/** A "you earn N% on …" card the staff page renders prominently. */
+/** Compact "rate - friendly category name" card with one real example. */
 export type CommissionGuideEligibleSection = {
   category: CommissionRateCategory | string
   label: string
   rate: number
+  /** Short internal summary, retained for back-compat. The page no longer renders it. */
   summary: string
-  example: CommissionGuideSectionExample
+  /** Real sale-line example, or null when no recent example exists for this category. */
+  example: CommissionGuideSectionExample | null
 }
 
 /** A compact "this category does not earn commission for you" card. */
