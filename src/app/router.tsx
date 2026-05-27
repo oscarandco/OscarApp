@@ -15,6 +15,7 @@ import { AdminPayrollSummaryPage } from '@/features/admin/pages/AdminPayrollSumm
 import { AdminQuoteConfigurationPage } from '@/features/admin/pages/AdminQuoteConfigurationPage'
 import { AdminQuoteSectionDetailPage } from '@/features/admin/pages/AdminQuoteSectionDetailPage'
 import { AdminWeeklyCommissionDashboardPage } from '@/features/admin/pages/AdminWeeklyCommissionDashboardPage'
+import { CommissionGuidePage } from '@/features/commission-guide/pages/CommissionGuidePage'
 import { ProductConfigurationPage } from '@/features/admin/pages/ProductConfigurationPage'
 import { RemunerationConfigurationPage } from '@/features/admin/pages/RemunerationConfigurationPage'
 import { RolePermissionsPage } from '@/features/admin/pages/RolePermissionsPage'
@@ -81,6 +82,14 @@ export function AppRouter() {
             element={
               <RequirePageAccess pageId="kpi_dashboard">
                 <KpiDashboardPage />
+              </RequirePageAccess>
+            }
+          />
+          <Route
+            path="commission-guide"
+            element={
+              <RequirePageAccess pageId="commission_guide">
+                <CommissionGuidePage />
               </RequirePageAccess>
             }
           />

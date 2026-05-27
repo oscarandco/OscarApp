@@ -60,6 +60,7 @@ export type PageId =
   | 'guest_quote'
   | 'previous_quotes'
   | 'kpi_dashboard'
+  | 'commission_guide'
   | 'weekly_payroll'
   | 'contractor_invoices'
   | 'commission_breakdown'
@@ -80,6 +81,7 @@ export const PAGE_MATRIX_ROW_ORDER: PageId[] = [
   'guest_quote',
   'previous_quotes',
   'kpi_dashboard',
+  'commission_guide',
   'weekly_payroll',
   'contractor_invoices',
   'commission_breakdown',
@@ -138,6 +140,17 @@ export const PAGE_ACCESS_MATRIX: Record<PageId, Record<RoleKey, PageAccessLevel>
     admin: F,
   },
   kpi_dashboard: {
+    assistant: F,
+    stylist: F,
+    reception: O,
+    manager: F,
+    assistant_uat: F,
+    stylist_uat: F,
+    reception_uat: O,
+    manager_uat: F,
+    admin: F,
+  },
+  commission_guide: {
     assistant: F,
     stylist: F,
     reception: O,

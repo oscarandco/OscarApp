@@ -26,6 +26,7 @@ const PAGE_FEATURE_LABELS: Record<PageId, string> = {
   guest_quote: 'Guest quote',
   previous_quotes: 'Previous quotes',
   kpi_dashboard: 'KPIs',
+  commission_guide: 'Commission guide',
   weekly_payroll: 'Weekly payroll',
   contractor_invoices: 'Contractor invoices',
   commission_breakdown: 'Sales summary',
@@ -57,7 +58,13 @@ const PERMISSION_MATRIX_SECTIONS: { id: string; label: string; pageIds: PageId[]
   {
     id: 'main',
     label: 'Main',
-    pageIds: ['my_payroll', 'guest_quote', 'previous_quotes', 'kpi_dashboard'],
+    pageIds: [
+      'my_payroll',
+      'guest_quote',
+      'previous_quotes',
+      'kpi_dashboard',
+      'commission_guide',
+    ],
   },
   {
     id: 'admin',

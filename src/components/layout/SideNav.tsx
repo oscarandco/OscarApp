@@ -38,6 +38,7 @@ function NavBody({ onNavigate }: { onNavigate?: () => void }) {
   const canGuestQuote = useCanViewPage('guest_quote')
   const canPreviousQuotes = useCanViewPage('previous_quotes')
   const canKpiDashboard = useCanViewPage('kpi_dashboard')
+  const canCommissionGuide = useCanViewPage('commission_guide')
 
   const canWeeklyPayroll = useCanViewPage('weekly_payroll')
   const canContractorInvoices = useCanViewPage('contractor_invoices')
@@ -53,7 +54,11 @@ function NavBody({ onNavigate }: { onNavigate?: () => void }) {
   const canAccess = useCanViewPage('access')
 
   const anyMain =
-    canMyPayroll || canGuestQuote || canPreviousQuotes || canKpiDashboard
+    canMyPayroll ||
+    canGuestQuote ||
+    canPreviousQuotes ||
+    canKpiDashboard ||
+    canCommissionGuide
   const anyAdmin =
     canWeeklyPayroll || canContractorInvoices || canCommissionBreakdown || canImports
   const anyConfig =
@@ -107,6 +112,15 @@ function NavBody({ onNavigate }: { onNavigate?: () => void }) {
               onClick={handleClick}
             >
               KPIs
+            </NavLink>
+          ) : null}
+          {canCommissionGuide ? (
+            <NavLink
+              to="/app/commission-guide"
+              className={linkClass}
+              onClick={handleClick}
+            >
+              Commission guide
             </NavLink>
           ) : null}
         </>
