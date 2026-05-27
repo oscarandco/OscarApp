@@ -23,7 +23,7 @@ export type FetchCommissionGuideArgs = {
 
 function toError(op: string, err: PostgrestError): Error {
   const parts = [err.message, err.details, err.hint].filter(Boolean)
-  return new Error(`${op}: ${parts.join(' - ')}`)
+  return new Error(`${op}: ${parts.join(' — ')}`)
 }
 
 export async function fetchCommissionGuide(

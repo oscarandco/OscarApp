@@ -190,9 +190,9 @@ export type CommissionGuideEnvelope = {
 export const COMMISSION_CATEGORY_LABELS: Record<string, string> = {
   service: 'Salon service',
   retail_product: 'Retail product',
-  professional_product: 'Treatment product',
-  toner_with_other_service: 'Toner line',
-  extensions_product: 'Extension product',
+  professional_product: 'Treatment / professional product',
+  toner_with_other_service: 'Toner added to another service',
+  extensions_product: 'Extension hair / product',
   extensions_service: 'Extension labour',
   no_commission_voucher: 'Voucher sale, no commission',
   no_commission_greenfee: 'Green fee, no commission',
@@ -225,11 +225,11 @@ export function howWeTreatItLabel(
     case 'retail_product':
       return 'Retail product'
     case 'professional_product':
-      return 'Treatment product'
+      return 'Treatment / professional product'
     case 'toner_with_other_service':
-      return 'Toner line'
+      return 'Toner added to another service'
     case 'extensions_product':
-      return 'Extension product'
+      return 'Extension hair / product'
     case 'extensions_service':
       return 'Extension labour'
     default:

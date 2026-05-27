@@ -8,7 +8,6 @@ import { useAccessProfile } from '@/features/access/accessContext'
 import { useCommissionGuide } from '@/features/commission-guide/hooks/useCommissionGuide'
 import {
   howWeTreatItLabel,
-  type CommissionCategoryAny,
   type CommissionGuideClassificationRow,
   type CommissionGuideEligibleSection,
   type CommissionGuideEnvelope,
@@ -31,7 +30,7 @@ function todayIso(): string {
   return `${y}-${m}-${day}`
 }
 
-/** Friendly display for any string-ish value. */
+/** Friendly display for any string-ish value. Uses "Not set" instead of an em dash. */
 function showOrNotSet(v: string | null | undefined): string {
   const s = (v ?? '').trim()
   return s === '' ? 'Not set' : s
@@ -42,350 +41,6 @@ function formatFteValue(v: number | string | null | undefined): string {
   const n = typeof v === 'number' ? v : Number(v)
   if (!Number.isFinite(n)) return String(v)
   return n.toFixed(4).replace(/\.?0+$/, '')
-}
-
-function formatMoney(v: number): string {
-  const fixed = v.toFixed(2)
-  return `$${fixed.endsWith('.00') ? fixed.slice(0, -3) : fixed}`
-}
-
-type CategoryCopy = {
-  label: string
-  plural: string
-  exampleName: string
-  defaultExampleAmount: number
-  noCommissionText: string
-}
-
-const CATEGORY_COPY: Record<string, CategoryCopy> = {
-  service: {
-    label: 'Salon services',
-    plural: 'salon services',
-    exampleName: 'salon service',
-    defaultExampleAmount: 100,
-    noCommissionText:
-      'You are paid hourly for salon service work, so service commission does not apply on your current plan.',
-  },
-  retail_product: {
-    label: 'Retail products',
-    plural: 'retail products',
-    exampleName: 'retail product',
-    defaultExampleAmount: 30,
-    noCommissionText:
-      'Your current plan does not pay commission on retail product sales.',
-  },
-  professional_product: {
-    label: 'Treatment products',
-    plural: 'treatment products',
-    exampleName: 'treatment product',
-    defaultExampleAmount: 40,
-    noCommissionText:
-      'Your current plan does not pay commission on treatment product lines.',
-  },
-  toner_with_other_service: {
-    label: 'Toner lines',
-    plural: 'toner lines',
-    exampleName: 'toner line',
-    defaultExampleAmount: 30,
-    noCommissionText:
-      'Your current plan does not pay commission on toner lines.',
-  },
-  extensions_product: {
-    label: 'Extension products',
-    plural: 'extension products',
-    exampleName: 'extension product',
-    defaultExampleAmount: 250,
-    noCommissionText:
-      'Your current plan does not pay commission on extension product sales.',
-  },
-  extensions_service: {
-    label: 'Extension labour',
-    plural: 'extension labour',
-    exampleName: 'extension service',
-    defaultExampleAmount: 150,
-    noCommissionText:
-      'Your current plan does not pay commission on extension labour.',
-  },
-}
-
-const CATEGORY_ORDER = [
-  'service',
-  'retail_product',
-  'professional_product',
-  'toner_with_other_service',
-  'extensions_product',
-  'extensions_service',
-]
-
-function categoryCopy(category: string | null | undefined): CategoryCopy {
-  if (!category) {
-    return {
-      label: 'Other items',
-      plural: 'other items',
-      exampleName: 'sale',
-      defaultExampleAmount: 100,
-      noCommissionText: 'This item does not earn commission on your current plan.',
-    }
-  }
-  return (
-    CATEGORY_COPY[category] ?? {
-      label: howWeTreatItLabel(category),
-      plural: howWeTreatItLabel(category).toLowerCase(),
-      exampleName: howWeTreatItLabel(category).toLowerCase(),
-      defaultExampleAmount: 100,
-      noCommissionText: 'This item does not earn commission on your current plan.',
-    }
-  )
-}
-
-function eligibleSummary(category: string, rate: number): string {
-  const copy = categoryCopy(category)
-  return `You earn ${formatCommissionRatePercent(rate)} of the ex GST sale value on eligible ${copy.plural}.`
-}
-
-function eligibleExample(category: string, rate: number, source?: { sale_ex_gst?: number; commission?: number }): string {
-  const copy = categoryCopy(category)
-  const sale = Number.isFinite(source?.sale_ex_gst) ? Number(source?.sale_ex_gst) : copy.defaultExampleAmount
-  const commission = Number.isFinite(source?.commission)
-    ? Number(source?.commission)
-    : sale * rate
-
-  return `A ${formatMoney(sale)} ${copy.exampleName} sale earns ${formatMoney(commission)} commission.`
-}
-
-function normaliseCategory(category: CommissionCategoryAny | undefined): string {
-  return String(category ?? 'not_classified')
-}
-
-function isSpecialRecentCategory(category: CommissionCategoryAny | undefined): boolean {
-  const c = normaliseCategory(category)
-  if (c === 'service' || c === 'retail_product') return false
-  return true
-}
-
-type GroupedRecentItem = {
-  category: string
-  label: string
-  treatment: string
-  plain_english: string
-  recent_line_count: number
-  last_seen: string | null
-  examples: string[]
-}
-
-function recentGroupCopy(category: string): Pick<GroupedRecentItem, 'label' | 'treatment' | 'plain_english'> {
-  switch (category) {
-    case 'professional_product':
-      return {
-        label: 'Treatment products',
-        treatment: 'Treatment product rate',
-        plain_english:
-          'These treatment products use the treatment product rate, not the salon service rate.',
-      }
-    case 'toner_with_other_service':
-      return {
-        label: 'Toner lines',
-        treatment: 'Toner rate',
-        plain_english:
-          'These toner lines use the toner rate, not the main salon service rate.',
-      }
-    case 'extensions_product':
-      return {
-        label: 'Extension products',
-        treatment: 'Extension product rate',
-        plain_english: 'These extension product lines use the extension product rate.',
-      }
-    case 'extensions_service':
-      return {
-        label: 'Extension labour',
-        treatment: 'Extension labour rate',
-        plain_english: 'These extension labour lines use the extension labour rate.',
-      }
-    case 'no_commission_voucher':
-      return {
-        label: 'Voucher sales',
-        treatment: 'No commission',
-        plain_english:
-          'Voucher sales do not earn commission when sold because they are prepayments.',
-      }
-    case 'no_commission_greenfee':
-      return {
-        label: 'Green fees',
-        treatment: 'No commission',
-        plain_english: 'Green fees are not staff service sales.',
-      }
-    case 'no_commission_redo':
-      return {
-        label: 'Redos',
-        treatment: 'No commission',
-        plain_english: 'Redo work is not treated as a new commissionable sale.',
-      }
-    case 'no_commission_trainingproduct':
-      return {
-        label: 'Training items',
-        treatment: 'No commission',
-        plain_english: 'Training items do not earn commission.',
-      }
-    case 'no_commission_miscellaneousproduct':
-      return {
-        label: 'Miscellaneous items',
-        treatment: 'No commission',
-        plain_english: 'These items are not treated as commissionable salon services or retail products.',
-      }
-    case 'no_commission_unclassified':
-      return {
-        label: 'Unclassified items',
-        treatment: 'No commission',
-        plain_english: 'Unclassified items do not earn commission until they are reviewed.',
-      }
-    default:
-      return {
-        label: howWeTreatItLabel(category),
-        treatment: howWeTreatItLabel(category),
-        plain_english: 'These items use a special commission rule.',
-      }
-  }
-}
-
-function groupRecentItems(items: CommissionGuideRecentItem[]): GroupedRecentItem[] {
-  const map = new Map<string, GroupedRecentItem>()
-
-  for (const item of items) {
-    if (!isSpecialRecentCategory(item.commission_category)) continue
-
-    const category = normaliseCategory(item.commission_category)
-    const existing = map.get(category)
-    const copy = recentGroupCopy(category)
-    const name = item.product_or_service.trim()
-    const lineCount = Number(item.recent_line_count ?? 0)
-
-    if (!existing) {
-      map.set(category, {
-        category,
-        ...copy,
-        recent_line_count: lineCount,
-        last_seen: item.last_seen ?? null,
-        examples: name ? [name] : [],
-      })
-      continue
-    }
-
-    existing.recent_line_count += lineCount
-
-    if (item.last_seen && (!existing.last_seen || item.last_seen > existing.last_seen)) {
-      existing.last_seen = item.last_seen
-    }
-
-    if (name && !existing.examples.includes(name) && existing.examples.length < 4) {
-      existing.examples.push(name)
-    }
-  }
-
-  return [...map.values()].sort((a, b) => {
-    const ai = CATEGORY_ORDER.indexOf(a.category)
-    const bi = CATEGORY_ORDER.indexOf(b.category)
-    if (ai !== -1 || bi !== -1) {
-      if (ai === -1) return 1
-      if (bi === -1) return -1
-      return ai - bi
-    }
-    return b.recent_line_count - a.recent_line_count
-  })
-}
-
-type NotEligibleDisplayItem = {
-  key: string
-  label: string
-  plain_english: string
-}
-
-const STANDARD_NOT_COMMISSION_ITEMS: NotEligibleDisplayItem[] = [
-  {
-    key: 'no_commission_voucher',
-    label: 'Voucher sales',
-    plain_english:
-      'Voucher sales do not earn commission when sold because they are prepayments. When a voucher is later used, the actual service or product is treated normally.',
-  },
-  {
-    key: 'no_commission_coffee',
-    label: 'Coffee',
-    plain_english:
-      'Coffee is not treated as a commissionable salon service or retail product.',
-  },
-  {
-    key: 'no_commission_greenfee',
-    label: 'Green fees',
-    plain_english: 'Green fees are not staff service sales.',
-  },
-  {
-    key: 'no_commission_redo',
-    label: 'Redos',
-    plain_english: 'Redo work is not treated as a new commissionable sale.',
-  },
-  {
-    key: 'no_commission_trainingproduct',
-    label: 'Training items',
-    plain_english: 'Training items do not earn commission.',
-  },
-  {
-    key: 'no_commission_unclassified',
-    label: 'Unclassified items',
-    plain_english: 'Unclassified items do not earn commission until they are reviewed.',
-  },
-]
-
-function notEligibleFromRpc(section: CommissionGuideNotEligibleSection): NotEligibleDisplayItem | null {
-  const key = section.category
-  const label = section.label.trim()
-
-  if (key === 'voucher_sales' || key === 'no_commission_voucher' || label.toLowerCase().includes('voucher')) {
-    return STANDARD_NOT_COMMISSION_ITEMS[0]
-  }
-
-  if (key === 'other_non_commission_items') return null
-
-  const copy = categoryCopy(key)
-  return {
-    key,
-    label: copy.label,
-    plain_english: copy.noCommissionText,
-  }
-}
-
-function buildNotEligibleItems(
-  env: CommissionGuideEnvelope,
-): NotEligibleDisplayItem[] {
-  const out: NotEligibleDisplayItem[] = []
-  const seen = new Set<string>()
-
-  function add(item: NotEligibleDisplayItem | null) {
-    if (!item || seen.has(item.key)) return
-    seen.add(item.key)
-    out.push(item)
-  }
-
-  for (const section of env.not_eligible_sections) {
-    add(notEligibleFromRpc(section))
-  }
-
-  const planStyle = env.plan_summary.plan_style
-  const rates = env.plan?.rates ?? {}
-
-  if (planStyle === 'wage') {
-    const serviceRate = rates.service ?? 0
-    if (serviceRate <= 0) {
-      add({
-        key: 'service',
-        label: 'Salon services',
-        plain_english:
-          'You are paid hourly for salon service work, so service commission does not apply on your Wage plan.',
-      })
-    }
-  }
-
-  for (const item of STANDARD_NOT_COMMISSION_ITEMS) add(item)
-
-  return out
 }
 
 /* -------------------------------------------------------------------------- */
@@ -509,39 +164,13 @@ function SetupItem({ label, value }: { label: string; value: string }) {
 /* -------------------------------------------------------------------------- */
 
 function PlanSummarySection({ env }: { env: CommissionGuideEnvelope }) {
-  const planName = showOrNotSet(env.staff.remuneration_plan)
-  const eligible = env.eligible_sections.map((s) => categoryCopy(String(s.category)).plural)
-  let text: string
-
-  switch (env.plan_summary.plan_style) {
-    case 'wage':
-      text = env.eligible_sections.length > 0
-        ? `You are on the ${planName} plan. You are paid hourly for salon service work. Your current plan can also pay commission on ${eligible.join(', ')}.`
-        : `You are on the ${planName} plan. You are paid hourly for salon service work.`
-      break
-    case 'contractor':
-      text = `You are on the ${planName} plan. The sections below show which sales earn commission and how each one is calculated.`
-      break
-    case 'commission':
-      text = `You are on the ${planName} plan. The sections below show which sales earn commission and how each one is calculated.`
-      break
-    default:
-      text = 'You are not currently on a remuneration plan. If this looks wrong, please speak to your manager.'
-      break
-  }
-
+  const { plan_summary } = env
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
       <header>
         <h2 className="text-base font-semibold text-slate-900">Plan summary</h2>
       </header>
-      <p className="mt-2 text-sm text-slate-800">{text}</p>
-      {env.plan?.conditions_text ? (
-        <p className="mt-2 rounded-lg border border-slate-100 bg-slate-50/70 p-3 text-xs text-slate-700">
-          <span className="font-medium text-slate-900">Plan note.</span>{' '}
-          {env.plan.conditions_text}
-        </p>
-      ) : null}
+      <p className="mt-2 text-sm text-slate-800">{plan_summary.plain_english}</p>
     </section>
   )
 }
@@ -555,56 +184,46 @@ function EligibleSectionsSection({
 }: {
   sections: CommissionGuideEligibleSection[]
 }) {
-  const sorted = useMemo(() => {
-    return [...sections].sort((a, b) => {
-      const ai = CATEGORY_ORDER.indexOf(String(a.category))
-      const bi = CATEGORY_ORDER.indexOf(String(b.category))
-      if (ai === -1 && bi === -1) return String(a.label).localeCompare(String(b.label))
-      if (ai === -1) return 1
-      if (bi === -1) return -1
-      return ai - bi
-    })
-  }, [sections])
-
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
       <header>
-        <h2 className="text-base font-semibold text-slate-900">What you can earn commission on</h2>
+        <h2 className="text-base font-semibold text-slate-900">Eligible for commission</h2>
         <p className="mt-1 text-xs text-slate-600">
-          These are the parts of your current plan that can pay commission.
+          The categories your current plan pays you commission on.
         </p>
       </header>
 
-      {sorted.length === 0 ? (
+      {sections.length === 0 ? (
         <p className="mt-4 rounded-lg border border-slate-100 bg-slate-50/70 p-3 text-sm text-slate-700">
-          Your current plan does not pay commission on any category.
+          Your current plan does not pay commission on any category. See the
+          {' '}
+          <span className="font-medium">Not eligible for commission</span>
+          {' '}
+          section below for a quick explanation.
         </p>
       ) : (
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {sorted.map((c) => {
-            const category = String(c.category)
-            const copy = categoryCopy(category)
-            return (
-              <article
-                key={category}
-                className="rounded-lg border border-emerald-200 bg-emerald-50/40 p-3"
-              >
-                <div className="flex items-baseline justify-between gap-2">
-                  <h3 className="text-sm font-semibold text-slate-900">{copy.label}</h3>
-                  <span className="text-right text-sm font-semibold tabular-nums text-emerald-800">
-                    {formatCommissionRatePercent(c.rate)}
-                  </span>
-                </div>
-                <p className="mt-1.5 text-xs text-slate-700">
-                  {eligibleSummary(category, c.rate)}
-                </p>
+          {sections.map((c) => (
+            <article
+              key={c.category}
+              className="rounded-lg border border-emerald-200 bg-emerald-50/40 p-3"
+            >
+              <div className="flex items-baseline justify-between gap-2">
+                <h3 className="text-sm font-semibold text-slate-900">{c.label}</h3>
+                <span className="text-right text-sm font-semibold tabular-nums text-emerald-800">
+                  {formatCommissionRatePercent(c.rate)}
+                </span>
+              </div>
+              <p className="mt-1.5 text-xs text-slate-700">{c.summary}</p>
+              {c.example ? (
                 <p className="mt-1.5 rounded-md bg-white/70 px-2 py-1 text-xs text-slate-800">
-                  <span className="font-medium text-slate-900">Example.</span>{' '}
-                  {eligibleExample(category, c.rate, c.example)}
+                  <span className="font-medium text-slate-900">Example.</span>
+                  {' '}
+                  {c.example.plain_english}
                 </p>
-              </article>
-            )
-          })}
+              ) : null}
+            </article>
+          ))}
         </div>
       )}
     </section>
@@ -616,23 +235,24 @@ function EligibleSectionsSection({
 /* -------------------------------------------------------------------------- */
 
 function NotEligibleSectionsSection({
-  items,
+  sections,
 }: {
-  items: NotEligibleDisplayItem[]
+  sections: CommissionGuideNotEligibleSection[]
 }) {
-  if (items.length === 0) return null
+  if (sections.length === 0) return null
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
       <header>
-        <h2 className="text-base font-semibold text-slate-900">What does not earn commission</h2>
+        <h2 className="text-base font-semibold text-slate-900">Not eligible for commission</h2>
         <p className="mt-1 text-xs text-slate-600">
-          Common items and categories that do not earn commission on your current plan.
+          A short list of categories that don't earn you commission, with a one-line
+          reason.
         </p>
       </header>
-      <ul className="mt-4 grid grid-cols-1 gap-2 md:grid-cols-2">
-        {items.map((r) => (
+      <ul className="mt-4 space-y-2">
+        {sections.map((r) => (
           <li
-            key={r.key}
+            key={r.category}
             className="rounded-lg border border-slate-100 bg-slate-50/60 p-3"
           >
             <div className="text-sm font-medium text-slate-900">{r.label}</div>
@@ -655,26 +275,25 @@ function RecentItemsSection({
   items: CommissionGuideRecentItem[]
   lookbackDays: number
 }) {
-  const grouped = useMemo(() => groupRecentItems(items), [items])
-  if (grouped.length === 0) return null
-
+  if (items.length === 0) return null
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
       <header>
-        <h2 className="text-base font-semibold text-slate-900">Recent special rules</h2>
+        <h2 className="text-base font-semibold text-slate-900">Recent items to be aware of</h2>
         <p className="mt-1 text-xs text-slate-600">
-          A grouped view of special commission rules found in the last {lookbackDays} days.
+          Items you've actually been involved in over the last {lookbackDays} days
+          that have a special rule or no-commission treatment.
         </p>
       </header>
       <ul className="mt-4 space-y-2">
-        {grouped.map((item) => (
+        {items.map((item, i) => (
           <li
-            key={item.category}
+            key={`${item.product_or_service}-${i}`}
             className="rounded-lg border border-slate-100 bg-slate-50/60 p-3"
           >
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <span className="text-sm font-medium text-slate-900">
-                {item.label}
+                {item.product_or_service}
               </span>
               <span className="rounded-md bg-slate-200 px-2 py-0.5 text-[11px] font-medium text-slate-700">
                 {item.treatment}
@@ -686,11 +305,6 @@ function RecentItemsSection({
               {item.recent_line_count === 1 ? 'time' : 'times'} recently
               {item.last_seen ? `, most recent on ${formatShortDate(item.last_seen)}` : ''}.
             </p>
-            {item.examples.length > 0 ? (
-              <p className="mt-1 text-[11px] text-slate-500">
-                Examples seen recently: {item.examples.join(', ')}.
-              </p>
-            ) : null}
           </li>
         ))}
       </ul>
@@ -730,7 +344,7 @@ function AdminFullProductGuideSection({
       >
         <div>
           <h2 className="text-base font-semibold text-slate-900">
-            Full technical product guide
+            Show full technical product guide
           </h2>
           <p className="mt-0.5 text-xs text-slate-600">
             Admin and manager only. The full list of configured products and how each
@@ -776,7 +390,7 @@ function AdminFullProductGuideSection({
                     Treatment
                   </th>
                   <th className="px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                    Rate on this plan
+                    Rate (this plan)
                   </th>
                   <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500">
                     Imported type
@@ -853,10 +467,6 @@ export function CommissionGuidePage() {
     asOfDate,
   )
 
-  const notEligibleItems = useMemo(() => {
-    return data ? buildNotEligibleItems(data) : []
-  }, [data])
-
   return (
     <div className="mx-auto w-full max-w-7xl space-y-4 px-3 py-4 sm:px-6 sm:py-6">
       <PageHeader
@@ -919,7 +529,7 @@ export function CommissionGuidePage() {
           <YourSetupSection env={data} />
           <PlanSummarySection env={data} />
           <EligibleSectionsSection sections={data.eligible_sections} />
-          <NotEligibleSectionsSection items={notEligibleItems} />
+          <NotEligibleSectionsSection sections={data.not_eligible_sections} />
           <RecentItemsSection
             items={data.recent_items_to_be_aware_of}
             lookbackDays={data.recent_lookback_days ?? 90}
