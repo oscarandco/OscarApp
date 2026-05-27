@@ -215,6 +215,7 @@ export function StaffTrendsPage() {
   const [locationId, setLocationId] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('active')
   const [showAllSales, setShowAllSales] = useState(true)
+  const [chartMode, setChartMode] = useState<'bar' | 'area'>('bar')
 
   /* 52-week window anchored on "today's Monday" (UTC). */
   const mostRecentMonday = useMemo(() => payWeekStartFor(new Date()), [])
@@ -630,7 +631,43 @@ export function StaffTrendsPage() {
                 <h2 className="mb-3 text-base font-semibold text-slate-800">
                   All staff sales by week
                 </h2>
-                <StaffTrendsStackedSalesChart weeks={stackedWeeks} />
+                <StaffTrendsStackedSalesChart
+                  weeks={stackedWeeks}
+                  mode={chartMode}
+                />
+                <div className="mt-3 flex items-center gap-2 text-xs">
+                  <span className="text-slate-500">Chart</span>
+                  <div
+                    className="inline-flex overflow-hidden rounded-md border border-slate-200"
+                    role="group"
+                    aria-label="Chart type"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setChartMode('bar')}
+                      aria-pressed={chartMode === 'bar'}
+                      className={`px-2.5 py-1 transition ${
+                        chartMode === 'bar'
+                          ? 'bg-slate-100 font-medium text-slate-800'
+                          : 'text-slate-500 hover:bg-slate-50'
+                      }`}
+                    >
+                      Bar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setChartMode('area')}
+                      aria-pressed={chartMode === 'area'}
+                      className={`border-l border-slate-200 px-2.5 py-1 transition ${
+                        chartMode === 'area'
+                          ? 'bg-slate-100 font-medium text-slate-800'
+                          : 'text-slate-500 hover:bg-slate-50'
+                      }`}
+                    >
+                      Area
+                    </button>
+                  </div>
+                </div>
               </section>
             ) : null}
 
