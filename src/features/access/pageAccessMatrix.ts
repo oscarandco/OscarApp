@@ -64,6 +64,7 @@ export type PageId =
   | 'weekly_payroll'
   | 'contractor_invoices'
   | 'commission_breakdown'
+  | 'staff_trends'
   | 'imports'
   | 'staff'
   | 'products'
@@ -85,6 +86,7 @@ export const PAGE_MATRIX_ROW_ORDER: PageId[] = [
   'weekly_payroll',
   'contractor_invoices',
   'commission_breakdown',
+  'staff_trends',
   'imports',
   'staff',
   'products',
@@ -184,6 +186,17 @@ export const PAGE_ACCESS_MATRIX: Record<PageId, Record<RoleKey, PageAccessLevel>
     admin: F,
   },
   commission_breakdown: {
+    assistant: O,
+    stylist: O,
+    reception: O,
+    manager: O,
+    assistant_uat: O,
+    stylist_uat: O,
+    reception_uat: O,
+    manager_uat: O,
+    admin: F,
+  },
+  staff_trends: {
     assistant: O,
     stylist: O,
     reception: O,

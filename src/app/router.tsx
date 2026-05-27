@@ -12,6 +12,7 @@ import { AdminHomePage } from '@/features/admin/pages/AdminHomePage'
 import { AdminImportsPage } from '@/features/admin/pages/AdminImportsPage'
 import { AdminPayrollDetailPage } from '@/features/admin/pages/AdminPayrollDetailPage'
 import { AdminPayrollSummaryPage } from '@/features/admin/pages/AdminPayrollSummaryPage'
+import { StaffTrendsPage } from '@/features/admin/pages/StaffTrendsPage'
 import { AdminQuoteConfigurationPage } from '@/features/admin/pages/AdminQuoteConfigurationPage'
 import { AdminQuoteSectionDetailPage } from '@/features/admin/pages/AdminQuoteSectionDetailPage'
 import { AdminWeeklyCommissionDashboardPage } from '@/features/admin/pages/AdminWeeklyCommissionDashboardPage'
@@ -118,6 +119,14 @@ export function AppRouter() {
             element={
               <RequirePageAccess pageId="commission_breakdown">
                 <AdminPayrollDetailPage />
+              </RequirePageAccess>
+            }
+          />
+          <Route
+            path="admin/staff-trends"
+            element={
+              <RequirePageAccess pageId="staff_trends">
+                <StaffTrendsPage />
               </RequirePageAccess>
             }
           />

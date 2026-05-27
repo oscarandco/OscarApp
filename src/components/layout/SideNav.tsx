@@ -43,6 +43,7 @@ function NavBody({ onNavigate }: { onNavigate?: () => void }) {
   const canWeeklyPayroll = useCanViewPage('weekly_payroll')
   const canContractorInvoices = useCanViewPage('contractor_invoices')
   const canCommissionBreakdown = useCanViewPage('commission_breakdown')
+  const canStaffTrends = useCanViewPage('staff_trends')
   const canImports = useCanViewPage('imports')
 
   const canStaff = useCanViewPage('staff')
@@ -60,7 +61,11 @@ function NavBody({ onNavigate }: { onNavigate?: () => void }) {
     canKpiDashboard ||
     canCommissionGuide
   const anyAdmin =
-    canWeeklyPayroll || canContractorInvoices || canCommissionBreakdown || canImports
+    canWeeklyPayroll ||
+    canContractorInvoices ||
+    canCommissionBreakdown ||
+    canStaffTrends ||
+    canImports
   const anyConfig =
     canStaff ||
     canProducts ||
@@ -154,6 +159,15 @@ function NavBody({ onNavigate }: { onNavigate?: () => void }) {
               onClick={handleClick}
             >
               Sales summary
+            </NavLink>
+          ) : null}
+          {canStaffTrends ? (
+            <NavLink
+              to="/app/admin/staff-trends"
+              className={linkClass}
+              onClick={handleClick}
+            >
+              Staff trends
             </NavLink>
           ) : null}
           {canImports ? (
