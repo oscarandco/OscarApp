@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react'
 
 import { ErrorState } from '@/components/feedback/ErrorState'
 import { LoadingState } from '@/components/feedback/LoadingState'
-import { PageHeader } from '@/components/layout/PageHeader'
 import { StaffLocationNavBadge } from '@/features/admin/components/StaffLocationNavBadge'
 import {
   StaffTrendsLineChart,
@@ -355,6 +354,23 @@ export function StaffTrendsPage() {
     })
   }, [showAllSales, staffWeekRows, staffNameById, weekStarts])
 
+  /* ---------------- shared Y-axis across selected staff charts ---- */
+
+  /* Use the max Sales ex GST across all selected staff and all weeks so
+   * every per-staff line chart shares the same vertical scale, making
+   * Leah vs Jarod comparable at a glance. Sales is always the largest
+   * of the three metrics on a given week, so this covers Potential and
+   * Actual commission as well. */
+  const sharedYMax = useMemo(() => {
+    let m = 0
+    for (const g of seriesGroups) {
+      for (const v of g.sales) {
+        if (v > m) m = v
+      }
+    }
+    return m
+  }, [seriesGroups])
+
   /* ---------------- table rows ---------------- */
 
   const tableRows = useMemo<TableRow[]>(() => {
@@ -451,17 +467,18 @@ export function StaffTrendsPage() {
   return (
     <div
       data-testid="staff-trends-page"
-      className="flex min-h-0 w-full flex-col lg:h-[calc(100dvh-7.5rem)] lg:min-h-0 lg:overflow-hidden"
+      className="flex w-full flex-col gap-4 pb-6 pl-2 pr-4 pt-2 sm:pl-3 sm:pr-6 lg:flex-row lg:items-start"
     >
-      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden pb-4 pl-2 pr-4 pt-2 sm:pl-3 sm:pr-6 lg:flex-row lg:pt-3">
         {/* ---------- Left pane ---------- */}
         <aside
-          className="flex min-h-0 w-full shrink-0 flex-col border-b border-slate-200 bg-white px-3 py-3 shadow-sm max-h-[min(52vh,30rem)] sm:px-4 lg:max-h-none lg:h-full lg:w-72 lg:overflow-hidden lg:rounded-lg lg:border lg:border-slate-200 lg:py-4 lg:shadow-sm"
+          className="w-full shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-3 shadow-sm sm:px-4 lg:sticky lg:top-3 lg:flex lg:max-h-[calc(100dvh-5rem)] lg:w-72 lg:flex-col lg:py-4"
           data-testid="staff-trends-left-pane"
         >
-          {/* Header: Staff + counter */}
+          {/* Header: title + counter + clear */}
           <div className="flex items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold text-slate-800">Staff</h2>
+            <h2 className="text-sm font-semibold text-slate-800">
+              Staff trends
+            </h2>
             <span
               className="text-xs text-slate-500"
               data-testid="staff-trends-selected-count"
@@ -479,7 +496,7 @@ export function StaffTrendsPage() {
             </span>
           </div>
 
-          {/* Show / Hide all sales */}
+          {/* Show / Hide all sales graph */}
           <button
             type="button"
             onClick={() => setShowAllSales((v) => !v)}
@@ -487,55 +504,57 @@ export function StaffTrendsPage() {
             aria-pressed={showAllSales}
             data-testid="staff-trends-toggle-all-sales"
           >
-            {showAllSales ? 'Hide all sales' : 'Show all sales'}
+            {showAllSales ? 'Hide all sales graph' : 'Show all sales graph'}
           </button>
 
-          {/* Location */}
-          <div className="mt-3">
-            <label
-              htmlFor="staff-trends-location"
-              className="block text-xs font-medium text-slate-600"
-            >
-              Location
-            </label>
-            <select
-              id="staff-trends-location"
-              className="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
-              value={locationId}
-              onChange={(e) => setLocationId(e.target.value)}
-            >
-              <option value="">All locations</option>
-              {locations.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Status */}
-          <div className="mt-3">
-            <label
-              htmlFor="staff-trends-status"
-              className="block text-xs font-medium text-slate-600"
-            >
-              Status
-            </label>
-            <select
-              id="staff-trends-status"
-              className="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-            >
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-              <option value="all">All</option>
-            </select>
+          {/* Compact horizontal filters */}
+          <div className="mt-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <label
+                htmlFor="staff-trends-location"
+                className="w-16 shrink-0 text-xs font-medium text-slate-600"
+              >
+                Location
+              </label>
+              <select
+                id="staff-trends-location"
+                className="min-w-0 flex-1 rounded-md border border-slate-300 px-2 py-1.5 text-sm shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                value={locationId}
+                onChange={(e) => setLocationId(e.target.value)}
+              >
+                <option value="">All locations</option>
+                {locations.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-center gap-2">
+              <label
+                htmlFor="staff-trends-status"
+                className="w-16 shrink-0 text-xs font-medium text-slate-600"
+              >
+                Status
+              </label>
+              <select
+                id="staff-trends-status"
+                className="min-w-0 flex-1 rounded-md border border-slate-300 px-2 py-1.5 text-sm shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                value={statusFilter}
+                onChange={(e) =>
+                  setStatusFilter(e.target.value as StatusFilter)
+                }
+              >
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+                <option value="all">All</option>
+              </select>
+            </div>
           </div>
 
           {/* Staff list */}
           <div
-            className="mt-3 min-h-0 flex-1 overflow-y-auto pr-0.5"
+            className="mt-3 min-h-0 max-h-[60vh] flex-1 overflow-y-auto pr-0.5 lg:max-h-none"
             data-testid="staff-trends-staff-list"
           >
             {visibleStaff.length === 0 ? (
@@ -580,22 +599,13 @@ export function StaffTrendsPage() {
           </div>
         </aside>
 
-        {/* ---------- Right pane ---------- */}
-        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto pb-6 pt-0">
-          <PageHeader
-            title="Staff trends"
-            description="Weekly sales and commission trends for selected staff."
-          />
-
-          <div className="mt-2 flex flex-col gap-4">
+        {/* ---------- Right pane (scrolls with the page) ---------- */}
+        <div className="flex min-w-0 flex-1 flex-col gap-4">
             {showAllSales ? (
               <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-                <h2 className="mb-1 text-base font-semibold text-slate-800">
+                <h2 className="mb-3 text-base font-semibold text-slate-800">
                   All staff sales by week
                 </h2>
-                <p className="mb-3 text-sm text-slate-600">
-                  Weekly sales excluding GST for the selected location.
-                </p>
                 <StaffTrendsStackedSalesChart weeks={stackedWeeks} />
               </section>
             ) : null}
@@ -618,6 +628,7 @@ export function StaffTrendsPage() {
                     key={g.staffId}
                     group={g}
                     weekStarts={weekStarts}
+                    yMax={sharedYMax}
                   />
                 ))}
 
@@ -694,9 +705,7 @@ export function StaffTrendsPage() {
                 </section>
               </>
             )}
-          </div>
         </div>
-      </div>
     </div>
   )
 }
@@ -770,9 +779,11 @@ function StaffTrendsNavRow({
 function StaffChartCard({
   group,
   weekStarts,
+  yMax,
 }: {
   group: SeriesGroup
   weekStarts: string[]
+  yMax: number
 }) {
   const series: StaffTrendsSeries[] = [
     {
@@ -797,15 +808,15 @@ function StaffChartCard({
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-      <h2 className="mb-1 text-base font-semibold text-slate-800">
+      <h2 className="mb-3 text-base font-semibold text-slate-800">
         {group.staffName}
       </h2>
-      <p className="mb-3 text-sm text-slate-600">
-        Sales, potential commission and actual commission over the last{' '}
-        {WEEKS} pay weeks.
-      </p>
 
-      <StaffTrendsLineChart weekStarts={weekStarts} series={series} />
+      <StaffTrendsLineChart
+        weekStarts={weekStarts}
+        series={series}
+        yMax={yMax}
+      />
 
       <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-700">
         {series.map((s) => (

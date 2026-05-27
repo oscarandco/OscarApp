@@ -169,7 +169,8 @@ export function StaffTrendsStackedSalesChart({
   }, [hoverIndex, n, weeks])
 
   return (
-    <div ref={wrapRef} className="relative w-full">
+    <div className="flex w-full flex-col gap-3 sm:flex-row sm:gap-4">
+      <div ref={wrapRef} className="min-w-0 flex-1">
       <svg
         role="img"
         aria-label="Stacked bar chart"
@@ -290,48 +291,48 @@ export function StaffTrendsStackedSalesChart({
           </text>
         ) : null}
       </svg>
+      </div>
 
-      {tooltip ? (
-        <div
-          className="pointer-events-none absolute z-10 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs shadow-md"
-          style={{
-            left: Math.min(
-              Math.max(barCenter(hoverIndex ?? 0) + 8, MARGIN.left),
-              Math.max(MARGIN.left, width - 260),
-            ),
-            top: MARGIN.top + 4,
-            maxWidth: 280,
-          }}
-        >
-          <div className="mb-1 font-semibold text-slate-700">
-            Week beginning {formatWeekLong(tooltip.weekStart)}
-          </div>
-          <div className="mb-1 flex items-center justify-between gap-2 border-b border-slate-100 pb-1">
-            <span className="text-slate-500">Total sales ex GST</span>
-            <span className="tabular-nums font-semibold text-slate-800">
-              {yFormat(tooltip.total)}
-            </span>
-          </div>
-          {tooltip.rows.length === 0 ? (
-            <p className="text-slate-500">No sales this week.</p>
-          ) : (
-            <ul className="max-h-40 space-y-0.5 overflow-y-auto pr-1">
-              {tooltip.rows.map((r) => (
-                <li key={r.staffId} className="flex items-center gap-2">
-                  <span
-                    className="inline-block h-2 w-2 rounded-full"
-                    style={{ background: r.color }}
-                  />
-                  <span className="flex-1 truncate text-slate-600">{r.staffName}</span>
-                  <span className="tabular-nums font-medium text-slate-800">
-                    {yFormat(r.value)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      ) : null}
+      <div className="w-full shrink-0 rounded-md border border-slate-200 bg-slate-50/60 p-3 text-xs sm:w-56">
+        {tooltip ? (
+          <>
+            <div className="mb-2 font-semibold text-slate-700">
+              Week beginning {formatWeekLong(tooltip.weekStart)}
+            </div>
+            <div className="mb-2 flex items-center justify-between gap-2 border-b border-slate-200 pb-2">
+              <span className="text-slate-500">Total sales ex GST</span>
+              <span className="tabular-nums font-semibold text-slate-800">
+                {yFormat(tooltip.total)}
+              </span>
+            </div>
+            {tooltip.rows.length === 0 ? (
+              <p className="text-slate-500">No sales this week.</p>
+            ) : (
+              <ul className="max-h-72 space-y-1 overflow-y-auto pr-1">
+                {tooltip.rows.map((r) => (
+                  <li key={r.staffId} className="flex items-start gap-2">
+                    <span
+                      aria-hidden
+                      className="mt-1 inline-block h-2 w-2 shrink-0 rounded-full"
+                      style={{ background: r.color }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="truncate text-slate-600">{r.staffName}</div>
+                      <div className="tabular-nums font-medium text-slate-800">
+                        {yFormat(r.value)}
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
+        ) : (
+          <p className="text-slate-500">
+            Hover a bar to see the weekly total and staff breakdown.
+          </p>
+        )}
+      </div>
     </div>
   )
 }

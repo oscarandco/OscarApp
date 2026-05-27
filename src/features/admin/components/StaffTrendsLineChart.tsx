@@ -26,13 +26,20 @@ type Props = {
   formatY?: (n: number) => string
   /** Empty message rendered when no series have any non-null values. */
   emptyMessage?: string
+  /**
+   * Optional shared Y-axis maximum. When > 0 it overrides the per-chart
+   * computed maximum. The chart still applies a "nice" rounding so the
+   * tick labels stay tidy. Used by the page to lock multiple per-staff
+   * charts to the same scale for visual comparison.
+   */
+  yMax?: number
 }
 
 const DEFAULT_HEIGHT = 280
 const MARGIN = { top: 12, right: 16, bottom: 36, left: 64 }
+const SIDE_PANEL_WIDTH_CLASS = 'sm:w-56'
 
 function formatWeekShort(iso: string): string {
-  // iso = YYYY-MM-DD (Monday). Use UTC to avoid TZ shifts.
   const d = new Date(`${iso}T00:00:00Z`)
   if (Number.isNaN(d.getTime())) return iso
   return d.toLocaleDateString('en-NZ', {
@@ -69,7 +76,6 @@ function niceUpperBound(maxValue: number): number {
 }
 
 function pickTickStarts(weekStarts: string[]): Set<number> {
-  // Aim for ~6-8 visible ticks across the axis.
   const n = weekStarts.length
   if (n === 0) return new Set()
   const target = 8
@@ -86,6 +92,7 @@ export function StaffTrendsLineChart({
   height = DEFAULT_HEIGHT,
   formatY,
   emptyMessage = 'No data for the selected staff in this period.',
+  yMax: yMaxProp,
 }: Props) {
   const wrapRef = useRef<HTMLDivElement | null>(null)
   const [width, setWidth] = useState(600)
@@ -106,7 +113,7 @@ export function StaffTrendsLineChart({
 
   const yFormat = formatY ?? formatNzd
 
-  const maxVal = useMemo(() => {
+  const dataMax = useMemo(() => {
     let m = 0
     for (const s of series) {
       for (const v of s.values) {
@@ -116,7 +123,10 @@ export function StaffTrendsLineChart({
     return m
   }, [series])
 
-  const yMax = useMemo(() => niceUpperBound(maxVal), [maxVal])
+  const yMax = useMemo(() => {
+    const candidate = yMaxProp && yMaxProp > 0 ? yMaxProp : dataMax
+    return niceUpperBound(candidate)
+  }, [yMaxProp, dataMax])
 
   const tickStartsIdx = useMemo(() => pickTickStarts(weekStarts), [weekStarts])
 
@@ -180,174 +190,170 @@ export function StaffTrendsLineChart({
     return d
   }
 
-  const tooltip = useMemo(() => {
+  const tooltipRows = useMemo(() => {
     if (hoverIndex == null || n === 0) return null
     const i = hoverIndex
-    const weekIso = weekStarts[i]
-    const rows = series
-      .map((s) => ({ name: s.label, color: s.color, value: s.values[i] }))
-      .filter((r) => r.value != null)
-    return {
-      i,
-      weekIso,
-      rows: rows as { name: string; color: string; value: number }[],
-    }
+    const rows = series.map((s) => ({
+      id: s.id,
+      name: s.label,
+      color: s.color,
+      value: s.values[i],
+    }))
+    return { i, weekIso: weekStarts[i], rows }
   }, [hoverIndex, n, series, weekStarts])
 
   return (
-    <div ref={wrapRef} className="relative w-full">
-      <svg
-        role="img"
-        aria-label="Line chart"
-        width={width}
-        height={height}
-        onMouseMove={handleMove}
-        onMouseLeave={handleLeave}
-        className="block"
-      >
-        {/* Y gridlines and tick labels */}
-        {yTicks.map((t, idx) => {
-          const y = yAt(t)
-          return (
-            <g key={`y-${idx}`}>
-              <line
-                x1={MARGIN.left}
-                x2={MARGIN.left + plotW}
-                y1={y}
-                y2={y}
-                stroke="#e2e8f0"
-                strokeWidth={1}
-              />
+    <div className="flex w-full flex-col gap-3 sm:flex-row sm:gap-4">
+      <div ref={wrapRef} className="min-w-0 flex-1">
+        <svg
+          role="img"
+          aria-label="Line chart"
+          width={width}
+          height={height}
+          onMouseMove={handleMove}
+          onMouseLeave={handleLeave}
+          className="block"
+        >
+          {yTicks.map((t, idx) => {
+            const y = yAt(t)
+            return (
+              <g key={`y-${idx}`}>
+                <line
+                  x1={MARGIN.left}
+                  x2={MARGIN.left + plotW}
+                  y1={y}
+                  y2={y}
+                  stroke="#e2e8f0"
+                  strokeWidth={1}
+                />
+                <text
+                  x={MARGIN.left - 8}
+                  y={y}
+                  textAnchor="end"
+                  dominantBaseline="central"
+                  fontSize={11}
+                  fill="#64748b"
+                >
+                  {yFormat(t)}
+                </text>
+              </g>
+            )
+          })}
+
+          <line
+            x1={MARGIN.left}
+            x2={MARGIN.left + plotW}
+            y1={MARGIN.top + plotH}
+            y2={MARGIN.top + plotH}
+            stroke="#cbd5e1"
+            strokeWidth={1}
+          />
+
+          {weekStarts.map((iso, i) => {
+            if (!tickStartsIdx.has(i)) return null
+            const x = xAt(i)
+            return (
               <text
-                x={MARGIN.left - 8}
-                y={y}
-                textAnchor="end"
-                dominantBaseline="central"
-                fontSize={11}
+                key={`x-${i}`}
+                x={x}
+                y={MARGIN.top + plotH + 16}
+                textAnchor="middle"
+                fontSize={10}
                 fill="#64748b"
               >
-                {yFormat(t)}
+                {formatWeekShort(iso)}
               </text>
-            </g>
-          )
-        })}
+            )
+          })}
 
-        {/* X axis baseline */}
-        <line
-          x1={MARGIN.left}
-          x2={MARGIN.left + plotW}
-          y1={MARGIN.top + plotH}
-          y2={MARGIN.top + plotH}
-          stroke="#cbd5e1"
-          strokeWidth={1}
-        />
-
-        {/* X tick labels */}
-        {weekStarts.map((iso, i) => {
-          if (!tickStartsIdx.has(i)) return null
-          const x = xAt(i)
-          return (
-            <text
-              key={`x-${i}`}
-              x={x}
-              y={MARGIN.top + plotH + 16}
-              textAnchor="middle"
-              fontSize={10}
-              fill="#64748b"
-            >
-              {formatWeekShort(iso)}
-            </text>
-          )
-        })}
-
-        {/* Series lines */}
-        {series.map((s) => (
-          <path
-            key={`line-${s.id}`}
-            d={buildPath(s.values)}
-            stroke={s.color}
-            strokeWidth={2}
-            fill="none"
-            strokeLinejoin="round"
-            strokeLinecap="round"
-          />
-        ))}
-
-        {/* Hover marker */}
-        {hoverIndex != null && n > 0 ? (
-          <g>
-            <line
-              x1={xAt(hoverIndex)}
-              x2={xAt(hoverIndex)}
-              y1={MARGIN.top}
-              y2={MARGIN.top + plotH}
-              stroke="#94a3b8"
-              strokeWidth={1}
-              strokeDasharray="3,3"
+          {series.map((s) => (
+            <path
+              key={`line-${s.id}`}
+              d={buildPath(s.values)}
+              stroke={s.color}
+              strokeWidth={2}
+              fill="none"
+              strokeLinejoin="round"
+              strokeLinecap="round"
             />
-            {series.map((s) => {
-              const v = s.values[hoverIndex]
-              if (v == null) return null
-              return (
-                <circle
-                  key={`dot-${s.id}`}
-                  cx={xAt(hoverIndex)}
-                  cy={yAt(v)}
-                  r={3.5}
-                  fill={s.color}
-                  stroke="white"
-                  strokeWidth={1.5}
-                />
-              )
-            })}
-          </g>
-        ) : null}
+          ))}
 
-        {!hasAnyValue ? (
-          <text
-            x={MARGIN.left + plotW / 2}
-            y={MARGIN.top + plotH / 2}
-            textAnchor="middle"
-            dominantBaseline="central"
-            fontSize={12}
-            fill="#94a3b8"
-          >
-            {emptyMessage}
-          </text>
-        ) : null}
-      </svg>
+          {hoverIndex != null && n > 0 ? (
+            <g>
+              <line
+                x1={xAt(hoverIndex)}
+                x2={xAt(hoverIndex)}
+                y1={MARGIN.top}
+                y2={MARGIN.top + plotH}
+                stroke="#94a3b8"
+                strokeWidth={1}
+                strokeDasharray="3,3"
+              />
+              {series.map((s) => {
+                const v = s.values[hoverIndex]
+                if (v == null) return null
+                return (
+                  <circle
+                    key={`dot-${s.id}`}
+                    cx={xAt(hoverIndex)}
+                    cy={yAt(v)}
+                    r={3.5}
+                    fill={s.color}
+                    stroke="white"
+                    strokeWidth={1.5}
+                  />
+                )
+              })}
+            </g>
+          ) : null}
 
-      {tooltip && tooltip.rows.length > 0 ? (
-        <div
-          className="pointer-events-none absolute z-10 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs shadow-md"
-          style={{
-            left: Math.min(
-              Math.max(xAt(tooltip.i) + 8, MARGIN.left),
-              width - 220,
-            ),
-            top: MARGIN.top + 4,
-            maxWidth: 240,
-          }}
-        >
-          <div className="mb-1 font-semibold text-slate-700">
-            Week beginning {formatWeekLong(tooltip.weekIso)}
-          </div>
-          <ul className="space-y-0.5">
-            {tooltip.rows.map((r) => (
-              <li key={r.name} className="flex items-center gap-2">
-                <span
-                  className="inline-block h-2 w-2 rounded-full"
-                  style={{ background: r.color }}
-                />
-                <span className="flex-1 truncate text-slate-600">{r.name}</span>
-                <span className="tabular-nums font-medium text-slate-800">
-                  {yFormat(r.value)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
+          {!hasAnyValue ? (
+            <text
+              x={MARGIN.left + plotW / 2}
+              y={MARGIN.top + plotH / 2}
+              textAnchor="middle"
+              dominantBaseline="central"
+              fontSize={12}
+              fill="#94a3b8"
+            >
+              {emptyMessage}
+            </text>
+          ) : null}
+        </svg>
+      </div>
+
+      <div
+        className={`w-full shrink-0 rounded-md border border-slate-200 bg-slate-50/60 p-3 text-xs ${SIDE_PANEL_WIDTH_CLASS}`}
+      >
+        {tooltipRows ? (
+          <>
+            <div className="mb-2 font-semibold text-slate-700">
+              Week beginning {formatWeekLong(tooltipRows.weekIso)}
+            </div>
+            <ul className="space-y-1">
+              {tooltipRows.rows.map((r) => (
+                <li key={r.id} className="flex items-start gap-2">
+                  <span
+                    aria-hidden
+                    className="mt-1 inline-block h-2 w-2 shrink-0 rounded-full"
+                    style={{ background: r.color }}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="truncate text-slate-600">{r.name}</div>
+                    <div className="tabular-nums font-medium text-slate-800">
+                      {r.value == null ? 'No data' : yFormat(r.value)}
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : (
+          <p className="text-slate-500">
+            Hover the chart to see weekly values.
+          </p>
+        )}
+      </div>
     </div>
   )
 }
