@@ -11,7 +11,6 @@ import {
   type CommissionGuideClassificationRow,
   type CommissionGuideEligibleSection,
   type CommissionGuideEnvelope,
-  type CommissionGuideSectionExample,
 } from '@/features/commission-guide/types/commissionGuide'
 import { formatCommissionRatePercent, formatShortDate } from '@/lib/formatters'
 import { queryErrorDetail } from '@/lib/queryError'
@@ -182,10 +181,14 @@ function SetupItem({ label, value }: { label: string; value: string }) {
 
 function PlanSummarySection({ env }: { env: CommissionGuideEnvelope }) {
   const { plan_summary } = env
+  const planName = (env.staff.remuneration_plan ?? '').trim()
+  const heading = planName
+    ? `'${planName}' remuneration plan summary`
+    : 'Remuneration plan summary'
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
       <header>
-        <h2 className="text-base font-semibold text-slate-900">Plan summary</h2>
+        <h2 className="text-base font-semibold text-slate-900">{heading}</h2>
       </header>
       <p className="mt-2 text-sm text-slate-800">{plan_summary.plain_english}</p>
     </section>
@@ -196,43 +199,41 @@ function PlanSummarySection({ env }: { env: CommissionGuideEnvelope }) {
 /* What you can earn commission on                                             */
 /* -------------------------------------------------------------------------- */
 
-/**
- * Build the one-line example string from a real sale line.
- * Format:
- *   "{product_service_name} ${incl} including GST: ${excl} excluding GST @ {rate}% = ${commission} commission"
- */
-function formatExampleSentence(ex: CommissionGuideSectionExample): string {
-  const incl = formatMoney2(ex.price_incl_gst)
-  const excl = formatMoney2(ex.price_ex_gst)
-  const rate = formatCommissionRatePercent(ex.rate)
-  const commission = formatMoney2(ex.commission)
-  return `${ex.product_service_name} ${incl} including GST: ${excl} excluding GST @ ${rate} = ${commission} commission`
-}
-
 function EligibleCard({ section }: { section: CommissionGuideEligibleSection }) {
   const ex = section.example
+  const ratePct = formatCommissionRatePercent(section.rate)
   return (
     <article className="flex h-full flex-col rounded-lg border border-emerald-200 bg-emerald-50/40 p-3">
       <div className="flex items-baseline gap-2">
         <span className="text-base font-semibold tabular-nums text-emerald-800">
-          {formatCommissionRatePercent(section.rate)}
-        </span>
-        <span aria-hidden="true" className="text-slate-400">
-          -
+          {ratePct}
         </span>
         <span className="text-base font-semibold text-slate-900">{section.label}</span>
       </div>
       {ex ? (
-        <p className="mt-2 text-sm text-slate-800">
-          <span className="font-medium text-slate-900">Example:</span>{' '}
-          {formatExampleSentence(ex)}
-        </p>
+        <div className="mt-2 space-y-0.5 text-sm text-slate-800">
+          <p>
+            <span className="font-medium text-slate-900">Example:</span>{' '}
+            <span className="font-semibold text-slate-900">{ex.product_service_name}</span>
+          </p>
+          <p>
+            <span className="text-slate-600">Price including GST:</span>{' '}
+            <span className="tabular-nums">{formatMoney2(ex.price_incl_gst)}</span>
+          </p>
+          <p>
+            <span className="text-slate-600">Price excluding GST:</span>{' '}
+            <span className="tabular-nums">{formatMoney2(ex.price_ex_gst)}</span>
+          </p>
+          <p>
+            <span className="text-slate-600">Commission @ {ratePct}:</span>{' '}
+            <span className="tabular-nums font-semibold text-emerald-800">
+              {formatMoney2(ex.commission)}
+            </span>
+          </p>
+        </div>
       ) : (
         <p className="mt-2 text-sm text-slate-500">Example: No recent example found.</p>
       )}
-      {ex && !ex.is_staff_specific ? (
-        <p className="mt-1 text-[11px] text-slate-500">Example from another staff member.</p>
-      ) : null}
     </article>
   )
 }
@@ -293,15 +294,32 @@ function WhatDoesNotEarnCommissionSection() {
       </header>
       <ul className="mt-3 list-disc space-y-1.5 pl-6 text-sm text-slate-800">
         <li>
-          <span className="font-medium text-slate-900">Voucher sales:</span>{' '}
-          No commission on sale of voucher, however commission is earned when a voucher
-          is used for payment.
+          <span className="font-semibold text-slate-900">Voucher sales:</span>{' '}
+          No commission is paid when a voucher is sold, because it is a prepayment.
+          Commission can still be earned when the voucher is later used to pay for an
+          eligible service or product.
         </li>
-        <li>Coffee</li>
-        <li>Green Fees</li>
-        <li>Training items</li>
-        <li>Redos</li>
-        <li>Miscellaneous line items not loaded as a product or service in the system.</li>
+        <li>
+          <span className="font-semibold text-slate-900">Coffee:</span>{' '}
+          Not treated as a commissionable salon service or retail product.
+        </li>
+        <li>
+          <span className="font-semibold text-slate-900">Green Fees:</span>{' '}
+          Not treated as staff service sales.
+        </li>
+        <li>
+          <span className="font-semibold text-slate-900">Training items:</span>{' '}
+          Not treated as commissionable sales.
+        </li>
+        <li>
+          <span className="font-semibold text-slate-900">Redos:</span>{' '}
+          Not treated as new commissionable sales.
+        </li>
+        <li>
+          <span className="font-semibold text-slate-900">Miscellaneous line items:</span>{' '}
+          Not loaded as a standard product or service in the system, so they do not
+          earn commission.
+        </li>
       </ul>
     </section>
   )
