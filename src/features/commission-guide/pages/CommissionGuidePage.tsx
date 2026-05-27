@@ -7,7 +7,7 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { useAccessProfile } from '@/features/access/accessContext'
 import { useCommissionGuide } from '@/features/commission-guide/hooks/useCommissionGuide'
 import {
-  friendlyCategoryLabel,
+  howWeTreatItLabel,
   type CommissionGuideClassificationRow,
   type CommissionGuideEnvelope,
   type CommissionGuideExample,
@@ -38,6 +38,43 @@ function formatFteValue(v: number | string | null | undefined): string {
   if (!Number.isFinite(n)) return String(v)
   return n.toFixed(4).replace(/\.?0+$/, '')
 }
+
+/**
+ * Friendly text for the "Your commission" cell on every classification
+ * row. Never shows raw codes or "0%" wording.
+ */
+function yourCommissionText(row: CommissionGuideClassificationRow): {
+  primary: string
+  tone: 'earn' | 'none'
+} {
+  if (row.counts_for_commission) {
+    if (row.rate_for_this_plan != null) {
+      return {
+        primary: formatCommissionRatePercent(row.rate_for_this_plan),
+        tone: 'earn',
+      }
+    }
+    return { primary: 'No commission on this plan', tone: 'none' }
+  }
+  return { primary: 'No commission', tone: 'none' }
+}
+
+function rateCardDisplay(card: CommissionGuideRateCard): {
+  primary: string
+  tone: 'earn' | 'none'
+} {
+  if (card.has_rate && card.rate != null) {
+    return { primary: formatCommissionRatePercent(card.rate), tone: 'earn' }
+  }
+  if (card.category === 'service') {
+    return { primary: 'No service commission on this plan', tone: 'none' }
+  }
+  return { primary: 'No commission on this plan', tone: 'none' }
+}
+
+/* ------------------------------------------------------------------------- */
+/* Staff picker (admin/manager only)                                         */
+/* ------------------------------------------------------------------------- */
 
 function StaffPicker({
   selectedId,
@@ -100,7 +137,7 @@ function StaffPicker({
 }
 
 /* ------------------------------------------------------------------------- */
-/* Section components                                                        */
+/* Your current setup                                                         */
 /* ------------------------------------------------------------------------- */
 
 function YourSetupSection({ env }: { env: CommissionGuideEnvelope }) {
@@ -155,6 +192,10 @@ function SetupItem({ label, value }: { label: string; value: string }) {
   )
 }
 
+/* ------------------------------------------------------------------------- */
+/* Plan summary + important notes                                            */
+/* ------------------------------------------------------------------------- */
+
 function PlanSummarySection({ env }: { env: CommissionGuideEnvelope }) {
   const { plan_summary } = env
   return (
@@ -166,72 +207,85 @@ function PlanSummarySection({ env }: { env: CommissionGuideEnvelope }) {
         <p className="mt-2 text-sm text-slate-800">{plan_summary.plain_english}</p>
       </header>
       {plan_summary.important_notes.length > 0 ? (
-        <div className="mt-4 rounded-lg border border-slate-100 bg-slate-50/70 p-3">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-            Important notes
-          </h3>
-          <ul className="mt-2 list-inside list-disc space-y-1.5 text-sm text-slate-700">
-            {plan_summary.important_notes.map((n, i) => (
-              <li key={i}>{n}</li>
-            ))}
-          </ul>
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {plan_summary.important_notes.map((n, i) => (
+            <article
+              key={`${n.heading}-${i}`}
+              className="rounded-lg border border-slate-100 bg-slate-50/70 p-3"
+            >
+              <h3 className="text-sm font-semibold text-slate-900">{n.heading}</h3>
+              <p className="mt-1 text-sm text-slate-700">{n.body}</p>
+            </article>
+          ))}
         </div>
       ) : null}
     </section>
   )
 }
 
+/* ------------------------------------------------------------------------- */
+/* Rate cards                                                                 */
+/* ------------------------------------------------------------------------- */
+
 function RateCardsSection({ cards }: { cards: CommissionGuideRateCard[] }) {
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
       <header>
-        <h2 className="text-base font-semibold text-slate-900">Rate cards</h2>
+        <h2 className="text-base font-semibold text-slate-900">Your rates</h2>
         <p className="mt-1 text-xs text-slate-600">
-          Pulled live from this plan's remuneration rates.
+          The categories your current plan can pay commission on.
         </p>
       </header>
       <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {cards.map((c) => (
-          <div
-            key={c.category}
-            className={[
-              'rounded-lg border p-3',
-              c.has_rate
-                ? 'border-emerald-200 bg-emerald-50/40'
-                : 'border-slate-200 bg-slate-50',
-            ].join(' ')}
-          >
-            <div className="flex items-baseline justify-between gap-2">
-              <h3 className="text-sm font-semibold text-slate-900">{c.label}</h3>
-              <span
-                className={[
-                  'text-lg font-semibold tabular-nums',
-                  c.has_rate ? 'text-emerald-800' : 'text-slate-400',
-                ].join(' ')}
-              >
-                {c.has_rate ? formatCommissionRatePercent(c.rate) : '—'}
-              </span>
+        {cards.map((c) => {
+          const display = rateCardDisplay(c)
+          return (
+            <div
+              key={c.category}
+              className={[
+                'rounded-lg border p-3',
+                display.tone === 'earn'
+                  ? 'border-emerald-200 bg-emerald-50/40'
+                  : 'border-slate-200 bg-slate-50',
+              ].join(' ')}
+            >
+              <div className="flex items-baseline justify-between gap-2">
+                <h3 className="text-sm font-semibold text-slate-900">{c.label}</h3>
+                <span
+                  className={[
+                    'text-right text-sm font-semibold tabular-nums',
+                    display.tone === 'earn' ? 'text-emerald-800' : 'text-slate-500',
+                  ].join(' ')}
+                >
+                  {display.primary}
+                </span>
+              </div>
+              <p className="mt-1.5 text-xs text-slate-600">{c.plain_english}</p>
             </div>
-            <p className="mt-1.5 text-xs text-slate-600">{c.plain_english}</p>
-            <p className="mt-2 text-[10px] uppercase tracking-wide text-slate-400">
-              {friendlyCategoryLabel(c.category)}
-            </p>
-          </div>
-        ))}
+          )
+        })}
       </div>
     </section>
   )
 }
 
-function SpecialCasesSection({ rules }: { rules: CommissionGuideSpecialCase[] }) {
+/* ------------------------------------------------------------------------- */
+/* Things that can affect commission                                         */
+/* ------------------------------------------------------------------------- */
+
+function ThingsThatAffectCommissionSection({
+  rules,
+}: {
+  rules: CommissionGuideSpecialCase[]
+}) {
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
       <header>
         <h2 className="text-base font-semibold text-slate-900">
-          Special rules and gotchas
+          Things that can affect commission
         </h2>
         <p className="mt-1 text-xs text-slate-600">
-          Sale-level rules that change how lines are paid, beyond the basic rate cards.
+          Rules that change how individual sale lines are paid, beyond the basic rates above.
         </p>
       </header>
       <ul className="mt-4 divide-y divide-slate-100">
@@ -246,27 +300,34 @@ function SpecialCasesSection({ rules }: { rules: CommissionGuideSpecialCase[] })
   )
 }
 
-function ClassificationTableSection({
+/* ------------------------------------------------------------------------- */
+/* Product and service guide                                                 */
+/* ------------------------------------------------------------------------- */
+
+function ProductGuideSection({
   rows,
+  canShowTechnical,
 }: {
   rows: CommissionGuideClassificationRow[]
+  canShowTechnical: boolean
 }) {
   const [query, setQuery] = useState('')
-  const [filter, setFilter] = useState<'all' | 'payable' | 'no_commission' | 'professional'>(
-    'all',
-  )
+  const [filter, setFilter] = useState<
+    'all' | 'earning' | 'no_commission' | 'professional'
+  >('all')
+  const [showTechnical, setShowTechnical] = useState(false)
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     return rows.filter((r) => {
-      if (filter === 'payable' && !r.counts_for_commission) return false
+      if (filter === 'earning' && !r.counts_for_commission) return false
       if (filter === 'no_commission' && r.counts_for_commission) return false
       if (filter === 'professional' && r.commission_category !== 'professional_product') {
         return false
       }
       if (q === '') return true
       const hay =
-        `${r.product_or_category} ${r.imported_type ?? ''} ${r.configured_product_type ?? ''} ${r.commission_category ?? ''}`.toLowerCase()
+        `${r.product_or_category} ${howWeTreatItLabel(r.commission_category)} ${r.configured_product_type ?? ''} ${r.imported_type ?? ''}`.toLowerCase()
       return hay.includes(q)
     })
   }, [rows, query, filter])
@@ -275,13 +336,10 @@ function ClassificationTableSection({
     <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
       <header>
         <h2 className="text-base font-semibold text-slate-900">
-          Product / category table
+          Product and service guide
         </h2>
         <p className="mt-1 text-xs text-slate-600">
-          How each configured product is treated for payroll. Some items appear one
-          way in the imported Kitomba data, but Oscar &amp; Co classifies them
-          differently for payroll — the Product Configuration page controls this
-          mapping.
+          How each configured product or service is treated for your commission.
         </p>
       </header>
 
@@ -298,7 +356,7 @@ function ClassificationTableSection({
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Find a product or category…"
+            placeholder="Find a product or service…"
             className="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
           />
         </div>
@@ -314,19 +372,30 @@ function ClassificationTableSection({
             value={filter}
             onChange={(e) =>
               setFilter(
-                e.target.value as 'all' | 'payable' | 'no_commission' | 'professional',
+                e.target.value as 'all' | 'earning' | 'no_commission' | 'professional',
               )
             }
             className="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
           >
-            <option value="all">All</option>
-            <option value="payable">Payable categories only</option>
-            <option value="no_commission">No-commission only</option>
-            <option value="professional">Professional / treatment products</option>
+            <option value="all">All items</option>
+            <option value="earning">Earning commission</option>
+            <option value="no_commission">No commission</option>
+            <option value="professional">Treatment / professional products</option>
           </select>
         </div>
+        {canShowTechnical ? (
+          <label className="flex items-center gap-2 text-xs font-medium text-slate-600">
+            <input
+              type="checkbox"
+              checked={showTechnical}
+              onChange={(e) => setShowTechnical(e.target.checked)}
+              className="rounded border-slate-300"
+            />
+            Show technical details
+          </label>
+        ) : null}
         <div className="text-xs text-slate-500">
-          {filtered.length} of {rows.length} rows
+          {filtered.length} of {rows.length} items
         </div>
       </div>
 
@@ -338,98 +407,125 @@ function ClassificationTableSection({
                 scope="col"
                 className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500"
               >
-                Product / category
+                Product or service
               </th>
               <th
                 scope="col"
                 className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500"
               >
-                Imported type (Kitomba)
-              </th>
-              <th
-                scope="col"
-                className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500"
-              >
-                Configured product type
-              </th>
-              <th
-                scope="col"
-                className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500"
-              >
-                Commission category
+                How Oscar &amp; Co treats it
               </th>
               <th
                 scope="col"
                 className="px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-wide text-slate-500"
               >
-                Rate (this plan)
+                Your commission
               </th>
               <th
                 scope="col"
                 className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500"
               >
-                What it means
+                Plain English explanation
               </th>
+              {canShowTechnical && showTechnical ? (
+                <>
+                  <th
+                    scope="col"
+                    className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500"
+                  >
+                    Imported type
+                  </th>
+                  <th
+                    scope="col"
+                    className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500"
+                  >
+                    Configured product type
+                  </th>
+                  <th
+                    scope="col"
+                    className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500"
+                  >
+                    Internal category
+                  </th>
+                </>
+              ) : null}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {filtered.map((row, idx) => (
-              <tr
-                key={`${row.product_or_category}-${idx}`}
-                className={row.counts_for_commission ? '' : 'bg-slate-50/40'}
-              >
-                <td className="px-3 py-2 text-xs font-medium text-slate-900">
-                  {row.product_or_category}
-                </td>
-                <td className="px-3 py-2 text-xs text-slate-700">
-                  {formatDisplayValue(row.imported_type)}
-                </td>
-                <td className="px-3 py-2 text-xs text-slate-700">
-                  {formatDisplayValue(row.configured_product_type)}
-                </td>
-                <td className="px-3 py-2 text-xs text-slate-800">
-                  <span
+            {filtered.map((row, idx) => {
+              const treat = howWeTreatItLabel(row.commission_category)
+              const yc = yourCommissionText(row)
+              return (
+                <tr
+                  key={`${row.product_or_category}-${idx}`}
+                  className={row.counts_for_commission ? '' : 'bg-slate-50/40'}
+                >
+                  <td className="px-3 py-2 text-xs font-medium text-slate-900">
+                    {row.product_or_category}
+                  </td>
+                  <td className="px-3 py-2 text-xs text-slate-800">
+                    <span
+                      className={[
+                        'inline-flex rounded-md px-2 py-0.5 text-[11px] font-medium',
+                        row.counts_for_commission
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : 'bg-slate-200 text-slate-700',
+                      ].join(' ')}
+                    >
+                      {treat}
+                    </span>
+                  </td>
+                  <td
                     className={[
-                      'inline-flex rounded-md px-2 py-0.5 text-[11px] font-medium',
-                      row.counts_for_commission
-                        ? 'bg-emerald-100 text-emerald-800'
-                        : 'bg-slate-200 text-slate-700',
+                      'px-3 py-2 text-right text-xs font-medium tabular-nums',
+                      yc.tone === 'earn' ? 'text-emerald-800' : 'text-slate-500',
                     ].join(' ')}
                   >
-                    {friendlyCategoryLabel(row.commission_category)}
-                  </span>
-                </td>
-                <td className="px-3 py-2 text-right text-xs tabular-nums text-slate-900">
-                  {row.rate_for_this_plan != null
-                    ? formatCommissionRatePercent(row.rate_for_this_plan)
-                    : row.counts_for_commission
-                      ? '—'
-                      : '0%'}
-                </td>
-                <td className="px-3 py-2 text-xs text-slate-600">
-                  {row.plain_english}
-                </td>
-              </tr>
-            ))}
+                    {yc.primary}
+                  </td>
+                  <td className="px-3 py-2 text-xs text-slate-700">{row.plain_english}</td>
+                  {canShowTechnical && showTechnical ? (
+                    <>
+                      <td className="px-3 py-2 text-xs text-slate-600">
+                        {formatDisplayValue(row.imported_type)}
+                      </td>
+                      <td className="px-3 py-2 text-xs text-slate-600">
+                        {formatDisplayValue(row.configured_product_type)}
+                      </td>
+                      <td className="px-3 py-2 text-[11px] text-slate-500">
+                        <code className="rounded bg-slate-100 px-1.5 py-0.5">
+                          {row.commission_category ?? '—'}
+                        </code>
+                      </td>
+                    </>
+                  ) : null}
+                </tr>
+              )
+            })}
           </tbody>
         </table>
         {filtered.length === 0 ? (
-          <p className="mt-4 text-sm text-slate-500">No products match the current filters.</p>
+          <p className="mt-4 text-sm text-slate-500">No items match the current filters.</p>
         ) : null}
       </div>
     </section>
   )
 }
 
-function ExclusionsSection({ rows }: { rows: CommissionGuideExclusion[] }) {
+/* ------------------------------------------------------------------------- */
+/* Items that do not earn commission                                         */
+/* ------------------------------------------------------------------------- */
+
+function NoCommissionSection({ rows }: { rows: CommissionGuideExclusion[] }) {
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
       <header>
         <h2 className="text-base font-semibold text-slate-900">
-          No commission (exclusions)
+          Items that do not earn commission
         </h2>
         <p className="mt-1 text-xs text-slate-600">
-          Sale lines in any of these buckets do not earn commission.
+          Sale lines that fall into these groups don't earn commission, even if the
+          payment method (e.g. voucher) is unusual.
         </p>
       </header>
       <div className="mt-4 overflow-x-auto">
@@ -440,9 +536,6 @@ function ExclusionsSection({ rows }: { rows: CommissionGuideExclusion[] }) {
                 What it is
               </th>
               <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                Code
-              </th>
-              <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500">
                 Why no commission
               </th>
             </tr>
@@ -451,11 +544,6 @@ function ExclusionsSection({ rows }: { rows: CommissionGuideExclusion[] }) {
             {rows.map((r) => (
               <tr key={`${r.label}-${r.commission_category}`}>
                 <td className="px-3 py-2 text-xs font-medium text-slate-900">{r.label}</td>
-                <td className="px-3 py-2 text-xs text-slate-600">
-                  <code className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px]">
-                    {r.commission_category}
-                  </code>
-                </td>
                 <td className="px-3 py-2 text-xs text-slate-700">{r.plain_english}</td>
               </tr>
             ))}
@@ -465,6 +553,10 @@ function ExclusionsSection({ rows }: { rows: CommissionGuideExclusion[] }) {
     </section>
   )
 }
+
+/* ------------------------------------------------------------------------- */
+/* Examples                                                                   */
+/* ------------------------------------------------------------------------- */
 
 function ExamplesSection({ rows }: { rows: CommissionGuideExample[] }) {
   return (
@@ -476,38 +568,60 @@ function ExamplesSection({ rows }: { rows: CommissionGuideExample[] }) {
         </p>
       </header>
       <ul className="mt-4 space-y-2.5">
-        {rows.map((ex, i) => (
-          <li
-            key={i}
-            className="rounded-lg border border-slate-100 bg-slate-50/60 p-3 text-sm text-slate-800"
-          >
-            <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <span className="font-medium text-slate-900">{ex.label}</span>
-              <span className="text-xs uppercase tracking-wide text-slate-500">
-                {friendlyCategoryLabel(ex.category)}
-              </span>
-            </div>
-            <div className="mt-1.5 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-xs text-slate-700">
-              <span>
-                Sale ex&nbsp;GST{' '}
-                <span className="font-medium text-slate-900">{formatNzd(ex.sale_ex_gst)}</span>
-              </span>
-              {ex.rate != null ? (
-                <span>
-                  Rate{' '}
-                  <span className="font-medium text-slate-900">
-                    {formatCommissionRatePercent(ex.rate)}
+        {rows.map((ex, i) => {
+          const hasNumbers = ex.sale_ex_gst != null
+          const earnsSomething = (ex.commission ?? 0) > 0
+          const isNoCommission =
+            ex.commission != null && ex.commission === 0
+          return (
+            <li
+              key={i}
+              className="rounded-lg border border-slate-100 bg-slate-50/60 p-3 text-sm text-slate-800"
+            >
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <span className="font-medium text-slate-900">{ex.label}</span>
+              </div>
+              {hasNumbers ? (
+                <div className="mt-1.5 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-xs text-slate-700">
+                  <span>
+                    Sale ex&nbsp;GST{' '}
+                    <span className="font-medium text-slate-900">
+                      {formatNzd(ex.sale_ex_gst as number)}
+                    </span>
                   </span>
-                </span>
+                  {ex.rate != null ? (
+                    <span>
+                      Rate{' '}
+                      <span className="font-medium text-slate-900">
+                        {formatCommissionRatePercent(ex.rate)}
+                      </span>
+                    </span>
+                  ) : null}
+                  <span>
+                    Commission{' '}
+                    <span
+                      className={[
+                        'font-semibold',
+                        earnsSomething
+                          ? 'text-emerald-800'
+                          : isNoCommission
+                            ? 'text-slate-500'
+                            : 'text-slate-900',
+                      ].join(' ')}
+                    >
+                      {ex.commission == null
+                        ? 'Depends on the sale'
+                        : earnsSomething
+                          ? formatNzd(ex.commission)
+                          : 'No commission'}
+                    </span>
+                  </span>
+                </div>
               ) : null}
-              <span>
-                Commission{' '}
-                <span className="font-semibold text-emerald-800">{formatNzd(ex.commission)}</span>
-              </span>
-            </div>
-            <p className="mt-1.5 text-sm text-slate-700">{ex.plain_english}</p>
-          </li>
-        ))}
+              <p className="mt-1.5 text-sm text-slate-700">{ex.plain_english}</p>
+            </li>
+          )
+        })}
       </ul>
     </section>
   )
@@ -525,9 +639,6 @@ export function CommissionGuidePage() {
   const [pickedStaffId, setPickedStaffId] = useState<string | null>(null)
   const [asOfDate, setAsOfDate] = useState<string>(todayIso())
 
-  // Effective staff id used for the RPC:
-  //   * Elevated: whoever the picker says (default = self).
-  //   * Non-elevated: forced to own staff id; picker isn't rendered.
   const targetStaffId = isElevated ? (pickedStaffId ?? ownStaffId) : ownStaffId
 
   const { data, isLoading, isError, error, refetch } = useCommissionGuide(
@@ -539,7 +650,7 @@ export function CommissionGuidePage() {
     <div className="mx-auto w-full max-w-7xl space-y-4 px-3 py-4 sm:px-6 sm:py-6">
       <PageHeader
         title="Commission Guide"
-        description="A plain-English explanation of how your commission is calculated, what counts, and what does not — pulled live from current configuration."
+        description="A plain-English explanation of how your commission works at Oscar & Co — pulled live from your current setup."
       />
 
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
@@ -605,9 +716,12 @@ export function CommissionGuidePage() {
           <YourSetupSection env={data} />
           <PlanSummarySection env={data} />
           <RateCardsSection cards={data.rate_cards} />
-          <SpecialCasesSection rules={data.special_cases} />
-          <ClassificationTableSection rows={data.classification_table} />
-          <ExclusionsSection rows={data.exclusions} />
+          <ThingsThatAffectCommissionSection rules={data.special_cases} />
+          <ProductGuideSection
+            rows={data.classification_table}
+            canShowTechnical={isElevated}
+          />
+          <NoCommissionSection rows={data.exclusions} />
           <ExamplesSection rows={data.examples} />
         </>
       ) : null}

@@ -47,10 +47,20 @@ export type CommissionGuideStaff = {
   effective_start_date: string | null
 }
 
+/** One headed note rendered as a card under the plan summary. */
+export type CommissionGuideNote = {
+  heading: string
+  body: string
+}
+
+/** Wage / contractor / commission / none — drives the plan-summary paragraph. */
+export type CommissionGuidePlanStyle = 'wage' | 'contractor' | 'commission' | 'none'
+
 export type CommissionGuidePlanSummary = {
   headline: string
   plain_english: string
-  important_notes: string[]
+  important_notes: CommissionGuideNote[]
+  plan_style: CommissionGuidePlanStyle
   /** True when no staff_role_assignments row covered the as-of date and the RPC fell back to staff_members. */
   using_fallback_to_current_profile: boolean
 }
@@ -88,9 +98,11 @@ export type CommissionGuideSpecialCase = {
 
 export type CommissionGuideExample = {
   label: string
-  sale_ex_gst: number
+  /** Null for narrative-only examples (e.g. "Voucher used later"). */
+  sale_ex_gst: number | null
   rate: number | null
-  commission: number
+  /** Null when the example is narrative-only (the outcome depends on the actual sale). */
+  commission: number | null
   category: CommissionCategoryAny
   plain_english: string
 }
@@ -123,19 +135,22 @@ export type CommissionGuideEnvelope = {
   caller: CommissionGuideCaller
 }
 
-/** Friendly labels for category codes that appear anywhere on the page. */
+/**
+ * Long-form labels for category codes (used in places that need the
+ * "why no commission" context, e.g. internal admin views or tooltips).
+ */
 export const COMMISSION_CATEGORY_LABELS: Record<string, string> = {
   service: 'Salon service',
   retail_product: 'Retail product',
   professional_product: 'Treatment / professional product',
   toner_with_other_service: 'Toner added to another service',
   extensions_product: 'Extension hair / product',
-  extensions_service: 'Extension service / labour',
+  extensions_service: 'Extension labour',
   no_commission_voucher: 'Voucher sale, no commission',
   no_commission_greenfee: 'Green fee, no commission',
   no_commission_redo: 'Redo / rework, no commission',
   no_commission_trainingproduct: 'Training item, no commission',
-  no_commission_miscellaneousproduct: 'Miscellaneous item, no commission',
+  no_commission_miscellaneousproduct: 'Miscellaneous, no commission',
   no_commission_unclassified: 'Unclassified, no commission',
   expected_no_commission: 'Expected no commission',
   zero_value_commission_row: 'No payable commission on this row',
@@ -145,4 +160,32 @@ export const COMMISSION_CATEGORY_LABELS: Record<string, string> = {
 export function friendlyCategoryLabel(code: string | null | undefined): string {
   if (!code) return '—'
   return COMMISSION_CATEGORY_LABELS[code] ?? code
+}
+
+/**
+ * Short, staff-facing label for the "How Oscar & Co treats it" column.
+ * All `no_commission_*` codes collapse to a single user-friendly phrase
+ * — the plain-English explanation column carries the "why".
+ */
+export function howWeTreatItLabel(
+  code: CommissionCategoryAny | undefined,
+): string {
+  if (!code) return 'Not yet classified'
+  switch (code) {
+    case 'service':
+      return 'Salon service'
+    case 'retail_product':
+      return 'Retail product'
+    case 'professional_product':
+      return 'Treatment / professional product'
+    case 'toner_with_other_service':
+      return 'Toner added to another service'
+    case 'extensions_product':
+      return 'Extension hair / product'
+    case 'extensions_service':
+      return 'Extension labour'
+    default:
+      if (code.startsWith('no_commission')) return 'No commission'
+      return code
+  }
 }
