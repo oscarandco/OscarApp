@@ -1479,7 +1479,7 @@ function HistoryRow({
               data-testid="staff-history-undo"
               title="Remove this latest change and reopen the previous assignment"
             >
-              {undoBusy ? 'Undoing…' : 'Undo latest change'}
+              {undoBusy ? 'Undoing…' : 'Undo'}
             </button>
           ) : null}
         </td>
