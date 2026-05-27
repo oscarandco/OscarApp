@@ -3,13 +3,16 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { formatNzd } from '@/lib/formatters'
 
 /**
- * One value series for a single staff member. `values` must be the same
- * length as the parent chart's `weekStarts` array; `null` represents a
- * missing data point and is drawn as a gap in the line.
+ * One value series on the chart. `values` must be the same length as the
+ * parent chart's `weekStarts` array; `null` represents a missing data
+ * point and is drawn as a gap in the line. The series may represent any
+ * dimension (staff member, metric, etc.); the chart only renders by
+ * `label` / `color` and preserves the input order in legends and
+ * tooltips.
  */
 export type StaffTrendsSeries = {
-  staffId: string
-  staffName: string
+  id: string
+  label: string
   color: string
   /** values[i] aligns with weekStarts[i] supplied to the chart. */
   values: (number | null)[]
@@ -182,10 +185,8 @@ export function StaffTrendsLineChart({
     const i = hoverIndex
     const weekIso = weekStarts[i]
     const rows = series
-      .map((s) => ({ name: s.staffName, color: s.color, value: s.values[i] }))
+      .map((s) => ({ name: s.label, color: s.color, value: s.values[i] }))
       .filter((r) => r.value != null)
-    if (rows.length === 0) return { i, weekIso, rows: [] as { name: string; color: string; value: number }[] }
-    rows.sort((a, b) => (b.value as number) - (a.value as number))
     return {
       i,
       weekIso,
@@ -262,7 +263,7 @@ export function StaffTrendsLineChart({
         {/* Series lines */}
         {series.map((s) => (
           <path
-            key={`line-${s.staffId}`}
+            key={`line-${s.id}`}
             d={buildPath(s.values)}
             stroke={s.color}
             strokeWidth={2}
@@ -289,7 +290,7 @@ export function StaffTrendsLineChart({
               if (v == null) return null
               return (
                 <circle
-                  key={`dot-${s.staffId}`}
+                  key={`dot-${s.id}`}
                   cx={xAt(hoverIndex)}
                   cy={yAt(v)}
                   r={3.5}

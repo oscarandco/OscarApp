@@ -23,21 +23,17 @@ import { queryErrorDetail } from '@/lib/queryError'
 const WEEKS = 52
 const MAX_SELECTED = 12
 
-/** Distinct, accessible colours; cycle when more than 12 staff selected. */
-const SERIES_COLORS = [
-  '#7c3aed', // violet-600
-  '#0ea5e9', // sky-500
-  '#16a34a', // green-600
-  '#f59e0b', // amber-500
-  '#ef4444', // red-500
-  '#0891b2', // cyan-600
-  '#db2777', // pink-600
-  '#65a30d', // lime-600
-  '#9333ea', // purple-600
-  '#0d9488', // teal-600
-  '#ea580c', // orange-600
-  '#475569', // slate-600
-]
+/** Fixed colours for the three metric lines on every per-staff chart. */
+const METRIC_COLORS = {
+  sales: '#0ea5e9', // sky-500
+  potential: '#f59e0b', // amber-500
+  actual: '#7c3aed', // violet-600
+}
+const METRIC_LABELS = {
+  sales: 'Sales ex GST',
+  potential: 'Potential commission ex GST',
+  actual: 'Actual commission ex GST',
+}
 
 /* ------------------------------------------------------------------ */
 /* Date helpers (Monday-Sunday pay weeks, UTC to avoid TZ shifts).     */
@@ -153,7 +149,6 @@ function compareStaff(a: StaffMemberRow, b: StaffMemberRow): number {
 type SeriesGroup = {
   staffId: string
   staffName: string
-  color: string
   sales: number[]
   potential: number[]
   actual: number[]
@@ -255,16 +250,16 @@ export function StaffTrendsPage() {
     return map
   }, [staffMembers])
 
-  /* Stable colour assignment based on selection order. */
+  /* Build one SeriesGroup per selected staff member, zero-filled across
+   * the 52-week window so each per-staff chart draws a continuous line. */
   const seriesGroups = useMemo<SeriesGroup[]>(() => {
     if (selectedStaffIds.length === 0) return []
     const weekIndex = new Map<string, number>()
     weekStarts.forEach((w, i) => weekIndex.set(w, i))
 
-    const groups: SeriesGroup[] = selectedStaffIds.map((id, idx) => ({
+    const groups: SeriesGroup[] = selectedStaffIds.map((id) => ({
       staffId: id,
       staffName: staffNameById.get(id) ?? '(Unknown)',
-      color: SERIES_COLORS[idx % SERIES_COLORS.length],
       sales: new Array(WEEKS).fill(0),
       potential: new Array(WEEKS).fill(0),
       actual: new Array(WEEKS).fill(0),
@@ -287,37 +282,6 @@ export function StaffTrendsPage() {
 
     return groups
   }, [selectedStaffIds, staffNameById, staffWeekRows, weekStarts])
-
-  const salesSeries: StaffTrendsSeries[] = useMemo(
-    () =>
-      seriesGroups.map((g) => ({
-        staffId: g.staffId,
-        staffName: g.staffName,
-        color: g.color,
-        values: g.sales,
-      })),
-    [seriesGroups],
-  )
-  const potentialSeries: StaffTrendsSeries[] = useMemo(
-    () =>
-      seriesGroups.map((g) => ({
-        staffId: g.staffId,
-        staffName: g.staffName,
-        color: g.color,
-        values: g.potential,
-      })),
-    [seriesGroups],
-  )
-  const actualSeries: StaffTrendsSeries[] = useMemo(
-    () =>
-      seriesGroups.map((g) => ({
-        staffId: g.staffId,
-        staffName: g.staffName,
-        color: g.color,
-        values: g.actual,
-      })),
-    [seriesGroups],
-  )
 
   /* Table: only weeks with non-zero activity, newest first. */
   const tableRows = useMemo<TableRow[]>(() => {
@@ -448,14 +412,14 @@ export function StaffTrendsPage() {
           </div>
 
           {selectedStaffIds.length > 0 ? (
-            <div className="mt-2 flex items-center justify-between text-xs">
-              <span className="text-slate-500">
-                {atLimit ? `Max ${MAX_SELECTED} reached` : 'Click a row to toggle'}
-              </span>
+            <div className="mt-2 flex items-center justify-end gap-3 text-xs">
+              {atLimit ? (
+                <span className="text-slate-500">Max {MAX_SELECTED} reached</span>
+              ) : null}
               <button
                 type="button"
                 onClick={clearSelection}
-                className="rounded-md px-2 py-1 text-slate-600 hover:bg-slate-100"
+                className="text-slate-500 hover:text-slate-800 hover:underline"
               >
                 Clear
               </button>
@@ -572,24 +536,9 @@ export function StaffTrendsPage() {
             </section>
           ) : (
             <div className="mt-4 flex flex-col gap-4">
-              <ChartCard
-                title="Sales (ex GST)"
-                subtitle="Weekly sales excluding GST and vouchers."
-                weekStarts={weekStarts}
-                series={salesSeries}
-              />
-              <ChartCard
-                title="Potential commission (ex GST)"
-                subtitle="What commission would be if every line paid out at the plan's rate."
-                weekStarts={weekStarts}
-                series={potentialSeries}
-              />
-              <ChartCard
-                title="Actual commission (ex GST)"
-                subtitle="Commission actually accrued after thresholds and exclusions."
-                weekStarts={weekStarts}
-                series={actualSeries}
-              />
+              {seriesGroups.map((g) => (
+                <StaffChartCard key={g.staffId} group={g} weekStarts={weekStarts} />
+              ))}
 
               <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
                 <div className="mb-3 flex items-center justify-between">
@@ -705,36 +654,57 @@ function StaffTrendsNavRow({
 }
 
 /* ------------------------------------------------------------------ */
-/* Chart card                                                           */
+/* Chart card (one per staff member, with 3 metric lines)              */
 /* ------------------------------------------------------------------ */
 
-function ChartCard({
-  title,
-  subtitle,
+function StaffChartCard({
+  group,
   weekStarts,
-  series,
 }: {
-  title: string
-  subtitle: string
+  group: SeriesGroup
   weekStarts: string[]
-  series: StaffTrendsSeries[]
 }) {
+  const series: StaffTrendsSeries[] = [
+    {
+      id: 'sales',
+      label: METRIC_LABELS.sales,
+      color: METRIC_COLORS.sales,
+      values: group.sales,
+    },
+    {
+      id: 'potential',
+      label: METRIC_LABELS.potential,
+      color: METRIC_COLORS.potential,
+      values: group.potential,
+    },
+    {
+      id: 'actual',
+      label: METRIC_LABELS.actual,
+      color: METRIC_COLORS.actual,
+      values: group.actual,
+    },
+  ]
+
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-      <h2 className="mb-1 text-base font-semibold text-slate-800">{title}</h2>
-      <p className="mb-3 text-sm text-slate-600">{subtitle}</p>
+      <h2 className="mb-1 text-base font-semibold text-slate-800">
+        {group.staffName}
+      </h2>
+      <p className="mb-3 text-sm text-slate-600">
+        Sales, potential commission and actual commission over the last {WEEKS} pay weeks.
+      </p>
 
       <StaffTrendsLineChart weekStarts={weekStarts} series={series} />
 
       <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-700">
         {series.map((s) => (
-          <li key={s.staffId} className="flex items-center gap-1.5">
+          <li key={s.id} className="flex items-center gap-1.5">
             <span
               aria-hidden
               className="inline-block h-2.5 w-2.5 rounded-full"
               style={{ background: s.color }}
             />
-            <span>{s.staffName}</span>
+            <span>{s.label}</span>
           </li>
         ))}
       </ul>
