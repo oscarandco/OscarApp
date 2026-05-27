@@ -308,20 +308,23 @@ export function StaffTrendsStackedSalesChart({
             {tooltip.rows.length === 0 ? (
               <p className="text-slate-500">No sales this week.</p>
             ) : (
-              <ul className="max-h-72 space-y-1 overflow-y-auto pr-1">
+              <ul className="max-h-72 space-y-0.5 overflow-y-auto pr-1">
                 {tooltip.rows.map((r) => (
-                  <li key={r.staffId} className="flex items-start gap-2">
+                  <li
+                    key={r.staffId}
+                    className="flex items-center gap-2"
+                  >
                     <span
                       aria-hidden
-                      className="mt-1 inline-block h-2 w-2 shrink-0 rounded-full"
+                      className="inline-block h-2 w-2 shrink-0 rounded-full"
                       style={{ background: r.color }}
                     />
-                    <div className="flex-1 min-w-0">
-                      <div className="truncate text-slate-600">{r.staffName}</div>
-                      <div className="tabular-nums font-medium text-slate-800">
-                        {yFormat(r.value)}
-                      </div>
-                    </div>
+                    <span className="min-w-0 flex-1 truncate text-slate-600">
+                      {r.staffName}
+                    </span>
+                    <span className="tabular-nums font-medium text-slate-800">
+                      {yFormat(r.value)}
+                    </span>
                   </li>
                 ))}
               </ul>

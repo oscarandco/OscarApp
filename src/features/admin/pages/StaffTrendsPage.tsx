@@ -356,11 +356,15 @@ export function StaffTrendsPage() {
 
   /* ---------------- shared Y-axis across selected staff charts ---- */
 
-  /* Use the max Sales ex GST across all selected staff and all weeks so
-   * every per-staff line chart shares the same vertical scale, making
-   * Leah vs Jarod comparable at a glance. Sales is always the largest
-   * of the three metrics on a given week, so this covers Potential and
-   * Actual commission as well. */
+  /* Pick the max Sales ex GST across all selected staff and all weeks
+   * so every per-staff line chart shares the same vertical scale,
+   * making Leah vs Jarod comparable at a glance. Sales is always the
+   * largest of the three metrics on a given week, so this also covers
+   * Potential and Actual commission.
+   *
+   * Round up to the nearest $1,000 (e.g. $2,965 -> $3,000, $4,001 ->
+   * $5,000, $3,000 -> $3,000) so the axis tick labels are tidy without
+   * being misleadingly large. */
   const sharedYMax = useMemo(() => {
     let m = 0
     for (const g of seriesGroups) {
@@ -368,7 +372,8 @@ export function StaffTrendsPage() {
         if (v > m) m = v
       }
     }
-    return m
+    if (m <= 0) return 0
+    return Math.ceil(m / 1000) * 1000
   }, [seriesGroups])
 
   /* ---------------- table rows ---------------- */
@@ -816,6 +821,7 @@ function StaffChartCard({
         weekStarts={weekStarts}
         series={series}
         yMax={yMax}
+        height={188}
       />
 
       <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-700">
