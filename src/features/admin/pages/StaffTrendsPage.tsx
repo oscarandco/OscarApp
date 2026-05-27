@@ -117,6 +117,22 @@ function parseNumOr0(v: unknown): number {
   return Number.isFinite(n) ? n : 0
 }
 
+/**
+ * Tiered ceiling used for the shared Y-axis max on per-staff charts.
+ *   m <= 0      -> 100 (sensible fallback when nothing has sold)
+ *   m < 1000    -> ceil to nearest $100
+ *   m < 3000    -> ceil to nearest $500
+ *   m >= 3000   -> ceil to nearest $1,000
+ * Tier boundaries are exact (m === 1000 stays at $1,000, m === 3000
+ * stays at $3,000). The chart consumes this value verbatim.
+ */
+function ceilSharedYMax(m: number): number {
+  if (m <= 0) return 100
+  if (m < 1000) return Math.ceil(m / 100) * 100
+  if (m < 3000) return Math.ceil(m / 500) * 500
+  return Math.ceil(m / 1000) * 1000
+}
+
 function staffPrimaryLabel(s: StaffMemberRow): string {
   const disp = (s.display_name ?? '').trim()
   return disp !== '' ? disp : s.full_name.trim()
@@ -362,9 +378,13 @@ export function StaffTrendsPage() {
    * largest of the three metrics on a given week, so this also covers
    * Potential and Actual commission.
    *
-   * Round up to the nearest $1,000 (e.g. $2,965 -> $3,000, $4,001 ->
-   * $5,000, $3,000 -> $3,000) so the axis tick labels are tidy without
-   * being misleadingly large. */
+   * Tiered "ceil-to-nice" rounding so low-sales staff still have a
+   * readable axis instead of being squashed by a $1,000 step:
+   *   < $1,000 : ceil to nearest $100  ($145  -> $200)
+   *   < $3,000 : ceil to nearest $500  ($1,120 -> $1,500)
+   *   >= $3,000: ceil to nearest $1,000 ($3,001 -> $4,000)
+   * Exact boundaries stay flat ($1,000 -> $1,000, $3,000 -> $3,000).
+   * If no staff has any sales, fall back to $100. */
   const sharedYMax = useMemo(() => {
     let m = 0
     for (const g of seriesGroups) {
@@ -372,8 +392,7 @@ export function StaffTrendsPage() {
         if (v > m) m = v
       }
     }
-    if (m <= 0) return 0
-    return Math.ceil(m / 1000) * 1000
+    return ceilSharedYMax(m)
   }, [seriesGroups])
 
   /* ---------------- table rows ---------------- */
@@ -790,24 +809,53 @@ function StaffChartCard({
   weekStarts: string[]
   yMax: number
 }) {
+  /* Display-only: replace weeks where the staff has no meaningful data
+   * (all three metrics exactly 0) with null so the line renders as a
+   * gap instead of dropping to $0. This catches Christmas shutdown
+   * weeks and the current incomplete week. Weeks where some metrics
+   * have values and others are legitimately 0 (e.g. sales > 0 but
+   * actual commission = 0) keep their 0 values, because that is
+   * meaningful. The raw zero-filled arrays are still used by the
+   * shared Y-axis calculation and the weekly breakdown table. */
+  const { displaySales, displayPotential, displayActual } = useMemo(() => {
+    const sales: (number | null)[] = new Array(weekStarts.length)
+    const potential: (number | null)[] = new Array(weekStarts.length)
+    const actual: (number | null)[] = new Array(weekStarts.length)
+    for (let i = 0; i < weekStarts.length; i++) {
+      const s = group.sales[i] ?? 0
+      const p = group.potential[i] ?? 0
+      const a = group.actual[i] ?? 0
+      if (s === 0 && p === 0 && a === 0) {
+        sales[i] = null
+        potential[i] = null
+        actual[i] = null
+      } else {
+        sales[i] = s
+        potential[i] = p
+        actual[i] = a
+      }
+    }
+    return { displaySales: sales, displayPotential: potential, displayActual: actual }
+  }, [group.sales, group.potential, group.actual, weekStarts.length])
+
   const series: StaffTrendsSeries[] = [
     {
       id: 'sales',
       label: METRIC_LABELS.sales,
       color: METRIC_COLORS.sales,
-      values: group.sales,
+      values: displaySales,
     },
     {
       id: 'potential',
       label: METRIC_LABELS.potential,
       color: METRIC_COLORS.potential,
-      values: group.potential,
+      values: displayPotential,
     },
     {
       id: 'actual',
       label: METRIC_LABELS.actual,
       color: METRIC_COLORS.actual,
-      values: group.actual,
+      values: displayActual,
     },
   ]
 
