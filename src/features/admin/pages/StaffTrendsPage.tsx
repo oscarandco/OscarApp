@@ -3,18 +3,24 @@ import { useMemo, useState } from 'react'
 import { ErrorState } from '@/components/feedback/ErrorState'
 import { LoadingState } from '@/components/feedback/LoadingState'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { StaffLocationNavBadge } from '@/features/admin/components/StaffLocationNavBadge'
 import {
   StaffTrendsLineChart,
   type StaffTrendsSeries,
 } from '@/features/admin/components/StaffTrendsLineChart'
+import {
+  StaffTrendsStackedSalesChart,
+  type StackedSalesWeek,
+} from '@/features/admin/components/StaffTrendsStackedSalesChart'
 import { useAdminPayrollSummaryWeekly } from '@/features/admin/hooks/useAdminPayrollSummaryWeekly'
 import { useStaffConfiguration } from '@/features/admin/hooks/useStaffConfiguration'
 import type { StaffMemberRow } from '@/features/admin/types/staffConfiguration'
 import type { WeeklyCommissionSummaryRow } from '@/features/payroll/types'
 import { aggregateWeeklyCommissionSummaryByStaffWeek } from '@/lib/aggregateWeeklyCommissionSummaryByStaffWeek'
 import { formatNzd } from '@/lib/formatters'
-import { uniqueLocationOptions } from '@/lib/payrollSummaryFilters'
+import { primaryLocationNavBadge } from '@/lib/locationNavBadge'
 import { queryErrorDetail } from '@/lib/queryError'
+import type { ImportLocationRow } from '@/lib/supabaseRpc'
 
 /* ------------------------------------------------------------------ */
 /* Constants                                                            */
@@ -23,11 +29,10 @@ import { queryErrorDetail } from '@/lib/queryError'
 const WEEKS = 52
 const MAX_SELECTED = 12
 
-/** Fixed colours for the three metric lines on every per-staff chart. */
 const METRIC_COLORS = {
-  sales: '#0ea5e9', // sky-500
-  potential: '#f59e0b', // amber-500
-  actual: '#7c3aed', // violet-600
+  sales: '#0ea5e9',
+  potential: '#f59e0b',
+  actual: '#7c3aed',
 }
 const METRIC_LABELS = {
   sales: 'Sales ex GST',
@@ -35,8 +40,25 @@ const METRIC_LABELS = {
   actual: 'Actual commission ex GST',
 }
 
+/** Stable palette used by the stacked overview. */
+const STACK_PALETTE = [
+  '#7c3aed', '#0ea5e9', '#16a34a', '#f59e0b', '#ef4444',
+  '#0891b2', '#db2777', '#65a30d', '#9333ea', '#0d9488',
+  '#ea580c', '#475569', '#a855f7', '#06b6d4', '#84cc16',
+  '#fb923c',
+]
+
+/** Deterministic colour for a staff id (stable across renders/sessions). */
+function colorForStaffId(id: string): string {
+  let h = 0
+  for (let i = 0; i < id.length; i++) {
+    h = ((h << 5) - h + id.charCodeAt(i)) | 0
+  }
+  return STACK_PALETTE[Math.abs(h) % STACK_PALETTE.length]
+}
+
 /* ------------------------------------------------------------------ */
-/* Date helpers (Monday-Sunday pay weeks, UTC to avoid TZ shifts).     */
+/* Date helpers (Monday-Sunday pay weeks, UTC)                          */
 /* ------------------------------------------------------------------ */
 
 function toIsoDate(d: Date): string {
@@ -101,9 +123,6 @@ function staffPrimaryLabel(s: StaffMemberRow): string {
   return disp !== '' ? disp : s.full_name.trim()
 }
 
-/** Mirrors StaffConfigurationPage's StaffNavRow: show full_name in parens
- * when it differs from the display label, so duplicate display names can
- * be told apart. */
 function staffSubLabel(s: StaffMemberRow): string | null {
   const disp = (s.display_name ?? '').trim()
   const full = s.full_name.trim()
@@ -142,6 +161,16 @@ function compareStaff(a: StaffMemberRow, b: StaffMemberRow): number {
   return an.localeCompare(bn, undefined, { sensitivity: 'base' })
 }
 
+const BUCKET_LABEL: Record<StaffBucket, string> = {
+  stylists: 'Stylists',
+  assistants: 'Assistants',
+  admin: 'Admin',
+  other: 'Other',
+}
+const BUCKET_ORDER: StaffBucket[] = ['stylists', 'assistants', 'admin', 'other']
+
+type StatusFilter = 'active' | 'inactive' | 'all'
+
 /* ------------------------------------------------------------------ */
 /* Page                                                                 */
 /* ------------------------------------------------------------------ */
@@ -163,21 +192,14 @@ type TableRow = {
   actual: number
 }
 
-const BUCKET_LABEL: Record<StaffBucket, string> = {
-  stylists: 'Stylists',
-  assistants: 'Assistants',
-  admin: 'Admin',
-  other: 'Other',
-}
-const BUCKET_ORDER: StaffBucket[] = ['stylists', 'assistants', 'admin', 'other']
-
 export function StaffTrendsPage() {
   const trends = useAdminPayrollSummaryWeekly()
   const staffCfg = useStaffConfiguration()
 
   const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([])
   const [locationId, setLocationId] = useState('')
-  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('active')
+  const [showAllSales, setShowAllSales] = useState(true)
 
   /* 52-week window anchored on "today's Monday" (UTC). */
   const mostRecentMonday = useMemo(() => payWeekStartFor(new Date()), [])
@@ -189,6 +211,7 @@ export function StaffTrendsPage() {
 
   const trendRows = trends.data ?? []
   const staffMembers: StaffMemberRow[] = staffCfg.data?.staff ?? []
+  const locations: ImportLocationRow[] = staffCfg.data?.locations ?? []
 
   /* Scoped trend rows for charting (52-week window + optional location). */
   const scopedRows = useMemo(() => {
@@ -203,30 +226,27 @@ export function StaffTrendsPage() {
   }, [trendRows, weekStartSet, locationId])
 
   /* One row per (week, staff), summed across locations. Same helper +
-   * same attribution as Sales summary's split-rows view. */
+   * same attribution as Sales summary. */
   const staffWeekRows = useMemo(
     () => aggregateWeeklyCommissionSummaryByStaffWeek(scopedRows),
     [scopedRows],
   )
 
-  /* Location options come from the same trend rows so only locations
-   * with payroll data appear (matches Sales summary). */
-  const locationOptions = useMemo(
-    () => uniqueLocationOptions(trendRows),
-    [trendRows],
-  )
+  /* ---------------- left nav: status + location filters ---------------- */
 
-  /* ---------------- left nav: filtered + grouped ---------------- */
-
-  const filteredStaff = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    if (q === '') return staffMembers
+  const visibleStaff = useMemo(() => {
     return staffMembers.filter((s) => {
-      const hay =
-        `${s.full_name ?? ''} ${s.display_name ?? ''} ${s.primary_role ?? ''}`.toLowerCase()
-      return hay.includes(q)
+      if (statusFilter === 'active' && !s.is_active) return false
+      if (statusFilter === 'inactive' && s.is_active) return false
+      if (
+        locationId !== '' &&
+        String(s.primary_location_id ?? '') !== locationId
+      ) {
+        return false
+      }
+      return true
     })
-  }, [staffMembers, search])
+  }, [staffMembers, statusFilter, locationId])
 
   const groupedStaff = useMemo(() => {
     const buckets: Record<StaffBucket, StaffMemberRow[]> = {
@@ -235,23 +255,21 @@ export function StaffTrendsPage() {
       admin: [],
       other: [],
     }
-    for (const s of filteredStaff) {
-      buckets[staffNavBucket(s)].push(s)
-    }
+    for (const s of visibleStaff) buckets[staffNavBucket(s)].push(s)
     for (const b of BUCKET_ORDER) buckets[b].sort(compareStaff)
     return buckets
-  }, [filteredStaff])
+  }, [visibleStaff])
 
-  /* Selected name lookup (preserves selection even if the user later
-   * filters the row out of the visible list). */
+  /* Display name lookup across ALL staff (so selected staff that get
+   * filtered out of the list keep correct names on their chart). */
   const staffNameById = useMemo(() => {
     const map = new Map<string, string>()
     for (const s of staffMembers) map.set(s.id, staffPrimaryLabel(s))
     return map
   }, [staffMembers])
 
-  /* Build one SeriesGroup per selected staff member, zero-filled across
-   * the 52-week window so each per-staff chart draws a continuous line. */
+  /* ---------------- selected-staff line series ---------------- */
+
   const seriesGroups = useMemo<SeriesGroup[]>(() => {
     if (selectedStaffIds.length === 0) return []
     const weekIndex = new Map<string, number>()
@@ -283,7 +301,62 @@ export function StaffTrendsPage() {
     return groups
   }, [selectedStaffIds, staffNameById, staffWeekRows, weekStarts])
 
-  /* Table: only weeks with non-zero activity, newest first. */
+  /* ---------------- all-staff stacked weekly sales ---------------- */
+
+  const stackedWeeks = useMemo<StackedSalesWeek[]>(() => {
+    if (!showAllSales) return []
+    const weekIndex = new Map<string, number>()
+    weekStarts.forEach((w, i) => weekIndex.set(w, i))
+
+    type Acc = { value: number; name: string }
+    const buckets: Map<string, Acc>[] = weekStarts.map(() => new Map())
+    const totals = new Map<string, number>()
+
+    for (const r of staffWeekRows) {
+      const sid = String(r.derived_staff_paid_id ?? '').trim()
+      if (sid === '') continue
+      const wIdx = weekIndex.get(String(r.pay_week_start ?? '').trim())
+      if (wIdx == null) continue
+      const v = parseNumOr0(r.total_sales_ex_gst)
+      if (v <= 0) continue
+      const fromStaff = staffNameById.get(sid)
+      const fromRow = String(r.derived_staff_paid_display_name ?? '').trim()
+      const name = fromStaff ?? (fromRow !== '' ? fromRow : '(Unknown)')
+      const cur = buckets[wIdx].get(sid) ?? { value: 0, name }
+      cur.value += v
+      cur.name = name
+      buckets[wIdx].set(sid, cur)
+      totals.set(sid, (totals.get(sid) ?? 0) + v)
+    }
+
+    /* Stable per-bar segment order: by total contribution descending, so
+     * the biggest contributor sits at the bottom of every bar. */
+    const stackOrder = [...totals.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([id]) => id)
+
+    return weekStarts.map((weekStart, i) => {
+      const w = buckets[i]
+      let total = 0
+      const segments = stackOrder
+        .map((sid) => {
+          const acc = w.get(sid)
+          if (!acc) return null
+          total += acc.value
+          return {
+            staffId: sid,
+            staffName: acc.name,
+            color: colorForStaffId(sid),
+            value: acc.value,
+          }
+        })
+        .filter((s): s is NonNullable<typeof s> => s !== null)
+      return { weekStart, total, segments }
+    })
+  }, [showAllSales, staffWeekRows, staffNameById, weekStarts])
+
+  /* ---------------- table rows ---------------- */
+
   const tableRows = useMemo<TableRow[]>(() => {
     const out: TableRow[] = []
     for (const g of seriesGroups) {
@@ -381,11 +454,12 @@ export function StaffTrendsPage() {
       className="flex min-h-0 w-full flex-col lg:h-[calc(100dvh-7.5rem)] lg:min-h-0 lg:overflow-hidden"
     >
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden pb-4 pl-2 pr-4 pt-2 sm:pl-3 sm:pr-6 lg:flex-row lg:pt-3">
-        {/* ---------- Left pane: staff list ---------- */}
+        {/* ---------- Left pane ---------- */}
         <aside
-          className="flex min-h-0 w-full shrink-0 flex-col border-b border-slate-200 bg-white px-3 py-3 shadow-sm max-h-[min(46vh,26rem)] sm:px-4 lg:max-h-none lg:h-full lg:w-72 lg:overflow-hidden lg:rounded-lg lg:border lg:border-slate-200 lg:py-4 lg:shadow-sm"
+          className="flex min-h-0 w-full shrink-0 flex-col border-b border-slate-200 bg-white px-3 py-3 shadow-sm max-h-[min(52vh,30rem)] sm:px-4 lg:max-h-none lg:h-full lg:w-72 lg:overflow-hidden lg:rounded-lg lg:border lg:border-slate-200 lg:py-4 lg:shadow-sm"
           data-testid="staff-trends-left-pane"
         >
+          {/* Header: Staff + counter */}
           <div className="flex items-center justify-between gap-2">
             <h2 className="text-sm font-semibold text-slate-800">Staff</h2>
             <span
@@ -393,46 +467,80 @@ export function StaffTrendsPage() {
               data-testid="staff-trends-selected-count"
             >
               {selectedStaffIds.length} selected
+              {selectedStaffIds.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={clearSelection}
+                  className="ml-2 text-slate-500 hover:text-slate-800 hover:underline"
+                >
+                  Clear
+                </button>
+              ) : null}
             </span>
           </div>
 
-          <div className="mt-2">
-            <label htmlFor="staff-trends-search" className="sr-only">
-              Search staff
+          {/* Show / Hide all sales */}
+          <button
+            type="button"
+            onClick={() => setShowAllSales((v) => !v)}
+            className="mt-3 w-full rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+            aria-pressed={showAllSales}
+            data-testid="staff-trends-toggle-all-sales"
+          >
+            {showAllSales ? 'Hide all sales' : 'Show all sales'}
+          </button>
+
+          {/* Location */}
+          <div className="mt-3">
+            <label
+              htmlFor="staff-trends-location"
+              className="block text-xs font-medium text-slate-600"
+            >
+              Location
             </label>
-            <input
-              id="staff-trends-search"
-              type="search"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search staff..."
-              autoComplete="off"
-              className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
-            />
+            <select
+              id="staff-trends-location"
+              className="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+              value={locationId}
+              onChange={(e) => setLocationId(e.target.value)}
+            >
+              <option value="">All locations</option>
+              {locations.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.name}
+                </option>
+              ))}
+            </select>
           </div>
 
-          {selectedStaffIds.length > 0 ? (
-            <div className="mt-2 flex items-center justify-end gap-3 text-xs">
-              {atLimit ? (
-                <span className="text-slate-500">Max {MAX_SELECTED} reached</span>
-              ) : null}
-              <button
-                type="button"
-                onClick={clearSelection}
-                className="text-slate-500 hover:text-slate-800 hover:underline"
-              >
-                Clear
-              </button>
-            </div>
-          ) : null}
+          {/* Status */}
+          <div className="mt-3">
+            <label
+              htmlFor="staff-trends-status"
+              className="block text-xs font-medium text-slate-600"
+            >
+              Status
+            </label>
+            <select
+              id="staff-trends-status"
+              className="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+            >
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+              <option value="all">All</option>
+            </select>
+          </div>
 
+          {/* Staff list */}
           <div
             className="mt-3 min-h-0 flex-1 overflow-y-auto pr-0.5"
             data-testid="staff-trends-staff-list"
           >
-            {filteredStaff.length === 0 ? (
+            {visibleStaff.length === 0 ? (
               <p className="text-sm text-slate-500">
-                No staff match your search.
+                No staff match these filters.
               </p>
             ) : (
               <div className="space-y-4 pb-2">
@@ -448,12 +556,17 @@ export function StaffTrendsPage() {
                         {rows.map((s) => {
                           const active = selectedStaffIds.includes(s.id)
                           const disabled = !active && atLimit
+                          const locBadge = primaryLocationNavBadge(
+                            s.primary_location_id,
+                            locations,
+                          )
                           return (
                             <StaffTrendsNavRow
                               key={s.id}
                               member={s}
                               active={active}
                               disabled={disabled}
+                              locationBadge={locBadge}
                               onToggle={toggleStaff}
                             />
                           )
@@ -467,129 +580,121 @@ export function StaffTrendsPage() {
           </div>
         </aside>
 
-        {/* ---------- Right pane: header + filters + charts + table ---------- */}
+        {/* ---------- Right pane ---------- */}
         <div className="min-h-0 min-w-0 flex-1 overflow-y-auto pb-6 pt-0">
           <PageHeader
             title="Staff trends"
             description="Weekly sales and commission trends for selected staff."
           />
 
-          {/* Top controls: location + date range */}
-          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-            <div className="grid items-end gap-4 sm:grid-cols-12">
-              <div className="sm:col-span-5">
-                <label
-                  htmlFor="staff-trends-location"
-                  className="block text-xs font-medium text-slate-600"
-                >
-                  Location
-                </label>
-                <select
-                  id="staff-trends-location"
-                  className="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
-                  value={locationId}
-                  onChange={(e) => setLocationId(e.target.value)}
-                >
-                  <option value="">All locations</option>
-                  {locationOptions.map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="sm:col-span-5">
-                <span className="block text-xs font-medium text-slate-600">
-                  Date range
-                </span>
-                <p className="mt-1.5 text-sm text-slate-700">
-                  Last {WEEKS} pay weeks
-                  <span className="ml-2 text-slate-400">
-                    ({formatWeekLong(weekStarts[0])} to {formatWeekLong(weekStarts[WEEKS - 1])})
-                  </span>
-                </p>
-              </div>
-              <div className="sm:col-span-2 sm:text-right">
-                {selectedStaffIds.length > 0 ? (
-                  <button
-                    type="button"
-                    onClick={clearSelection}
-                    className="inline-flex w-full items-center justify-center rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 sm:w-auto"
-                  >
-                    Clear selection
-                  </button>
-                ) : null}
-              </div>
-            </div>
-          </section>
-
-          {noStaffSelected ? (
-            <section className="mt-4 rounded-xl border border-dashed border-slate-200 bg-white px-6 py-12 text-center">
-              <p className="text-sm font-medium text-slate-800">
-                Select one or more staff members to view weekly sales and
-                commission trends.
-              </p>
-              <p className="mt-1 text-sm text-slate-600">
-                Numbers match the Sales summary page filtered to the same
-                staff and date range.
-              </p>
-            </section>
-          ) : (
-            <div className="mt-4 flex flex-col gap-4">
-              {seriesGroups.map((g) => (
-                <StaffChartCard key={g.staffId} group={g} weekStarts={weekStarts} />
-              ))}
-
+          <div className="mt-2 flex flex-col gap-4">
+            {showAllSales ? (
               <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-                <div className="mb-3 flex items-center justify-between">
-                  <h2 className="text-base font-semibold text-slate-800">
-                    Weekly breakdown
-                  </h2>
-                  <span className="text-xs text-slate-500">
-                    {tableRows.length} {tableRows.length === 1 ? 'row' : 'rows'}
-                  </span>
-                </div>
-                {tableRows.length === 0 ? (
-                  <p className="text-sm text-slate-600">
-                    No sales for the selected staff in the last {WEEKS} weeks.
-                  </p>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-slate-200 text-sm">
-                      <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        <tr>
-                          <th scope="col" className="px-3 py-2">Week beginning</th>
-                          <th scope="col" className="px-3 py-2">Staff member</th>
-                          <th scope="col" className="px-3 py-2 text-right">Sales (ex GST)</th>
-                          <th scope="col" className="px-3 py-2 text-right">Potential commission (ex GST)</th>
-                          <th scope="col" className="px-3 py-2 text-right">Actual commission (ex GST)</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {tableRows.map((r) => (
-                          <tr key={`${r.payWeekStart}-${r.staffId}`}>
-                            <td className="px-3 py-1.5 text-slate-700">
-                              {formatWeekLong(r.payWeekStart)}
-                            </td>
-                            <td className="px-3 py-1.5 text-slate-700">{r.staffName}</td>
-                            <td className="px-3 py-1.5 text-right tabular-nums text-slate-800">
-                              {formatNzd(r.sales)}
-                            </td>
-                            <td className="px-3 py-1.5 text-right tabular-nums text-slate-800">
-                              {formatNzd(r.potential)}
-                            </td>
-                            <td className="px-3 py-1.5 text-right tabular-nums text-slate-800">
-                              {formatNzd(r.actual)}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                <h2 className="mb-1 text-base font-semibold text-slate-800">
+                  All staff sales by week
+                </h2>
+                <p className="mb-3 text-sm text-slate-600">
+                  Weekly sales excluding GST for the selected location.
+                </p>
+                <StaffTrendsStackedSalesChart weeks={stackedWeeks} />
               </section>
-            </div>
-          )}
+            ) : null}
+
+            {noStaffSelected ? (
+              <section className="rounded-xl border border-dashed border-slate-200 bg-white px-6 py-12 text-center">
+                <p className="text-sm font-medium text-slate-800">
+                  Select a staff member to see their sales and commission
+                  trend.
+                </p>
+                <p className="mt-1 text-sm text-slate-600">
+                  Numbers match the Sales summary page filtered to the same
+                  staff and date range.
+                </p>
+              </section>
+            ) : (
+              <>
+                {seriesGroups.map((g) => (
+                  <StaffChartCard
+                    key={g.staffId}
+                    group={g}
+                    weekStarts={weekStarts}
+                  />
+                ))}
+
+                <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+                  <div className="mb-3 flex items-center justify-between">
+                    <h2 className="text-base font-semibold text-slate-800">
+                      Weekly breakdown
+                    </h2>
+                    <span className="text-xs text-slate-500">
+                      {tableRows.length}{' '}
+                      {tableRows.length === 1 ? 'row' : 'rows'}
+                    </span>
+                  </div>
+                  {tableRows.length === 0 ? (
+                    <p className="text-sm text-slate-600">
+                      No sales for the selected staff in the last {WEEKS}{' '}
+                      weeks.
+                    </p>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-slate-200 text-sm">
+                        <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          <tr>
+                            <th scope="col" className="px-3 py-2">
+                              Week beginning
+                            </th>
+                            <th scope="col" className="px-3 py-2">
+                              Staff member
+                            </th>
+                            <th
+                              scope="col"
+                              className="px-3 py-2 text-right"
+                            >
+                              Sales ex GST
+                            </th>
+                            <th
+                              scope="col"
+                              className="px-3 py-2 text-right"
+                            >
+                              Potential commission ex GST
+                            </th>
+                            <th
+                              scope="col"
+                              className="px-3 py-2 text-right"
+                            >
+                              Actual commission ex GST
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {tableRows.map((r) => (
+                            <tr key={`${r.payWeekStart}-${r.staffId}`}>
+                              <td className="px-3 py-1.5 text-slate-700">
+                                {formatWeekLong(r.payWeekStart)}
+                              </td>
+                              <td className="px-3 py-1.5 text-slate-700">
+                                {r.staffName}
+                              </td>
+                              <td className="px-3 py-1.5 text-right tabular-nums text-slate-800">
+                                {formatNzd(r.sales)}
+                              </td>
+                              <td className="px-3 py-1.5 text-right tabular-nums text-slate-800">
+                                {formatNzd(r.potential)}
+                              </td>
+                              <td className="px-3 py-1.5 text-right tabular-nums text-slate-800">
+                                {formatNzd(r.actual)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </section>
+              </>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -598,18 +703,19 @@ export function StaffTrendsPage() {
 
 /* ------------------------------------------------------------------ */
 /* Left-pane row (click-to-toggle, multi-select)                       */
-/* Visual style mirrors StaffConfigurationPage's StaffNavRow.           */
 /* ------------------------------------------------------------------ */
 
 function StaffTrendsNavRow({
   member,
   active,
   disabled,
+  locationBadge,
   onToggle,
 }: {
   member: StaffMemberRow
   active: boolean
   disabled: boolean
+  locationBadge: 'O' | 'T' | null
   onToggle: (id: string) => void
 }) {
   const primary = staffPrimaryLabel(member)
@@ -630,6 +736,7 @@ function StaffTrendsNavRow({
         }`}
       >
         <span className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
+          <StaffLocationNavBadge letter={locationBadge} />
           <span className="min-w-0 flex-1 truncate">
             <span
               className={`font-medium ${active ? 'text-violet-950' : 'text-slate-900'}`}
@@ -637,7 +744,10 @@ function StaffTrendsNavRow({
               {primary}
             </span>
             {sub ? (
-              <span className="text-xs font-normal text-slate-500"> ({sub})</span>
+              <span className="text-xs font-normal text-slate-500">
+                {' '}
+                ({sub})
+              </span>
             ) : null}
           </span>
         </span>
@@ -654,7 +764,7 @@ function StaffTrendsNavRow({
 }
 
 /* ------------------------------------------------------------------ */
-/* Chart card (one per staff member, with 3 metric lines)              */
+/* Per-staff line chart card                                            */
 /* ------------------------------------------------------------------ */
 
 function StaffChartCard({
@@ -691,7 +801,8 @@ function StaffChartCard({
         {group.staffName}
       </h2>
       <p className="mb-3 text-sm text-slate-600">
-        Sales, potential commission and actual commission over the last {WEEKS} pay weeks.
+        Sales, potential commission and actual commission over the last{' '}
+        {WEEKS} pay weeks.
       </p>
 
       <StaffTrendsLineChart weekStarts={weekStarts} series={series} />
