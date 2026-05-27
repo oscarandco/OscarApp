@@ -20,6 +20,7 @@ import {
   applyStaffRoleAssignment,
   deleteStaffMember,
   insertStaffMember,
+  undoLatestStaffRoleAssignment,
   updateStaffMember,
   type StaffMemberUpdatePayload,
 } from '@/lib/staffMembersApi'
@@ -1418,7 +1419,21 @@ function formatHistoryText(v: string | null | undefined): string {
   return s === '' ? '—' : s
 }
 
-function HistoryRow({ row }: { row: StaffRoleAssignmentRow }) {
+function HistoryRow({
+  row,
+  showUndoColumn,
+  canUndoThisRow,
+  undoBusy,
+  onUndoClick,
+}: {
+  row: StaffRoleAssignmentRow
+  /** True when ANY row in the table renders the actions column. */
+  showUndoColumn: boolean
+  /** True only for the single row eligible for undo (latest open, count > 1). */
+  canUndoThisRow: boolean
+  undoBusy: boolean
+  onUndoClick: () => void
+}) {
   const isOpen = row.effective_end_date == null
   return (
     <tr className="align-top">
@@ -1453,6 +1468,22 @@ function HistoryRow({ row }: { row: StaffRoleAssignmentRow }) {
       <td className="px-3 py-2 text-xs text-slate-600">
         {formatHistoryText(row.reason)}
       </td>
+      {showUndoColumn ? (
+        <td className="px-3 py-2 text-right text-xs">
+          {canUndoThisRow ? (
+            <button
+              type="button"
+              onClick={onUndoClick}
+              disabled={undoBusy}
+              className="rounded-md border border-rose-200 bg-white px-2.5 py-1 text-xs font-medium text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+              data-testid="staff-history-undo"
+              title="Remove this latest change and reopen the previous assignment"
+            >
+              {undoBusy ? 'Undoing…' : 'Undo latest change'}
+            </button>
+          ) : null}
+        </td>
+      ) : null}
     </tr>
   )
 }
@@ -1462,11 +1493,56 @@ function StaffRoleAssignmentHistorySection({
 }: {
   staffMemberId: string
 }) {
+  const queryClient = useQueryClient()
   const { data, isLoading, isError, error, refetch } =
     useStaffRoleAssignments(staffMemberId)
 
+  const [confirmUndo, setConfirmUndo] = useState<{ assignmentId: string } | null>(null)
+
+  // The single row eligible for undo: the open row, only when there is
+  // more than one history row for this staff member. Older / middle rows
+  // can not be deleted through the UI (or through the RPC).
+  const undoableRowId = useMemo<string | null>(() => {
+    if (!data || data.length < 2) return null
+    const openRows = data.filter((r) => r.effective_end_date == null)
+    if (openRows.length !== 1) return null
+    return openRows[0].id
+  }, [data])
+
+  const undoMut = useMutation({
+    mutationFn: async (assignmentId: string) => {
+      return undoLatestStaffRoleAssignment({
+        staffMemberId,
+        assignmentId,
+        reason: null,
+      })
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['staff-configuration'] })
+      void queryClient.invalidateQueries({
+        queryKey: ['admin-access-staff-location-lookup'],
+      })
+      void queryClient.invalidateQueries({ queryKey: ['remuneration-configuration'] })
+      void queryClient.invalidateQueries({
+        queryKey: ['staff-role-assignments', staffMemberId],
+      })
+    },
+  })
+
+  function doConfirmUndo() {
+    const t = confirmUndo
+    if (!t) return
+    setConfirmUndo(null)
+    void undoMut.mutateAsync(t.assignmentId)
+  }
+
+  const showUndoColumn = undoableRowId != null
+
   return (
-    <section className="mt-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+    <section
+      className="mt-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6"
+      data-testid="staff-history-section"
+    >
       <header className="flex items-start justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold text-slate-900">
@@ -1502,62 +1578,104 @@ function StaffRoleAssignmentHistorySection({
           No role / pay history yet for this staff member.
         </p>
       ) : (
-        <div className="mt-4 overflow-x-auto">
-          <table className="min-w-full divide-y divide-slate-200">
-            <thead className="bg-slate-50/80">
-              <tr>
-                <th
-                  scope="col"
-                  className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500"
-                >
-                  Effective
-                </th>
-                <th
-                  scope="col"
-                  className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500"
-                >
-                  Primary role
-                </th>
-                <th
-                  scope="col"
-                  className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500"
-                >
-                  Employment type
-                </th>
-                <th
-                  scope="col"
-                  className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500"
-                >
-                  Remuneration plan
-                </th>
-                <th
-                  scope="col"
-                  className="px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-wide text-slate-500"
-                >
-                  FTE
-                </th>
-                <th
-                  scope="col"
-                  className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500"
-                >
-                  Primary location
-                </th>
-                <th
-                  scope="col"
-                  className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500"
-                >
-                  Reason
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {data.map((row) => (
-                <HistoryRow key={row.id} row={row} />
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <>
+          <div className="mt-4 overflow-x-auto">
+            <table className="min-w-full divide-y divide-slate-200">
+              <thead className="bg-slate-50/80">
+                <tr>
+                  <th
+                    scope="col"
+                    className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500"
+                  >
+                    Effective
+                  </th>
+                  <th
+                    scope="col"
+                    className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500"
+                  >
+                    Primary role
+                  </th>
+                  <th
+                    scope="col"
+                    className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500"
+                  >
+                    Employment type
+                  </th>
+                  <th
+                    scope="col"
+                    className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500"
+                  >
+                    Remuneration plan
+                  </th>
+                  <th
+                    scope="col"
+                    className="px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-wide text-slate-500"
+                  >
+                    FTE
+                  </th>
+                  <th
+                    scope="col"
+                    className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500"
+                  >
+                    Primary location
+                  </th>
+                  <th
+                    scope="col"
+                    className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500"
+                  >
+                    Reason
+                  </th>
+                  {showUndoColumn ? (
+                    <th
+                      scope="col"
+                      className="px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-wide text-slate-500"
+                    >
+                      Actions
+                    </th>
+                  ) : null}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {data.map((row) => (
+                  <HistoryRow
+                    key={row.id}
+                    row={row}
+                    showUndoColumn={showUndoColumn}
+                    canUndoThisRow={row.id === undoableRowId}
+                    undoBusy={
+                      undoMut.isPending && undoMut.variables === row.id
+                    }
+                    onUndoClick={() => setConfirmUndo({ assignmentId: row.id })}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {undoMut.isError ? (
+            <p
+              className="mt-3 text-sm text-red-600"
+              role="alert"
+              data-testid="staff-history-undo-error"
+            >
+              {undoMut.error instanceof Error
+                ? undoMut.error.message
+                : String(undoMut.error)}
+            </p>
+          ) : null}
+        </>
       )}
+
+      <ConfirmDialog
+        open={confirmUndo != null}
+        title="Undo latest role / pay change?"
+        description="This will remove the latest role/pay change and restore the previous role/pay setup as the current profile. Payroll, commission, and KPI calculations from this date forward will revert to the previous values. This cannot be undone."
+        confirmLabel="Undo latest change"
+        cancelLabel="Keep change"
+        tone="danger"
+        onConfirm={doConfirmUndo}
+        onClose={() => setConfirmUndo(null)}
+        testId="staff-history-undo-confirm"
+      />
     </section>
   )
 }

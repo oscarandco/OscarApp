@@ -199,6 +199,47 @@ export async function fetchStaffRoleAssignments(
   return asRows(data as StaffRoleAssignmentRow[])
 }
 
+/**
+ * Args for the safe undo write path. Mirrors
+ * `public.undo_latest_staff_role_assignment(...)` (migration 20260828120400).
+ * Deletes the supplied CURRENT OPEN assignment row, reopens the
+ * immediately previous assignment (sets effective_end_date = null), and
+ * syncs staff_members back to that reopened row.
+ *
+ * The RPC rejects when the assignment is not the open row, does not
+ * belong to the staff member, or there is no previous row to reopen.
+ */
+export type UndoLatestStaffRoleAssignmentArgs = {
+  staffMemberId: string
+  assignmentId: string
+  reason: string | null
+}
+
+export type UndoLatestStaffRoleAssignmentResult = {
+  success: boolean
+  deleted_assignment_id: string
+  reopened_assignment_id: string
+  reopened_effective_start_date: string
+  staff_member_id: string
+  reason: string | null
+  message: string
+}
+
+export async function undoLatestStaffRoleAssignment(
+  args: UndoLatestStaffRoleAssignmentArgs,
+): Promise<UndoLatestStaffRoleAssignmentResult> {
+  const { data, error } = await requireSupabaseClient().rpc(
+    'undo_latest_staff_role_assignment',
+    {
+      p_staff_member_id: args.staffMemberId,
+      p_assignment_id: args.assignmentId,
+      p_reason: emptyToNull(args.reason),
+    },
+  )
+  if (error) throw toError('undo_latest_staff_role_assignment', error)
+  return data as UndoLatestStaffRoleAssignmentResult
+}
+
 function emptyToNull(s: string | null): string | null {
   if (s == null) return null
   const t = s.trim()
