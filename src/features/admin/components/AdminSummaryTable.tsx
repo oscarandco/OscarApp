@@ -57,8 +57,16 @@ import { rpcGetAdminPayrollLinesWeekly } from '@/lib/supabaseRpc'
 
 const thBase =
   'border-b border-slate-200 px-3 py-2 text-left align-top text-xs font-semibold uppercase tracking-wide text-slate-600 sm:px-3.5 sm:py-2 sm:normal-case sm:text-sm sm:tracking-normal sm:text-slate-700 whitespace-normal'
+/** Muted variant for visually-secondary columns (e.g. Assistant Comm. on My Sales). */
+const thBaseMuted =
+  'border-b border-slate-200 px-3 py-2 text-left align-top text-xs font-medium uppercase tracking-wide text-slate-500 sm:px-3.5 sm:py-2 sm:normal-case sm:text-sm sm:tracking-normal sm:text-slate-500 whitespace-normal'
 const tdBase =
   'whitespace-nowrap px-3 py-2 text-slate-700 sm:px-3.5 sm:py-2 min-w-[6.5rem]'
+const tdBaseMuted =
+  'whitespace-nowrap px-3 py-2 text-slate-500 sm:px-3.5 sm:py-2 min-w-[6.5rem]'
+
+/** Logical id of the My Sales column rendered with secondary/muted styling. */
+const MUTED_MIDDLE_COLUMN_ID: MiddleColumnId = 'total_assistant_commission_ex_gst'
 
 function isDateLikeKey(rowKey: string): boolean {
   if (rowKey === 'pay_week_start') return false
@@ -525,11 +533,12 @@ function AdminSummaryTableMySales({
                 const isDragging = draggingId === id
                 const isDropTarget =
                   dropTargetId === id && draggingId != null && draggingId !== id
+                const isMuted = id === MUTED_MIDDLE_COLUMN_ID
                 return (
                   <th
                     key={`${id}-${k}`}
                     scope="col"
-                    className={`${thBase} max-w-[9.5rem] sm:max-w-[11rem]`}
+                    className={`${isMuted ? thBaseMuted : thBase} max-w-[9.5rem] sm:max-w-[11rem]`}
                   >
                     <div className="flex min-w-0 items-start gap-0.5">
                       <div className="min-w-0 flex-1">
@@ -592,20 +601,41 @@ function AdminSummaryTableMySales({
                       <span className="text-slate-400">—</span>
                     )}
                   </td>
-                  {keys.map((k) => (
-                    <td key={k} className={tdBase}>
-                      <Cell
-                        rowKey={k}
-                        value={adminSummaryCellValue(
-                          row as AdminPayrollSummaryRow,
-                          k,
-                        )}
-                        workPerformedBySelfMatchNames={
-                          workPerformedBySelfMatchNames
-                        }
-                      />
-                    </td>
-                  ))}
+                  {keys.map((k) => {
+                    if (k === MUTED_MIDDLE_COLUMN_ID) {
+                      const raw = adminSummaryCellValue(
+                        row as AdminPayrollSummaryRow,
+                        k,
+                      )
+                      /* Per spec: null/zero should render as $0.00, not the
+                       * "—" empty-value glyph used for other columns. */
+                      const num =
+                        typeof raw === 'number'
+                          ? raw
+                          : raw == null || raw === ''
+                            ? 0
+                            : Number(raw) || 0
+                      return (
+                        <td key={k} className={tdBaseMuted}>
+                          <span className="tabular-nums">{formatNzd(num)}</span>
+                        </td>
+                      )
+                    }
+                    return (
+                      <td key={k} className={tdBase}>
+                        <Cell
+                          rowKey={k}
+                          value={adminSummaryCellValue(
+                            row as AdminPayrollSummaryRow,
+                            k,
+                          )}
+                          workPerformedBySelfMatchNames={
+                            workPerformedBySelfMatchNames
+                          }
+                        />
+                      </td>
+                    )
+                  })}
                   <td className={`${tdBase} min-w-[5.5rem]`}>
                     {weekStart ? (
                       <Link

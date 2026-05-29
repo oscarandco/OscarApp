@@ -106,10 +106,15 @@ export function mySalesVisibilityForRole(
         // Potential Commission, Commission payable). `pay_date` is the
         // only column hard-removed across every role on My Sales (see
         // requirements: "remove these columns entirely: Pay Week, Pay
-        // Date" — Pay Week is a fixed outer column and is removed at
+        // Date" - Pay Week is a fixed outer column and is removed at
         // the table layer; Pay Date is a middle column and is hidden
         // here so it never re-appears via stored preferences).
-        hiddenTableColumnIds: new Set<MiddleColumnId>(['pay_date']),
+        // Assistant Comm. is a stylist-only column (see stylist branch)
+        // and is force-hidden here for admin/manager.
+        hiddenTableColumnIds: new Set<MiddleColumnId>([
+          'pay_date',
+          'total_assistant_commission_ex_gst',
+        ]),
         columnLabelOverrides: {},
         mobileHiddenColumnIds: new Set<MiddleColumnId>(),
         mobileColumnLabelOverrides: {},
@@ -152,6 +157,8 @@ export function mySalesVisibilityForRole(
           'pay_date',
           'derived_staff_paid_full_name',
           'total_actual_commission_ex_gst',
+          /* Assistant Comm. is stylist-only on My Sales. */
+          'total_assistant_commission_ex_gst',
         ]),
         columnLabelOverrides: {},
         mobileHiddenColumnIds: new Set<MiddleColumnId>(),

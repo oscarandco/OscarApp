@@ -41,6 +41,7 @@ export function salesSummaryAlignedMiddleColumnLabel(id: MiddleColumnId): string
     return 'Potential Comm. (ex GST)'
   }
   if (id === 'total_actual_commission_ex_gst') return 'Commission (ex GST)'
+  if (id === 'total_assistant_commission_ex_gst') return 'Assistant Comm.'
   return tableColumnTitle(id)
 }
 
@@ -95,7 +96,7 @@ export const COLUMN_LABEL: Record<MiddleColumnId, string> = {
   review_line_count: 'Review line count',
   total_actual_commission_ex_gst: 'Commission (ex GST)',
   total_theoretical_commission_ex_gst: 'Potential Comm. (ex GST)',
-  total_assistant_commission_ex_gst: 'Total assistant commission (ex GST)',
+  total_assistant_commission_ex_gst: 'Assistant Comm.',
   unconfigured_paid_staff_line_count: 'Unconfigured paid staff line count',
   has_unconfigured_paid_staff_rows: 'Has unconfigured paid staff rows',
   user_id: 'User ID',
@@ -119,6 +120,10 @@ const DEFAULT_VISIBLE_MIDDLE: readonly MiddleColumnId[] = [
   'total_sales_ex_gst',
   'total_theoretical_commission_ex_gst',
   'total_actual_commission_ex_gst',
+  /* Visible by default in the saved order so the column lands in the
+   * correct slot for everyone. `mySalesVisibilityForRole` then
+   * force-hides it for every non-stylist role on My Sales. */
+  'total_assistant_commission_ex_gst',
 ]
 
 const DEFAULT_HIDDEN_MIDDLE: MiddleColumnId[] = ALL_MIDDLE_IDS.filter(
@@ -159,9 +164,35 @@ export function ensureWorkPerformedByLeftOfStylistPaid(
   return next
 }
 
+/**
+ * When both columns exist in the saved order, place Assistant Comm.
+ * (`total_assistant_commission_ex_gst`) immediately right of
+ * Commission (ex GST) (`total_actual_commission_ex_gst`). Migrates
+ * older preference snapshots where the column was appended at the end.
+ */
+export function ensureAssistantCommissionRightOfCommission(
+  order: MiddleColumnId[],
+): MiddleColumnId[] {
+  const comm: MiddleColumnId = 'total_actual_commission_ex_gst'
+  const asst: MiddleColumnId = 'total_assistant_commission_ex_gst'
+  if (!order.includes(comm) || !order.includes(asst)) return order
+  const iComm = order.indexOf(comm)
+  const iAsst = order.indexOf(asst)
+  if (iAsst === iComm + 1) return order
+  const without = order.filter((id) => id !== asst)
+  const insertAt = without.indexOf(comm) + 1
+  if (insertAt <= 0) return order
+  const next: MiddleColumnId[] = [...without]
+  next.splice(insertAt, 0, asst)
+  return next
+}
+
 export function defaultColumnPreferences(): ColumnPreferences {
+  const order = ensureAssistantCommissionRightOfCommission(
+    ensureWorkPerformedByLeftOfStylistPaid([...DEFAULT_MIDDLE_ORDER]),
+  )
   return {
-    order: ensureWorkPerformedByLeftOfStylistPaid([...DEFAULT_MIDDLE_ORDER]),
+    order,
     hidden: [...DEFAULT_HIDDEN_MIDDLE],
   }
 }
@@ -202,8 +233,17 @@ export function parseStoredPreferences(raw: string | null): ColumnPreferences | 
       }
     }
     const hiddenSet = new Set(hidden.filter((id) => !MIDDLE_LOCKED_VISIBLE.has(id)))
+    /* One-time migration: Assistant Comm. became a default-visible
+     * column. Stylists can't see the column picker, so any user with
+     * stored prefs from before that change would have it hidden by
+     * default. Drop it from the hidden set so stylists pick up the
+     * column automatically. Non-stylist roles get it force-hidden
+     * again via `mySalesVisibilityForRole().hiddenTableColumnIds`. */
+    hiddenSet.delete('total_assistant_commission_ex_gst')
     return {
-      order: ensureWorkPerformedByLeftOfStylistPaid(deduped),
+      order: ensureAssistantCommissionRightOfCommission(
+        ensureWorkPerformedByLeftOfStylistPaid(deduped),
+      ),
       hidden: [...hiddenSet],
     }
   } catch {
