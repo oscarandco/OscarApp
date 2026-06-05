@@ -12,6 +12,7 @@ import type {
 import type { AdminPayrollLineRow, AdminPayrollSummaryRow } from '@/features/admin/types'
 import type {
   LocationSalesSummaryKpiRow,
+  MySalesTrendWeeklyRow,
   SalesDailySheetsDataSourceRow,
   WeeklyCommissionLineRow,
   WeeklyCommissionSummaryRow,
@@ -130,6 +131,23 @@ export async function rpcGetMyCommissionSummaryWeekly(): Promise<
   )
   if (error) throw toError('get_my_commission_summary_weekly', error)
   return asRows(data as WeeklyCommissionSummaryRow[])
+}
+
+/**
+ * My Sales (/app/my-sales) personal Staff Trends data. One row per pay
+ * week for the logged-in user's mapped staff member, combined across
+ * locations, with effective-dated role/remuneration plan and the
+ * assistant commission contributor breakdown. Backend enforces the
+ * one-staff-per-caller scope via `staff_member_user_access`.
+ */
+export async function rpcGetMySalesTrendWeekly(): Promise<
+  MySalesTrendWeeklyRow[]
+> {
+  const { data, error } = await requireSupabaseClient().rpc(
+    'get_my_sales_trend_weekly',
+  )
+  if (error) throw toError('get_my_sales_trend_weekly', error)
+  return asRows(data as MySalesTrendWeeklyRow[])
 }
 
 /**

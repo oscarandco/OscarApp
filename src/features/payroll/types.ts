@@ -73,6 +73,46 @@ export interface SalesDailySheetsDataSourceRow {
 }
 
 /**
+ * One assistant's contribution to a stylist's weekly assistant commission,
+ * as returned by `get_my_sales_trend_weekly.assistant_commission_contributors`.
+ * Sourced from the same payroll line rows that feed
+ * `total_assistant_commission_ex_gst`; no separate calculation path.
+ */
+export interface AssistantCommissionContributor {
+  /** Assistant `staff_members.id`; may be null if the work staff was name-only. */
+  staff_member_id?: string | null
+  display_name?: string | null
+  amount_ex_gst?: number | string | null
+}
+
+/**
+ * Rows from `get_my_sales_trend_weekly`: one row per pay week for the
+ * logged-in user's mapped staff member, combined across locations. Drives
+ * the My Sales (/app/my-sales) personal Staff Trends chart and weekly
+ * breakdown table. Same total basis as `v_admin_payroll_summary_weekly`
+ * (Staff Trends / Sales Summary).
+ */
+export interface MySalesTrendWeeklyRow {
+  staff_member_id?: string | null
+  staff_display_name?: string | null
+  staff_full_name?: string | null
+  pay_week_start?: string | null
+  pay_week_end?: string | null
+  pay_date?: string | null
+  /** Effective primary_role at `pay_week_start` (staff_profile_at), with current-row fallback. */
+  effective_primary_role?: string | null
+  /** Effective remuneration plan at `pay_week_start` (staff_profile_at), with current-row fallback. */
+  effective_remuneration_plan?: string | null
+  total_sales_ex_gst?: number | string | null
+  total_actual_commission_ex_gst?: number | string | null
+  total_theoretical_commission_ex_gst?: number | string | null
+  total_assistant_commission_ex_gst?: number | string | null
+  /** Empty array when no contributor breakdown is available for the week. */
+  assistant_commission_contributors?: AssistantCommissionContributor[] | null
+  [key: string]: unknown
+}
+
+/**
  * Rows from `get_my_commission_lines_weekly` — line-level commission detail.
  */
 export interface WeeklyCommissionLineRow {
