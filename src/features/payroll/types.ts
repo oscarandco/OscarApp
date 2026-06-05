@@ -120,19 +120,18 @@ export interface MySalesTrendWeeklyRow {
    * commission calculation path.
    */
   total_theoretical_assistant_commission_ex_gst?: number | string | null
-  /** Actual assistant contributor breakdown. Empty array when no contributor breakdown is available for the week. */
-  assistant_commission_contributors?: AssistantCommissionContributor[] | null
   /**
-   * Theoretical (potential) assistant contributor breakdown for the
-   * Potential Assist. Comm. column on My Sales. Sourced from the same
-   * line-level `theoretical_assistant_commission_amt_ex_gst` rows that
-   * feed `total_theoretical_assistant_commission_ex_gst`, grouped by
-   * assistant. Empty array when no contributor breakdown is available
+   * Actual assistant contributor breakdown for the Assistant Comm.
+   * column. Empty array when no contributor breakdown is available
    * for the week.
+   *
+   * There is intentionally no `theoretical_assistant_commission_contributors`
+   * field: an earlier RPC version returned one but was rolled back in
+   * the 20260828125000 hotfix because the second contributor CTE
+   * pass caused the RPC to hit the statement timeout in production.
+   * The Potential Assist. Comm. column shows amount only.
    */
-  theoretical_assistant_commission_contributors?:
-    | AssistantCommissionContributor[]
-    | null
+  assistant_commission_contributors?: AssistantCommissionContributor[] | null
   [key: string]: unknown
 }
 

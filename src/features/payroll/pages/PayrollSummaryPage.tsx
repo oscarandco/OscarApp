@@ -670,11 +670,14 @@ export function PayrollSummaryPage() {
                    *     assistant for these rows and would just
                    *     duplicate the Assistant Comm. column.
                    *   * No sales / zero potential: "-".
-                   *   * Otherwise: assistant icons + dollar amount
-                   *     (same renderer as the actual Assistant Comm.
-                   *     column, sourced from the dedicated
-                   *     theoretical_assistant_commission_contributors
-                   *     RPC field). */
+                   *   * Otherwise: dollar amount only. The cell does
+                   *     NOT render assistant contributor icons: the
+                   *     RPC that aggregated theoretical assistant
+                   *     contributors was rolled back in the
+                   *     20260828125000 hotfix because the second
+                   *     contributor CTE pass caused statement
+                   *     timeouts. Actual Assistant Comm. icons are
+                   *     unaffected. */
                   const potentialAssistantIsMeaningfulForRow =
                     !assistantLikeRow && wagePlanRow && sales > 0 && pAsst > 0
 
@@ -682,11 +685,6 @@ export function PayrollSummaryPage() {
                     r.assistant_commission_contributors,
                   )
                     ? r.assistant_commission_contributors
-                    : []
-                  const potentialContributors = Array.isArray(
-                    r.theoretical_assistant_commission_contributors,
-                  )
-                    ? r.theoretical_assistant_commission_contributors
                     : []
 
                   const fullReportHref = `/app/my-sales/${encodeURIComponent(w)}`
@@ -737,7 +735,6 @@ export function PayrollSummaryPage() {
                         <td className="px-2 py-1.5 text-right tabular-nums text-slate-500 sm:px-3">
                           <PotentialAssistantCommCell
                             amount={pAsst}
-                            contributors={potentialContributors}
                             meaningful={potentialAssistantIsMeaningfulForRow}
                           />
                         </td>
@@ -888,26 +885,26 @@ function AssistantCommCell({
 }
 
 /**
- * Potential (theoretical) Assistant Comm. cell. Same icon + amount
- * alignment as AssistantCommCell, but the per-row meaningfulness rule
- * is owned by the table (assistant-like row, non-wage row, no sales,
- * or zero potential -> dash), and the contributor breakdown comes
- * from the dedicated theoretical_assistant_commission_contributors
- * RPC field (NOT mixed with the actual contributors).
+ * Potential (theoretical) Assistant Comm. cell. Same fixed-width
+ * AssistantCommSlots alignment so the dollar sign lines up with the
+ * actual Assistant Comm. column above / next to it.
+ *
+ * Renders amount only - no assistant contributor icons. An earlier
+ * RPC version aggregated theoretical assistant contributors but was
+ * rolled back in 20260828125000 because the extra contributor CTE
+ * pass caused the My Sales RPC to hit the statement timeout in
+ * production. If icons are needed in future they should be served by
+ * a separate lazy single-week RPC (see migration comment).
  */
 function PotentialAssistantCommCell({
   amount,
-  contributors,
   meaningful,
 }: {
   amount: number
-  contributors: AssistantCommissionContributor[]
   meaningful: boolean
 }) {
   if (!meaningful || amount <= 0) {
     return <AssistantCommSlots icons={null} text="-" />
   }
-  const formatted = formatNzd(amount)
-  const icons = buildContributorIcons(contributors)
-  return <AssistantCommSlots icons={icons} text={formatted} />
+  return <AssistantCommSlots icons={null} text={formatNzd(amount)} />
 }
