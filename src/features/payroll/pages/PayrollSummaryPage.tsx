@@ -130,6 +130,23 @@ function isCommissionOrContractorPlan(plan: string | null | undefined): boolean 
   return p.includes('commission') || p.includes('contractor')
 }
 
+/**
+ * Assistant-like primary role: Assistant, Apprentice, Junior Apprentice,
+ * Senior Assistant, etc. Used to suppress the Assistant Comm. column on
+ * weeks where the logged-in person was the assistant on the job: they
+ * are the work staff, not a stylist paying out assistant commission to
+ * someone else, so an assistant icon there would be misleading. Their
+ * Actual Comm. ex GST still shows the real amount they earned.
+ *
+ * Case-insensitive substring match keeps this future-proof for new
+ * role labels added in Staff Admin.
+ */
+function isAssistantLikeRole(role: string | null | undefined): boolean {
+  const r = (role ?? '').trim().toLowerCase()
+  if (r === '') return false
+  return r.includes('assistant') || r.includes('apprentice')
+}
+
 function assistantInitial(name: string): string {
   const n = (name ?? '').trim()
   if (n === '') return '?'
@@ -248,27 +265,6 @@ export function PayrollSummaryPage() {
     return ceilSharedYMax(m)
   }, [rawSeries.sales])
 
-  const chartSeries: StaffTrendsSeries[] = [
-    {
-      id: 'sales',
-      label: METRIC_LABELS.sales,
-      color: METRIC_COLORS.sales,
-      values: displaySales,
-    },
-    {
-      id: 'potential',
-      label: METRIC_LABELS.potential,
-      color: METRIC_COLORS.potential,
-      values: displayPotential,
-    },
-    {
-      id: 'actual',
-      label: METRIC_LABELS.actual,
-      color: METRIC_COLORS.actual,
-      values: displayActual,
-    },
-  ]
-
   /* Weekly breakdown rows: every pay week within the 52-week window that
    * has any non-zero metric, newest first. Mirrors Staff Trends table. */
   const tableRows = useMemo(() => {
@@ -290,6 +286,66 @@ export function PayrollSummaryPage() {
     })
     return out
   }, [trend.data, weekStartSet])
+
+  /* "Potential commission" is only useful when it differs from the
+   * actual commission earned for at least one visible weekly row. For
+   * staff who have been on a Commission / Contractor plan the whole
+   * 52 week window, potential equals actual every week and the
+   * Potential line just duplicates the Actual line on the chart while
+   * the table column is always "-". In that case we drop the series /
+   * column entirely. The 0.005 tolerance avoids false-meaningful flips
+   * from $0.001-ish rounding noise between potential and actual. */
+  const hasMeaningfulPotentialCommission = useMemo(() => {
+    for (const r of tableRows) {
+      const sales = parseNumOr0(r.total_sales_ex_gst)
+      const potential = parseNumOr0(r.total_theoretical_commission_ex_gst)
+      const actual = parseNumOr0(r.total_actual_commission_ex_gst)
+      if (
+        sales > 0 &&
+        potential > 0 &&
+        Math.abs(potential - actual) > 0.005
+      ) {
+        return true
+      }
+    }
+    return false
+  }, [tableRows])
+
+  /* Build the chart series in the order the user sees them in the
+   * legend / tooltip. When the Potential line is hidden the series
+   * shrinks to Sales + Actual; the legend and the chart tooltip both
+   * iterate this array so neither needs a separate "hide potential"
+   * branch. */
+  const chartSeries = useMemo<StaffTrendsSeries[]>(() => {
+    const out: StaffTrendsSeries[] = [
+      {
+        id: 'sales',
+        label: METRIC_LABELS.sales,
+        color: METRIC_COLORS.sales,
+        values: displaySales,
+      },
+    ]
+    if (hasMeaningfulPotentialCommission) {
+      out.push({
+        id: 'potential',
+        label: METRIC_LABELS.potential,
+        color: METRIC_COLORS.potential,
+        values: displayPotential,
+      })
+    }
+    out.push({
+      id: 'actual',
+      label: METRIC_LABELS.actual,
+      color: METRIC_COLORS.actual,
+      values: displayActual,
+    })
+    return out
+  }, [
+    hasMeaningfulPotentialCommission,
+    displaySales,
+    displayPotential,
+    displayActual,
+  ])
 
   function buildPreviewSummaryRow(
     r: MySalesTrendWeeklyRow,
@@ -418,10 +474,7 @@ export function PayrollSummaryPage() {
                     Sales ex GST
                   </th>
                   <th scope="col" className="px-3 py-2 text-right">
-                    Potential Comm. ex GST
-                  </th>
-                  <th scope="col" className="px-3 py-2 text-right">
-                    Comm. ex GST
+                    Actual Comm. ex GST
                   </th>
                   <th
                     scope="col"
@@ -429,6 +482,14 @@ export function PayrollSummaryPage() {
                   >
                     Assistant Comm. ex GST
                   </th>
+                  {hasMeaningfulPotentialCommission ? (
+                    <th
+                      scope="col"
+                      className="px-3 py-2 text-right text-slate-400"
+                    >
+                      Potential Comm. ex GST
+                    </th>
+                  ) : null}
                   <th scope="col" className="px-3 py-2 text-right">
                     Details
                   </th>
@@ -447,6 +508,7 @@ export function PayrollSummaryPage() {
                   )
                   const role = (r.effective_primary_role ?? '').trim()
                   const plan = (r.effective_remuneration_plan ?? '').trim()
+                  const assistantLikeRow = isAssistantLikeRole(role)
 
                   const planLooksCommissionOrContractor =
                     isCommissionOrContractorPlan(plan)
@@ -480,17 +542,20 @@ export function PayrollSummaryPage() {
                         {formatNzd(sales)}
                       </td>
                       <td className="px-3 py-1.5 text-right tabular-nums text-slate-800">
-                        {potentialCellText}
-                      </td>
-                      <td className="px-3 py-1.5 text-right tabular-nums text-slate-800">
                         {formatNzd(actual)}
                       </td>
                       <td className="px-3 py-1.5 text-right tabular-nums text-slate-500">
                         <AssistantCommCell
                           amount={asst}
                           contributors={contributors}
+                          isAssistantLike={assistantLikeRow}
                         />
                       </td>
+                      {hasMeaningfulPotentialCommission ? (
+                        <td className="px-3 py-1.5 text-right tabular-nums text-slate-500">
+                          {potentialCellText}
+                        </td>
+                      ) : null}
                       <td className="px-3 py-1.5 text-right">
                         <Link
                           to={fullReportHref}
@@ -531,22 +596,59 @@ export function PayrollSummaryPage() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Assistant Comm. cell (muted text + contributor icons)                */
+/* Assistant Comm. cell (muted text + contributor icons + alignment)    */
 /* ------------------------------------------------------------------ */
+
+/**
+ * Fixed-width inline-grid wrapper that keeps the dollar sign at the
+ * same X position on every row of the Assistant Comm. column. The icon
+ * slot is rendered with a constant width even when empty (or when the
+ * row is suppressed because the staff member was the assistant on the
+ * job), so the amount text never shifts horizontally.
+ */
+function AssistantCommSlots({
+  icons,
+  text,
+}: {
+  icons: React.ReactNode
+  text: string
+}) {
+  return (
+    <span className="inline-grid grid-cols-[2.75rem_4rem] items-center gap-2">
+      <span
+        aria-hidden={icons == null ? true : undefined}
+        className="inline-flex items-center justify-end -space-x-1"
+      >
+        {icons}
+      </span>
+      <span className="text-left tabular-nums">{text}</span>
+    </span>
+  )
+}
 
 function AssistantCommCell({
   amount,
   contributors,
+  isAssistantLike,
 }: {
   amount: number
   contributors: AssistantCommissionContributor[]
+  isAssistantLike: boolean
 }) {
+  /* Assistant-like rows: the person IS the assistant on the job, so
+   * showing assistant-attributed commission and icons here is
+   * misleading. Display a dash; Actual Comm. ex GST still shows the
+   * real amount they earned. */
+  if (isAssistantLike) {
+    return <AssistantCommSlots icons={null} text="-" />
+  }
+
   /* Spec: $0.00 when null OR zero. formatNzd(0) returns "$0.00". */
   const safeAmount = amount > 0 ? amount : 0
   const formatted = formatNzd(safeAmount)
 
   if (safeAmount <= 0) {
-    return <span>{formatted}</span>
+    return <AssistantCommSlots icons={null} text={formatted} />
   }
 
   /* Only show icons for contributors with a positive contribution; sort
@@ -563,35 +665,34 @@ function AssistantCommCell({
   if (positive.length === 0) {
     /* Spec: total > 0 but no contributor breakdown -> amount only,
      * no invented icons. */
-    return <span>{formatted}</span>
+    return <AssistantCommSlots icons={null} text={formatted} />
   }
 
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <span className="inline-flex items-center -space-x-1">
-        {positive.map((c, idx) => {
-          const name = (c.display_name ?? '').toString().trim()
-          const amt = parseNumOr0(c.amount_ex_gst)
-          const bg = contributorColor(c)
-          const label =
-            name !== ''
-              ? `${name} contributed ${formatNzd(amt)}`
-              : 'Assistant contributor'
-          const title = name !== '' ? `${name}: ${formatNzd(amt)}` : undefined
-          return (
-            <span
-              key={contributorKey(c, idx)}
-              title={title}
-              aria-label={label}
-              className="inline-flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-semibold leading-none text-white ring-1 ring-white"
-              style={{ background: bg }}
-            >
-              {assistantInitial(name)}
-            </span>
-          )
-        })}
+  const icons = positive.map((c, idx) => {
+    const name = (c.display_name ?? '').toString().trim()
+    const amt = parseNumOr0(c.amount_ex_gst)
+    const bg = contributorColor(c)
+    const label =
+      name !== ''
+        ? `${name} contributed ${formatNzd(amt)}`
+        : 'Assistant contributor'
+    /* Hover tooltip shows the assistant's display name (and amount when
+     * available, per spec). Browsers render `title` on hover and most
+     * screen readers prefer `aria-label`. */
+    const title =
+      name !== '' ? `${name} (${formatNzd(amt)})` : 'Assistant contributor'
+    return (
+      <span
+        key={contributorKey(c, idx)}
+        title={title}
+        aria-label={label}
+        className="inline-flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-semibold leading-none text-white ring-1 ring-white"
+        style={{ background: bg }}
+      >
+        {assistantInitial(name)}
       </span>
-      <span className="tabular-nums">{formatted}</span>
-    </span>
-  )
+    )
+  })
+
+  return <AssistantCommSlots icons={icons} text={formatted} />
 }
