@@ -31,13 +31,11 @@ const METRIC_COLORS = {
   sales: '#0ea5e9',
   potential: '#f59e0b',
   actual: '#7c3aed',
-  potentialAssistant: '#65a30d',
 }
 const METRIC_LABELS = {
   sales: 'Sales ex GST',
   potential: 'Potential commission ex GST',
   actual: 'Actual commission ex GST',
-  potentialAssistant: 'Potential assistant commission ex GST',
 }
 
 /* ------------------------------------------------------------------ */
@@ -402,32 +400,12 @@ export function PayrollSummaryPage() {
     return false
   }, [tableRows])
 
-  /* Same zero-week-gap treatment as Sales / Potential / Actual so the
-   * Potential Assistant line goes to a gap on Christmas-shutdown weeks
-   * instead of plunging to $0 and back. */
-  const displayPotentialAssistant = useMemo(() => {
-    const out: (number | null)[] = new Array(WEEKS)
-    weekStarts.forEach((w, i) => {
-      const r = rowByWeek.get(w)
-      const s = parseNumOr0(r?.total_sales_ex_gst)
-      const p = parseNumOr0(r?.total_theoretical_commission_ex_gst)
-      const a = parseNumOr0(r?.total_actual_commission_ex_gst)
-      const pAsst = parseNumOr0(
-        r?.total_theoretical_assistant_commission_ex_gst,
-      )
-      if (s === 0 && p === 0 && a === 0 && pAsst === 0) {
-        out[i] = null
-      } else {
-        out[i] = pAsst
-      }
-    })
-    return out
-  }, [weekStarts, rowByWeek])
-
   /* Build the chart series in the order the user sees them in the
-   * legend / tooltip. When the Potential or Potential Assistant lines
-   * are hidden the series shrinks; the legend and the chart tooltip
-   * both iterate this array so neither needs a separate hide branch. */
+   * legend / tooltip. The chart intentionally only shows Sales /
+   * Actual / Potential commission. Assistant Comm. and Potential
+   * Assist. Comm. are table-only - adding them as lines makes the
+   * chart too busy and they convey their meaning much better next to
+   * the dollar amount in the table. */
   const chartSeries = useMemo<StaffTrendsSeries[]>(() => {
     const out: StaffTrendsSeries[] = [
       {
@@ -445,14 +423,6 @@ export function PayrollSummaryPage() {
         values: displayPotential,
       })
     }
-    if (hasMeaningfulPotentialAssistantCommission) {
-      out.push({
-        id: 'potentialAssistant',
-        label: METRIC_LABELS.potentialAssistant,
-        color: METRIC_COLORS.potentialAssistant,
-        values: displayPotentialAssistant,
-      })
-    }
     out.push({
       id: 'actual',
       label: METRIC_LABELS.actual,
@@ -462,10 +432,8 @@ export function PayrollSummaryPage() {
     return out
   }, [
     hasMeaningfulPotentialCommission,
-    hasMeaningfulPotentialAssistantCommission,
     displaySales,
     displayPotential,
-    displayPotentialAssistant,
     displayActual,
   ])
 
@@ -635,9 +603,7 @@ export function PayrollSummaryPage() {
                       className="px-2 py-2 text-right text-slate-400 sm:px-3"
                     >
                       <span className="sm:hidden">Assist. Comm.</span>
-                      <span className="hidden sm:inline">
-                        Assistant Comm. ex GST
-                      </span>
+                      <span className="hidden sm:inline">Assistant Comm.</span>
                     </th>
                   ) : null}
                   {hasMeaningfulPotentialCommission ? (
@@ -646,9 +612,7 @@ export function PayrollSummaryPage() {
                       className="px-2 py-2 text-right text-slate-400 sm:px-3"
                     >
                       <span className="sm:hidden">Potential Comm.</span>
-                      <span className="hidden sm:inline">
-                        Potential Comm. ex GST
-                      </span>
+                      <span className="hidden sm:inline">Potential Comm.</span>
                     </th>
                   ) : null}
                   {hasMeaningfulPotentialAssistantCommission ? (
@@ -658,7 +622,7 @@ export function PayrollSummaryPage() {
                     >
                       <span className="sm:hidden">Pot. Assist. Comm.</span>
                       <span className="hidden sm:inline">
-                        Potential Assistant Comm. ex GST
+                        Potential Assist. Comm.
                       </span>
                     </th>
                   ) : null}
@@ -706,18 +670,23 @@ export function PayrollSummaryPage() {
                    *     assistant for these rows and would just
                    *     duplicate the Assistant Comm. column.
                    *   * No sales / zero potential: "-".
-                   *   * Otherwise: the formatted dollar amount. */
+                   *   * Otherwise: assistant icons + dollar amount
+                   *     (same renderer as the actual Assistant Comm.
+                   *     column, sourced from the dedicated
+                   *     theoretical_assistant_commission_contributors
+                   *     RPC field). */
                   const potentialAssistantIsMeaningfulForRow =
                     !assistantLikeRow && wagePlanRow && sales > 0 && pAsst > 0
-                  const potentialAssistantCellText =
-                    potentialAssistantIsMeaningfulForRow
-                      ? formatNzd(pAsst)
-                      : '-'
 
                   const contributors = Array.isArray(
                     r.assistant_commission_contributors,
                   )
                     ? r.assistant_commission_contributors
+                    : []
+                  const potentialContributors = Array.isArray(
+                    r.theoretical_assistant_commission_contributors,
+                  )
+                    ? r.theoretical_assistant_commission_contributors
                     : []
 
                   const fullReportHref = `/app/my-sales/${encodeURIComponent(w)}`
@@ -766,7 +735,11 @@ export function PayrollSummaryPage() {
                       ) : null}
                       {hasMeaningfulPotentialAssistantCommission ? (
                         <td className="px-2 py-1.5 text-right tabular-nums text-slate-500 sm:px-3">
-                          {potentialAssistantCellText}
+                          <PotentialAssistantCommCell
+                            amount={pAsst}
+                            contributors={potentialContributors}
+                            meaningful={potentialAssistantIsMeaningfulForRow}
+                          />
                         </td>
                       ) : null}
                       <td className="px-2 py-1.5 text-right sm:px-3">
@@ -840,6 +813,51 @@ function AssistantCommSlots({
   )
 }
 
+/**
+ * Build the list of small round assistant icons for an Assistant Comm.
+ * style cell. Returns null when the contributor list contains no
+ * positive contributions, signalling to the caller that the cell
+ * should render the amount text only (no icon slot content). Shared
+ * by both the actual Assistant Comm. cell and the Potential Assist.
+ * Comm. cell so the visual style and ordering rules stay identical;
+ * each cell still owns its own suppression rule (assistant-like row,
+ * non-wage row, zero amount, etc.) and decides whether to call this.
+ */
+function buildContributorIcons(
+  contributors: AssistantCommissionContributor[],
+): React.ReactNode[] | null {
+  const positive = contributors
+    .filter((c) => parseNumOr0(c.amount_ex_gst) > 0)
+    .sort((a, b) => {
+      const an = (a.display_name ?? '').toString().toLowerCase()
+      const bn = (b.display_name ?? '').toString().toLowerCase()
+      return an.localeCompare(bn)
+    })
+  if (positive.length === 0) return null
+  return positive.map((c, idx) => {
+    const name = (c.display_name ?? '').toString().trim()
+    const amt = parseNumOr0(c.amount_ex_gst)
+    const bg = contributorColor(c)
+    const label =
+      name !== ''
+        ? `${name} contributed ${formatNzd(amt)}`
+        : 'Assistant contributor'
+    const title =
+      name !== '' ? `${name} (${formatNzd(amt)})` : 'Assistant contributor'
+    return (
+      <span
+        key={contributorKey(c, idx)}
+        title={title}
+        aria-label={label}
+        className="inline-flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-semibold leading-none text-white ring-1 ring-white"
+        style={{ background: bg }}
+      >
+        {assistantInitial(name)}
+      </span>
+    )
+  })
+}
+
 function AssistantCommCell({
   amount,
   contributors,
@@ -865,48 +883,31 @@ function AssistantCommCell({
     return <AssistantCommSlots icons={null} text={formatted} />
   }
 
-  /* Only show icons for contributors with a positive contribution; sort
-   * alphabetically by display name so the visual order is deterministic
-   * regardless of payload ordering. */
-  const positive = contributors
-    .filter((c) => parseNumOr0(c.amount_ex_gst) > 0)
-    .sort((a, b) => {
-      const an = (a.display_name ?? '').toString().toLowerCase()
-      const bn = (b.display_name ?? '').toString().toLowerCase()
-      return an.localeCompare(bn)
-    })
+  const icons = buildContributorIcons(contributors)
+  return <AssistantCommSlots icons={icons} text={formatted} />
+}
 
-  if (positive.length === 0) {
-    /* Spec: total > 0 but no contributor breakdown -> amount only,
-     * no invented icons. */
-    return <AssistantCommSlots icons={null} text={formatted} />
+/**
+ * Potential (theoretical) Assistant Comm. cell. Same icon + amount
+ * alignment as AssistantCommCell, but the per-row meaningfulness rule
+ * is owned by the table (assistant-like row, non-wage row, no sales,
+ * or zero potential -> dash), and the contributor breakdown comes
+ * from the dedicated theoretical_assistant_commission_contributors
+ * RPC field (NOT mixed with the actual contributors).
+ */
+function PotentialAssistantCommCell({
+  amount,
+  contributors,
+  meaningful,
+}: {
+  amount: number
+  contributors: AssistantCommissionContributor[]
+  meaningful: boolean
+}) {
+  if (!meaningful || amount <= 0) {
+    return <AssistantCommSlots icons={null} text="-" />
   }
-
-  const icons = positive.map((c, idx) => {
-    const name = (c.display_name ?? '').toString().trim()
-    const amt = parseNumOr0(c.amount_ex_gst)
-    const bg = contributorColor(c)
-    const label =
-      name !== ''
-        ? `${name} contributed ${formatNzd(amt)}`
-        : 'Assistant contributor'
-    /* Hover tooltip shows the assistant's display name (and amount when
-     * available, per spec). Browsers render `title` on hover and most
-     * screen readers prefer `aria-label`. */
-    const title =
-      name !== '' ? `${name} (${formatNzd(amt)})` : 'Assistant contributor'
-    return (
-      <span
-        key={contributorKey(c, idx)}
-        title={title}
-        aria-label={label}
-        className="inline-flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-semibold leading-none text-white ring-1 ring-white"
-        style={{ background: bg }}
-      >
-        {assistantInitial(name)}
-      </span>
-    )
-  })
-
+  const formatted = formatNzd(amount)
+  const icons = buildContributorIcons(contributors)
   return <AssistantCommSlots icons={icons} text={formatted} />
 }

@@ -120,8 +120,19 @@ export interface MySalesTrendWeeklyRow {
    * commission calculation path.
    */
   total_theoretical_assistant_commission_ex_gst?: number | string | null
-  /** Empty array when no contributor breakdown is available for the week. */
+  /** Actual assistant contributor breakdown. Empty array when no contributor breakdown is available for the week. */
   assistant_commission_contributors?: AssistantCommissionContributor[] | null
+  /**
+   * Theoretical (potential) assistant contributor breakdown for the
+   * Potential Assist. Comm. column on My Sales. Sourced from the same
+   * line-level `theoretical_assistant_commission_amt_ex_gst` rows that
+   * feed `total_theoretical_assistant_commission_ex_gst`, grouped by
+   * assistant. Empty array when no contributor breakdown is available
+   * for the week.
+   */
+  theoretical_assistant_commission_contributors?:
+    | AssistantCommissionContributor[]
+    | null
   [key: string]: unknown
 }
 
