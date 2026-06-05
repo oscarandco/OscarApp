@@ -107,6 +107,19 @@ export interface MySalesTrendWeeklyRow {
   total_actual_commission_ex_gst?: number | string | null
   total_theoretical_commission_ex_gst?: number | string | null
   total_assistant_commission_ex_gst?: number | string | null
+  /**
+   * Potential / theoretical assistant commission: the assistant
+   * commission amount that would have applied to assistant work for
+   * this stylist if their plan was the benchmark Commission plan.
+   * Useful for wage stylists where actual_commission_rate (and
+   * therefore the actual assistant commission column) is usually $0.00.
+   *
+   * Sourced from the line-level
+   * `theoretical_assistant_commission_amt_ex_gst` column added in the
+   * 20260828123000 migration; the RPC just ROUND(SUM(...))s it. No new
+   * commission calculation path.
+   */
+  total_theoretical_assistant_commission_ex_gst?: number | string | null
   /** Empty array when no contributor breakdown is available for the week. */
   assistant_commission_contributors?: AssistantCommissionContributor[] | null
   [key: string]: unknown

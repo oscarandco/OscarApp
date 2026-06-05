@@ -31,11 +31,13 @@ const METRIC_COLORS = {
   sales: '#0ea5e9',
   potential: '#f59e0b',
   actual: '#7c3aed',
+  potentialAssistant: '#65a30d',
 }
 const METRIC_LABELS = {
   sales: 'Sales ex GST',
   potential: 'Potential commission ex GST',
   actual: 'Actual commission ex GST',
+  potentialAssistant: 'Potential assistant commission ex GST',
 }
 
 /* ------------------------------------------------------------------ */
@@ -89,6 +91,43 @@ function formatWeekLong(iso: string): string {
   })
 }
 
+/**
+ * Mobile-only compact week label: "25 May '26", "4 May '26",
+ * "16 Feb '26". Drops the weekday and uses a two-digit year so the
+ * Week column fits comfortably on a phone-width viewport without
+ * needing horizontal scroll. Desktop continues to use formatWeekLong.
+ */
+function formatWeekShort(iso: string): string {
+  const d = parseUtcDate(iso)
+  if (!d) return iso
+  const day = d.getUTCDate()
+  const month = d.toLocaleDateString('en-NZ', {
+    month: 'short',
+    timeZone: 'UTC',
+  })
+  const year = String(d.getUTCFullYear()).slice(-2)
+  return `${day} ${month} '${year}`
+}
+
+/**
+ * Mobile-only "Role / Plan" merge: e.g. "Stylist - Wage",
+ * "Assistant - Wage", "Director Stylist - Commission",
+ * "Contractor - Contractor 45%". Uses a normal hyphen with spaces
+ * around it (no em dash). Falls back to whichever side is populated;
+ * shows "-" if both are empty so the cell isn't visually blank.
+ */
+function formatRolePlanMobile(
+  role: string | null | undefined,
+  plan: string | null | undefined,
+): string {
+  const r = (role ?? '').trim()
+  const p = (plan ?? '').trim()
+  if (r !== '' && p !== '') return `${r} - ${p}`
+  if (r !== '') return r
+  if (p !== '') return p
+  return '-'
+}
+
 /* ------------------------------------------------------------------ */
 /* Number / display helpers                                             */
 /* ------------------------------------------------------------------ */
@@ -128,6 +167,18 @@ function isCommissionOrContractorPlan(plan: string | null | undefined): boolean 
   const p = (plan ?? '').trim().toLowerCase()
   if (p === '') return false
   return p.includes('commission') || p.includes('contractor')
+}
+
+/**
+ * Wage remuneration plan (case-insensitive, exact match on the canonical
+ * label "Wage"). Potential Assistant Comm. is only meaningful for wage
+ * stylists, because for commission / contractor stylists the theoretical
+ * assistant total equals the actual assistant total (same rate, same
+ * plan), so adding the column would just duplicate Assistant Comm.
+ */
+function isWagePlan(plan: string | null | undefined): boolean {
+  const p = (plan ?? '').trim().toLowerCase()
+  return p === 'wage'
 }
 
 /**
@@ -311,11 +362,72 @@ export function PayrollSummaryPage() {
     return false
   }, [tableRows])
 
+  /* "Actual Assistant Comm." is only meaningful when at least one
+   * visible weekly row is a non-assistant-like role with actual
+   * assistant commission > 0. Assistant-like rows never have meaningful
+   * actual assistant commission for THIS person (they are the assistant
+   * on the job, not paying out to one), and a stylist with no actual
+   * assistant commission across all visible weeks gets the whole
+   * column hidden so the table stops showing a wall of $0.00. */
+  const hasMeaningfulActualAssistantCommission = useMemo(() => {
+    for (const r of tableRows) {
+      const role = (r.effective_primary_role ?? '').trim()
+      if (isAssistantLikeRole(role)) continue
+      const asst = parseNumOr0(r.total_assistant_commission_ex_gst)
+      if (asst > 0) return true
+    }
+    return false
+  }, [tableRows])
+
+  /* "Potential Assistant Comm." is only meaningful for wage stylists
+   * where there were sales and the line-level theoretical assistant
+   * commission calculation found at least some assistant-eligible
+   * work. Assistant-like rows are excluded because the value is
+   * conceptually about what assistant commission WOULD have applied
+   * to OTHER staff helping this stylist - it's irrelevant when the
+   * person IS the assistant. Commission / contractor rows are
+   * excluded because, by construction, their theoretical assistant
+   * commission equals their actual assistant commission and the
+   * column would duplicate Assistant Comm. */
+  const hasMeaningfulPotentialAssistantCommission = useMemo(() => {
+    for (const r of tableRows) {
+      const role = (r.effective_primary_role ?? '').trim()
+      const plan = (r.effective_remuneration_plan ?? '').trim()
+      if (isAssistantLikeRole(role)) continue
+      if (!isWagePlan(plan)) continue
+      const sales = parseNumOr0(r.total_sales_ex_gst)
+      const pAsst = parseNumOr0(r.total_theoretical_assistant_commission_ex_gst)
+      if (sales > 0 && pAsst > 0) return true
+    }
+    return false
+  }, [tableRows])
+
+  /* Same zero-week-gap treatment as Sales / Potential / Actual so the
+   * Potential Assistant line goes to a gap on Christmas-shutdown weeks
+   * instead of plunging to $0 and back. */
+  const displayPotentialAssistant = useMemo(() => {
+    const out: (number | null)[] = new Array(WEEKS)
+    weekStarts.forEach((w, i) => {
+      const r = rowByWeek.get(w)
+      const s = parseNumOr0(r?.total_sales_ex_gst)
+      const p = parseNumOr0(r?.total_theoretical_commission_ex_gst)
+      const a = parseNumOr0(r?.total_actual_commission_ex_gst)
+      const pAsst = parseNumOr0(
+        r?.total_theoretical_assistant_commission_ex_gst,
+      )
+      if (s === 0 && p === 0 && a === 0 && pAsst === 0) {
+        out[i] = null
+      } else {
+        out[i] = pAsst
+      }
+    })
+    return out
+  }, [weekStarts, rowByWeek])
+
   /* Build the chart series in the order the user sees them in the
-   * legend / tooltip. When the Potential line is hidden the series
-   * shrinks to Sales + Actual; the legend and the chart tooltip both
-   * iterate this array so neither needs a separate "hide potential"
-   * branch. */
+   * legend / tooltip. When the Potential or Potential Assistant lines
+   * are hidden the series shrinks; the legend and the chart tooltip
+   * both iterate this array so neither needs a separate hide branch. */
   const chartSeries = useMemo<StaffTrendsSeries[]>(() => {
     const out: StaffTrendsSeries[] = [
       {
@@ -333,6 +445,14 @@ export function PayrollSummaryPage() {
         values: displayPotential,
       })
     }
+    if (hasMeaningfulPotentialAssistantCommission) {
+      out.push({
+        id: 'potentialAssistant',
+        label: METRIC_LABELS.potentialAssistant,
+        color: METRIC_COLORS.potentialAssistant,
+        values: displayPotentialAssistant,
+      })
+    }
     out.push({
       id: 'actual',
       label: METRIC_LABELS.actual,
@@ -342,8 +462,10 @@ export function PayrollSummaryPage() {
     return out
   }, [
     hasMeaningfulPotentialCommission,
+    hasMeaningfulPotentialAssistantCommission,
     displaySales,
     displayPotential,
+    displayPotentialAssistant,
     displayActual,
   ])
 
@@ -461,36 +583,89 @@ export function PayrollSummaryPage() {
             <table className="min-w-full divide-y divide-slate-200 text-sm">
               <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                 <tr>
-                  <th scope="col" className="px-3 py-2">
-                    Week beginning
+                  {/* Week beginning. Header label and date format both
+                      collapse on mobile: header "Week", body "25 May '26".
+                      Desktop continues to show "Week beginning" and the
+                      long "Mon, 25 May 2026" date. */}
+                  <th scope="col" className="px-2 py-2 sm:px-3">
+                    <span className="sm:hidden">Week</span>
+                    <span className="hidden sm:inline">Week beginning</span>
                   </th>
-                  <th scope="col" className="px-3 py-2">
+                  {/* Mobile-only merged Role / Plan column. Hidden from
+                      sm: up so the desktop Role + Remuneration plan
+                      columns take over. */}
+                  <th
+                    scope="col"
+                    className="px-2 py-2 sm:hidden"
+                  >
+                    Role / Plan
+                  </th>
+                  {/* Desktop-only Role column. */}
+                  <th
+                    scope="col"
+                    className="hidden px-3 py-2 sm:table-cell"
+                  >
                     Role
                   </th>
-                  <th scope="col" className="px-3 py-2">
+                  {/* Desktop-only Remuneration plan column. */}
+                  <th
+                    scope="col"
+                    className="hidden px-3 py-2 sm:table-cell"
+                  >
                     Remuneration plan
-                  </th>
-                  <th scope="col" className="px-3 py-2 text-right">
-                    Sales ex GST
-                  </th>
-                  <th scope="col" className="px-3 py-2 text-right">
-                    Actual Comm. ex GST
                   </th>
                   <th
                     scope="col"
-                    className="px-3 py-2 text-right text-slate-400"
+                    className="px-2 py-2 text-right sm:px-3"
                   >
-                    Assistant Comm. ex GST
+                    Sales ex GST
                   </th>
+                  <th
+                    scope="col"
+                    className="px-2 py-2 text-right sm:px-3"
+                  >
+                    <span className="sm:hidden">Actual Comm.</span>
+                    <span className="hidden sm:inline">
+                      Actual Comm. ex GST
+                    </span>
+                  </th>
+                  {hasMeaningfulActualAssistantCommission ? (
+                    <th
+                      scope="col"
+                      className="px-2 py-2 text-right text-slate-400 sm:px-3"
+                    >
+                      <span className="sm:hidden">Assist. Comm.</span>
+                      <span className="hidden sm:inline">
+                        Assistant Comm. ex GST
+                      </span>
+                    </th>
+                  ) : null}
                   {hasMeaningfulPotentialCommission ? (
                     <th
                       scope="col"
-                      className="px-3 py-2 text-right text-slate-400"
+                      className="px-2 py-2 text-right text-slate-400 sm:px-3"
                     >
-                      Potential Comm. ex GST
+                      <span className="sm:hidden">Potential Comm.</span>
+                      <span className="hidden sm:inline">
+                        Potential Comm. ex GST
+                      </span>
                     </th>
                   ) : null}
-                  <th scope="col" className="px-3 py-2 text-right">
+                  {hasMeaningfulPotentialAssistantCommission ? (
+                    <th
+                      scope="col"
+                      className="px-2 py-2 text-right text-slate-400 sm:px-3"
+                    >
+                      <span className="sm:hidden">Pot. Assist. Comm.</span>
+                      <span className="hidden sm:inline">
+                        Potential Assistant Comm. ex GST
+                      </span>
+                    </th>
+                  ) : null}
+                  <th
+                    scope="col"
+                    className="px-2 py-2 text-right sm:px-3"
+                  >
                     Details
                   </th>
                 </tr>
@@ -506,9 +681,13 @@ export function PayrollSummaryPage() {
                   const asst = parseNumOr0(
                     r.total_assistant_commission_ex_gst,
                   )
+                  const pAsst = parseNumOr0(
+                    r.total_theoretical_assistant_commission_ex_gst,
+                  )
                   const role = (r.effective_primary_role ?? '').trim()
                   const plan = (r.effective_remuneration_plan ?? '').trim()
                   const assistantLikeRow = isAssistantLikeRole(role)
+                  const wagePlanRow = isWagePlan(plan)
 
                   const planLooksCommissionOrContractor =
                     isCommissionOrContractorPlan(plan)
@@ -518,6 +697,22 @@ export function PayrollSummaryPage() {
                   const potentialCellText = potentialIsRedundant
                     ? '-'
                     : formatNzd(potential)
+
+                  /* Per-row Potential Assistant Comm. rule:
+                   *   * Assistant-like rows: always "-" (column shown
+                   *     only because a non-assistant row needed it).
+                   *   * Non-wage rows (Commission / Contractor / other):
+                   *     "-" - theoretical assistant equals actual
+                   *     assistant for these rows and would just
+                   *     duplicate the Assistant Comm. column.
+                   *   * No sales / zero potential: "-".
+                   *   * Otherwise: the formatted dollar amount. */
+                  const potentialAssistantIsMeaningfulForRow =
+                    !assistantLikeRow && wagePlanRow && sales > 0 && pAsst > 0
+                  const potentialAssistantCellText =
+                    potentialAssistantIsMeaningfulForRow
+                      ? formatNzd(pAsst)
+                      : '-'
 
                   const contributors = Array.isArray(
                     r.assistant_commission_contributors,
@@ -529,34 +724,52 @@ export function PayrollSummaryPage() {
 
                   return (
                     <tr key={w}>
-                      <td className="px-3 py-1.5 whitespace-nowrap text-slate-700">
-                        {formatWeekLong(w)}
+                      <td className="px-2 py-1.5 whitespace-nowrap text-slate-700 sm:px-3">
+                        <span className="sm:hidden">
+                          {formatWeekShort(w)}
+                        </span>
+                        <span className="hidden sm:inline">
+                          {formatWeekLong(w)}
+                        </span>
                       </td>
-                      <td className="px-3 py-1.5 text-slate-700">
+                      {/* Mobile-only merged Role / Plan cell. */}
+                      <td className="px-2 py-1.5 text-slate-700 sm:hidden">
+                        {formatRolePlanMobile(role, plan)}
+                      </td>
+                      {/* Desktop-only Role cell. */}
+                      <td className="hidden px-3 py-1.5 text-slate-700 sm:table-cell">
                         {role === '' ? '-' : role}
                       </td>
-                      <td className="px-3 py-1.5 text-slate-700">
+                      {/* Desktop-only Remuneration plan cell. */}
+                      <td className="hidden px-3 py-1.5 text-slate-700 sm:table-cell">
                         {plan === '' ? '-' : plan}
                       </td>
-                      <td className="px-3 py-1.5 text-right tabular-nums text-slate-800">
+                      <td className="px-2 py-1.5 text-right tabular-nums text-slate-800 sm:px-3">
                         {formatNzd(sales)}
                       </td>
-                      <td className="px-3 py-1.5 text-right tabular-nums text-slate-800">
+                      <td className="px-2 py-1.5 text-right tabular-nums text-slate-800 sm:px-3">
                         {formatNzd(actual)}
                       </td>
-                      <td className="px-3 py-1.5 text-right tabular-nums text-slate-500">
-                        <AssistantCommCell
-                          amount={asst}
-                          contributors={contributors}
-                          isAssistantLike={assistantLikeRow}
-                        />
-                      </td>
+                      {hasMeaningfulActualAssistantCommission ? (
+                        <td className="px-2 py-1.5 text-right tabular-nums text-slate-500 sm:px-3">
+                          <AssistantCommCell
+                            amount={asst}
+                            contributors={contributors}
+                            isAssistantLike={assistantLikeRow}
+                          />
+                        </td>
+                      ) : null}
                       {hasMeaningfulPotentialCommission ? (
-                        <td className="px-3 py-1.5 text-right tabular-nums text-slate-500">
+                        <td className="px-2 py-1.5 text-right tabular-nums text-slate-500 sm:px-3">
                           {potentialCellText}
                         </td>
                       ) : null}
-                      <td className="px-3 py-1.5 text-right">
+                      {hasMeaningfulPotentialAssistantCommission ? (
+                        <td className="px-2 py-1.5 text-right tabular-nums text-slate-500 sm:px-3">
+                          {potentialAssistantCellText}
+                        </td>
+                      ) : null}
+                      <td className="px-2 py-1.5 text-right sm:px-3">
                         <Link
                           to={fullReportHref}
                           onClick={(e) => {
@@ -575,7 +788,8 @@ export function PayrollSummaryPage() {
                           className="font-medium text-violet-700 hover:text-violet-900 hover:underline"
                           data-testid={`my-sales-view-lines-${w}`}
                         >
-                          View lines
+                          <span className="sm:hidden">View</span>
+                          <span className="hidden sm:inline">View lines</span>
                         </Link>
                       </td>
                     </tr>
