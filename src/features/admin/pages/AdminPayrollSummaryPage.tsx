@@ -5,6 +5,7 @@ import { ErrorState } from '@/components/feedback/ErrorState'
 import { LoadingState } from '@/components/feedback/LoadingState'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { AdminSummaryTable } from '@/features/admin/components/AdminSummaryTable'
+import { useAdminPayrollLinesForPayWeeks } from '@/features/admin/hooks/useAdminPayrollLinesForPayWeeks'
 import { useAdminPayrollSummaryWeekly } from '@/features/admin/hooks/useAdminPayrollSummaryWeekly'
 import { SummaryFiltersBar } from '@/features/payroll/components/SummaryFiltersBar'
 import { WeeklySummaryDataSourceLines } from '@/features/payroll/components/WeeklySummaryDataSourceLines'
@@ -19,10 +20,12 @@ import {
 } from '@/lib/payrollSummaryFilters'
 import { queryErrorDetail } from '@/lib/queryError'
 import { sortSummaryRowsNewestFirst } from '@/lib/payrollSorting'
+import { sumVoucherSalesExGstFromLines } from '@/lib/voucherSales'
 import {
   buildPerLocationSalesExtraTiles,
   computeDateExtents,
   defaultDateFromForRange,
+  distinctPayWeekStarts,
   filterRowsByPayWeekDateRange,
   payWeekInclusiveEndForStart,
   payWeekStartIfRangeIsExactlyOnePayWeek,
@@ -134,15 +137,43 @@ export function AdminPayrollSummaryPage() {
     [dataSources, dateScopedRows],
   )
 
+  const payWeeksForVoucherLines = useMemo(
+    () => distinctPayWeekStarts(dateScopedRows),
+    [dateScopedRows],
+  )
+  const voucherLinesQuery = useAdminPayrollLinesForPayWeeks(payWeeksForVoucherLines)
+
   const salesExtraTiles = useMemo((): WeeklySummaryExtraTile[] => {
     const totalVal = sumTotalSalesExGstFromRows(dateScopedRows)
+    const voucherLines = voucherLinesQuery.data
+    const voucherReady = !voucherLinesQuery.isLoading
+
     const totalTile: WeeklySummaryExtraTile = {
       key: 'total-sales-ex-gst',
       label: 'Total sales (ex GST)',
       value: totalVal,
+      excludedVoucherSalesExGst: voucherReady
+        ? sumVoucherSalesExGstFromLines(voucherLines)
+        : undefined,
     }
-    return [totalTile, ...perLocationSalesTiles]
-  }, [dateScopedRows, perLocationSalesTiles])
+
+    const locationTiles = perLocationSalesTiles.map((tile) => {
+      const locationId = tile.key.replace(/^sales-ex-gst-/, '')
+      return {
+        ...tile,
+        excludedVoucherSalesExGst: voucherReady
+          ? sumVoucherSalesExGstFromLines(voucherLines, locationId)
+          : undefined,
+      }
+    })
+
+    return [totalTile, ...locationTiles]
+  }, [
+    dateScopedRows,
+    perLocationSalesTiles,
+    voucherLinesQuery.data,
+    voucherLinesQuery.isLoading,
+  ])
 
   const dateRangeChanged =
     dateFromOverride != null || dateToOverride != null

@@ -10,6 +10,11 @@ export type WeeklySummaryExtraTile = {
   label: string
   /** Already-summed money value (NZD ex GST) or `null` when unknown. */
   value: number | null
+  /**
+   * Voucher sales excluded from `value` (NZD ex GST). When set (including
+   * `0`), a muted disclosure line is shown under the card.
+   */
+  excludedVoucherSalesExGst?: number
 }
 
 type WeeklySummaryStatsProps = {
@@ -174,6 +179,14 @@ export function WeeklySummaryStats({
             <p className="mt-0.5 text-lg font-semibold tabular-nums text-slate-900 sm:mt-1 sm:text-2xl">
               {tile.value != null ? formatNzd(tile.value) : '—'}
             </p>
+            {tile.excludedVoucherSalesExGst != null ? (
+              <p
+                className="mt-1 text-[10px] text-slate-400 sm:text-xs"
+                data-testid={`weekly-summary-voucher-exclusion-${tile.key}`}
+              >
+                Excludes voucher sales of {formatNzd(tile.excludedVoucherSalesExGst)}
+              </p>
+            ) : null}
           </div>
         ))}
       </div>

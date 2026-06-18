@@ -195,3 +195,13 @@ export function sumTotalSalesExGstFromRows(
   }
   return found ? total : null
 }
+
+/** Distinct `pay_week_start` values (ISO date) from summary rows. */
+export function distinctPayWeekStarts(rows: PayWeekDatedRow[]): string[] {
+  const set = new Set<string>()
+  for (const r of rows) {
+    const w = rowWeekStartIso(r)
+    if (w) set.add(w)
+  }
+  return Array.from(set).sort()
+}
