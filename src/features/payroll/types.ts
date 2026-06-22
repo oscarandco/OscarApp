@@ -73,6 +73,31 @@ export interface SalesDailySheetsDataSourceRow {
 }
 
 /**
+ * Rows from `get_voucher_sales_ex_gst_by_location_for_date_range` — voucher
+ * `price_ex_gst` summed per location for Sales Summary disclosure only.
+ */
+export interface VoucherSalesByLocationRow {
+  location_id?: string | null
+  voucher_sales_ex_gst?: number | string | null
+}
+
+/**
+ * Rows from `get_voucher_sales_detail_for_date_range` — voucher line detail
+ * for Sales Summary disclosure modal.
+ */
+export interface VoucherSalesDetailRow {
+  sale_date?: string | null
+  location_id?: string | null
+  location_name?: string | null
+  invoice?: string | null
+  customer_name?: string | null
+  product_service_name?: string | null
+  product_type_short?: string | null
+  commission_product_service?: string | null
+  price_ex_gst?: number | string | null
+}
+
+/**
  * One assistant's contribution to a stylist's weekly assistant commission,
  * as returned by `get_my_sales_trend_weekly.assistant_commission_contributors`.
  * Sourced from the same payroll line rows that feed

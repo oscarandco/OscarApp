@@ -5,8 +5,10 @@ import { ErrorState } from '@/components/feedback/ErrorState'
 import { LoadingState } from '@/components/feedback/LoadingState'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { AdminSummaryTable } from '@/features/admin/components/AdminSummaryTable'
-import { useAdminPayrollLinesForPayWeeks } from '@/features/admin/hooks/useAdminPayrollLinesForPayWeeks'
+import { VoucherSalesDetailModal } from '@/features/admin/components/VoucherSalesDetailModal'
 import { useAdminPayrollSummaryWeekly } from '@/features/admin/hooks/useAdminPayrollSummaryWeekly'
+import { useVoucherSalesDetailForDateRange } from '@/features/admin/hooks/useVoucherSalesDetailForDateRange'
+import { useVoucherSalesForDateRange } from '@/features/admin/hooks/useVoucherSalesForDateRange'
 import { SummaryFiltersBar } from '@/features/payroll/components/SummaryFiltersBar'
 import { WeeklySummaryDataSourceLines } from '@/features/payroll/components/WeeklySummaryDataSourceLines'
 import { WeeklySummaryDateRangeInputs } from '@/features/payroll/components/WeeklySummaryDateRangeInputs'
@@ -20,12 +22,11 @@ import {
 } from '@/lib/payrollSummaryFilters'
 import { queryErrorDetail } from '@/lib/queryError'
 import { sortSummaryRowsNewestFirst } from '@/lib/payrollSorting'
-import { sumVoucherSalesExGstFromLines } from '@/lib/voucherSales'
+import { sumVoucherSalesExGstFromLocationRows } from '@/lib/voucherSales'
 import {
   buildPerLocationSalesExtraTiles,
   computeDateExtents,
   defaultDateFromForRange,
-  distinctPayWeekStarts,
   filterRowsByPayWeekDateRange,
   payWeekInclusiveEndForStart,
   payWeekStartIfRangeIsExactlyOnePayWeek,
@@ -42,6 +43,11 @@ export function AdminPayrollSummaryPage() {
   const [search, setSearch] = useState('')
   const [unconfiguredOnly, setUnconfiguredOnly] = useState(false)
   const [splitByLocation, setSplitByLocation] = useState(false)
+  const [voucherDetailScope, setVoucherDetailScope] = useState<{
+    scopeLabel: string
+    locationId: string | null
+    totalExGst: number
+  } | null>(null)
 
   const [dateFromOverride, setDateFromOverride] = useState<string | null>(
     null,
@@ -137,33 +143,63 @@ export function AdminPayrollSummaryPage() {
     [dataSources, dateScopedRows],
   )
 
-  const payWeeksForVoucherLines = useMemo(
-    () => distinctPayWeekStarts(dateScopedRows),
-    [dateScopedRows],
+  const { data: voucherSalesByLocation = [] } = useVoucherSalesForDateRange(
+    resolvedDateFrom,
+    resolvedDateTo,
   )
-  const voucherLinesQuery = useAdminPayrollLinesForPayWeeks(payWeeksForVoucherLines)
+
+  const voucherDetailQuery = useVoucherSalesDetailForDateRange(
+    resolvedDateFrom,
+    resolvedDateTo,
+    voucherDetailScope?.locationId ?? null,
+    voucherDetailScope != null,
+  )
+
+  const totalExcludedVoucherSalesExGst = useMemo(
+    () => sumVoucherSalesExGstFromLocationRows(voucherSalesByLocation),
+    [voucherSalesByLocation],
+  )
+
+  const perLocationVoucherTotals = useMemo(() => {
+    const totals = new Map<string, number>()
+    for (const tile of perLocationSalesTiles) {
+      const locationId = tile.key.replace(/^sales-ex-gst-/, '')
+      totals.set(
+        locationId,
+        sumVoucherSalesExGstFromLocationRows(voucherSalesByLocation, locationId),
+      )
+    }
+    return totals
+  }, [perLocationSalesTiles, voucherSalesByLocation])
 
   const salesExtraTiles = useMemo((): WeeklySummaryExtraTile[] => {
     const totalVal = sumTotalSalesExGstFromRows(dateScopedRows)
-    const voucherLines = voucherLinesQuery.data
-    const voucherReady = !voucherLinesQuery.isLoading
 
     const totalTile: WeeklySummaryExtraTile = {
       key: 'total-sales-ex-gst',
       label: 'Total sales (ex GST)',
       value: totalVal,
-      excludedVoucherSalesExGst: voucherReady
-        ? sumVoucherSalesExGstFromLines(voucherLines)
-        : undefined,
+      excludedVoucherSalesExGst: totalExcludedVoucherSalesExGst,
+      voucherDisclosureScopeLabel: 'All locations',
+      voucherDisclosureLocationId: null,
     }
 
     const locationTiles = perLocationSalesTiles.map((tile) => {
       const locationId = tile.key.replace(/^sales-ex-gst-/, '')
+      const source = (dataSources ?? []).find(
+        (s) => String(s.location_id ?? '').trim() === locationId,
+      )
+      const scopeLabel =
+        source?.location_name && String(source.location_name).trim() !== ''
+          ? String(source.location_name).trim()
+          : source?.location_code && String(source.location_code).trim() !== ''
+            ? String(source.location_code).trim()
+            : locationId
       return {
         ...tile,
-        excludedVoucherSalesExGst: voucherReady
-          ? sumVoucherSalesExGstFromLines(voucherLines, locationId)
-          : undefined,
+        excludedVoucherSalesExGst: perLocationVoucherTotals.get(locationId) ?? 0,
+        voucherDisclosureScopeLabel: scopeLabel,
+        voucherDisclosureLocationId: locationId,
       }
     })
 
@@ -171,9 +207,32 @@ export function AdminPayrollSummaryPage() {
   }, [
     dateScopedRows,
     perLocationSalesTiles,
-    voucherLinesQuery.data,
-    voucherLinesQuery.isLoading,
+    totalExcludedVoucherSalesExGst,
+    perLocationVoucherTotals,
+    dataSources,
   ])
+
+  function handleVoucherDisclosureClick(tile: WeeklySummaryExtraTile) {
+    setVoucherDetailScope({
+      scopeLabel: tile.voucherDisclosureScopeLabel ?? 'All locations',
+      locationId: tile.voucherDisclosureLocationId ?? null,
+      totalExGst: tile.excludedVoucherSalesExGst ?? 0,
+    })
+  }
+
+  const finalStatsProps = {
+    rows: displayRows,
+    weeksCardLabel: 'Number of weeks shown' as const,
+    unconfiguredFilterProps: {
+      active: unconfiguredOnly,
+      onToggle: () => setUnconfiguredOnly((v) => !v),
+    },
+    showSalesCard: false,
+    showRowsShownCard: false,
+    extraTiles: salesExtraTiles,
+    showVoucherDisclosureOnExtraTiles: true,
+    onVoucherDisclosureClick: handleVoucherDisclosureClick,
+  }
 
   const dateRangeChanged =
     dateFromOverride != null || dateToOverride != null
@@ -313,16 +372,15 @@ export function AdminPayrollSummaryPage() {
             splitByLocation={splitByLocation}
             onSplitByLocationChange={setSplitByLocation}
           />
-          <WeeklySummaryStats
-            rows={displayRows}
-            weeksCardLabel="Number of weeks shown"
-            unconfiguredFilterProps={{
-              active: unconfiguredOnly,
-              onToggle: () => setUnconfiguredOnly((v) => !v),
-            }}
-            showSalesCard={false}
-            showRowsShownCard={false}
-            extraTiles={salesExtraTiles}
+          <WeeklySummaryStats {...finalStatsProps} />
+          <VoucherSalesDetailModal
+            open={voucherDetailScope != null}
+            onClose={() => setVoucherDetailScope(null)}
+            scopeLabel={voucherDetailScope?.scopeLabel ?? 'All locations'}
+            totalExGst={voucherDetailScope?.totalExGst ?? 0}
+            rows={voucherDetailQuery.data ?? []}
+            isLoading={voucherDetailQuery.isLoading}
+            isError={voucherDetailQuery.isError}
           />
           <div className="mt-4">
             <AdminSummaryTable

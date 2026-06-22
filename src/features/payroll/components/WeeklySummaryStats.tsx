@@ -15,6 +15,10 @@ export type WeeklySummaryExtraTile = {
    * `0`), a muted disclosure line is shown under the card.
    */
   excludedVoucherSalesExGst?: number
+  /** Modal scope label, e.g. "All locations" or "Orewa". */
+  voucherDisclosureScopeLabel?: string
+  /** `null` = all locations; UUID string = single location card. */
+  voucherDisclosureLocationId?: string | null
 }
 
 type WeeklySummaryStatsProps = {
@@ -56,6 +60,13 @@ type WeeklySummaryStatsProps = {
    * scope as the per-location tiles, typically date-scoped summary rows).
    */
   extraTiles?: WeeklySummaryExtraTile[]
+  /**
+   * When true, each `extraTiles` card shows a muted voucher-exclusion
+   * line under the amount (Sales Summary sales KPI cards only).
+   */
+  showVoucherDisclosureOnExtraTiles?: boolean
+  /** Called when a voucher disclosure line is clicked (Sales Summary). */
+  onVoucherDisclosureClick?: (tile: WeeklySummaryExtraTile) => void
 }
 
 function sumActualCommission(rows: WeeklyCommissionSummaryRow[]): number | null {
@@ -114,6 +125,8 @@ export function WeeklySummaryStats({
   showSalesCard = true,
   showRowsShownCard = true,
   extraTiles,
+  showVoucherDisclosureOnExtraTiles = false,
+  onVoucherDisclosureClick,
 }: WeeklySummaryStatsProps) {
   const weeks = distinctPayWeeks(rows)
   const commission = sumActualCommission(rows)
@@ -179,13 +192,16 @@ export function WeeklySummaryStats({
             <p className="mt-0.5 text-lg font-semibold tabular-nums text-slate-900 sm:mt-1 sm:text-2xl">
               {tile.value != null ? formatNzd(tile.value) : '—'}
             </p>
-            {tile.excludedVoucherSalesExGst != null ? (
-              <p
-                className="mt-1 text-[10px] text-slate-400 sm:text-xs"
+            {showVoucherDisclosureOnExtraTiles ? (
+              <button
+                type="button"
+                className="mt-1 cursor-pointer text-left text-[10px] leading-snug text-slate-400 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-1 sm:text-xs"
                 data-testid={`weekly-summary-voucher-exclusion-${tile.key}`}
+                onClick={() => onVoucherDisclosureClick?.(tile)}
               >
-                Excludes voucher sales of {formatNzd(tile.excludedVoucherSalesExGst)}
-              </p>
+                Excludes voucher sales of{' '}
+                {formatNzd(tile.excludedVoucherSalesExGst ?? 0)}
+              </button>
             ) : null}
           </div>
         ))}

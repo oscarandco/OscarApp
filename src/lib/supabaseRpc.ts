@@ -14,6 +14,8 @@ import type {
   LocationSalesSummaryKpiRow,
   MySalesTrendWeeklyRow,
   SalesDailySheetsDataSourceRow,
+  VoucherSalesByLocationRow,
+  VoucherSalesDetailRow,
   WeeklyCommissionLineRow,
   WeeklyCommissionSummaryRow,
 } from '@/features/payroll/types'
@@ -121,6 +123,57 @@ export async function rpcGetSalesDailySheetsDataSources(): Promise<
   )
   if (error) throw toError('get_sales_daily_sheets_data_sources_by_location', error)
   return asRows(data as SalesDailySheetsDataSourceRow[])
+}
+
+/**
+ * Sales Summary voucher disclosure: voucher `price_ex_gst` by location from
+ * SalesDailySheets-backed `sales_transactions` for `sale_date` in range.
+ */
+export async function rpcGetVoucherSalesExGstByLocationForDateRange(
+  saleDateFrom: string,
+  saleDateTo: string,
+): Promise<VoucherSalesByLocationRow[]> {
+  const from = String(saleDateFrom ?? '').trim()
+  const to = String(saleDateTo ?? '').trim()
+  if (!from || !to) return []
+  const { data, error } = await requireSupabaseClient().rpc(
+    'get_voucher_sales_ex_gst_by_location_for_date_range',
+    {
+      p_sale_date_from: from,
+      p_sale_date_to: to,
+    },
+  )
+  if (error) {
+    throw toError('get_voucher_sales_ex_gst_by_location_for_date_range', error)
+  }
+  return asRows(data as VoucherSalesByLocationRow[])
+}
+
+/**
+ * Sales Summary voucher disclosure detail lines from SalesDailySheets-backed
+ * `sales_transactions` for `sale_date` in range, optionally one location.
+ */
+export async function rpcGetVoucherSalesDetailForDateRange(
+  saleDateFrom: string,
+  saleDateTo: string,
+  locationId: string | null,
+): Promise<VoucherSalesDetailRow[]> {
+  const from = String(saleDateFrom ?? '').trim()
+  const to = String(saleDateTo ?? '').trim()
+  if (!from || !to) return []
+  const loc = locationId != null ? String(locationId).trim() : ''
+  const { data, error } = await requireSupabaseClient().rpc(
+    'get_voucher_sales_detail_for_date_range',
+    {
+      p_sale_date_from: from,
+      p_sale_date_to: to,
+      p_location_id: loc !== '' ? loc : null,
+    },
+  )
+  if (error) {
+    throw toError('get_voucher_sales_detail_for_date_range', error)
+  }
+  return asRows(data as VoucherSalesDetailRow[])
 }
 
 export async function rpcGetMyCommissionSummaryWeekly(): Promise<
