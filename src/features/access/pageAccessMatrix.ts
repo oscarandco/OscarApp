@@ -68,6 +68,7 @@ export type PageId =
   | 'imports'
   | 'staff'
   | 'products'
+  | 'service_product_costs'
   | 'quotes'
   | 'remuneration'
   | 'business_settings'
@@ -90,6 +91,7 @@ export const PAGE_MATRIX_ROW_ORDER: PageId[] = [
   'imports',
   'staff',
   'products',
+  'service_product_costs',
   'quotes',
   'remuneration',
   'business_settings',
@@ -238,6 +240,17 @@ export const PAGE_ACCESS_MATRIX: Record<PageId, Record<RoleKey, PageAccessLevel>
     stylist_uat: O,
     reception_uat: O,
     manager_uat: O,
+    admin: F,
+  },
+  service_product_costs: {
+    assistant: O,
+    stylist: O,
+    reception: O,
+    manager: V,
+    assistant_uat: O,
+    stylist_uat: O,
+    reception_uat: O,
+    manager_uat: V,
     admin: F,
   },
   quotes: {

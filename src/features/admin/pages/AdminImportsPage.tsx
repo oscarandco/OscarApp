@@ -136,30 +136,15 @@ export function AdminImportsPage() {
   }, [locations, rebuildLocationId])
 
   const invalidateSalesRebuildCaches = () => {
-    void queryClient.invalidateQueries({
-      queryKey: ['my-commission-summary-weekly'],
-    })
-    void queryClient.invalidateQueries({
-      queryKey: ['my-commission-lines-weekly'],
-    })
-    void queryClient.invalidateQueries({
-      queryKey: ['admin-payroll-summary-weekly'],
-    })
-    void queryClient.invalidateQueries({
-      queryKey: ['admin-payroll-lines-weekly'],
-    })
-    void queryClient.invalidateQueries({
-      queryKey: ['location-sales-summary-my-sales'],
-    })
-    void queryClient.invalidateQueries({
-      queryKey: ['sales-daily-sheets-data-sources'],
-    })
-    void queryClient.invalidateQueries({
-      queryKey: ['kpi-snapshot-live'],
-    })
-    void queryClient.invalidateQueries({
-      queryKey: ['kpi-stylist-comparisons-live'],
-    })
+    for (const key of [
+      'my-commission-summary-weekly', 'my-commission-lines-weekly', 'my-sales-trend-weekly',
+      'admin-payroll-summary-weekly', 'admin-payroll-lines-weekly',
+      'location-sales-summary-my-sales', 'sales-daily-sheets-data-sources',
+      'kpi-snapshot-live', 'kpi-stylist-comparisons-live', 'kpi-drilldown-live', 'kpi-invoice-detail-live',
+      'payroll-cost-weeks', 'payroll-cost-readiness', 'payroll-cost-sales',
+      'service-product-costs', 'service-product-cost-history', 'commission-guide',
+      'contractor-invoice-pay-weeks', 'contractor-invoice-batch', 'contractor-invoice-preview',
+    ]) void queryClient.invalidateQueries({ queryKey: [key] })
   }
 
   type RebuildBatchFlowResult =
@@ -315,30 +300,7 @@ export function AdminImportsPage() {
       setDeleteProgResult(
         `Delete complete for ${res.location_name}. ${formatAdminCount(res.transactions_deleted)} transactions deleted, ${formatAdminCount(res.raw_rows_deleted)} raw rows deleted, ${formatAdminCount(res.sales_import_batches_deleted)} import batch(es) deleted, ${formatAdminCount(res.staged_rows_deleted)} staged row(s), ${formatAdminCount(res.staged_batches_deleted)} sheet batch(es).`,
       )
-      void queryClient.invalidateQueries({
-        queryKey: ['my-commission-summary-weekly'],
-      })
-      void queryClient.invalidateQueries({
-        queryKey: ['my-commission-lines-weekly'],
-      })
-      void queryClient.invalidateQueries({
-        queryKey: ['admin-payroll-summary-weekly'],
-      })
-      void queryClient.invalidateQueries({
-        queryKey: ['admin-payroll-lines-weekly'],
-      })
-      void queryClient.invalidateQueries({
-        queryKey: ['location-sales-summary-my-sales'],
-      })
-      void queryClient.invalidateQueries({
-        queryKey: ['sales-daily-sheets-data-sources'],
-      })
-      void queryClient.invalidateQueries({
-        queryKey: ['kpi-snapshot-live'],
-      })
-      void queryClient.invalidateQueries({
-        queryKey: ['kpi-stylist-comparisons-live'],
-      })
+      invalidateSalesRebuildCaches()
     },
     onError: (err: unknown) => {
       setDeleteProgFailed(true)
@@ -432,18 +394,7 @@ export function AdminImportsPage() {
       setLastSummary(
         `Storage path: ${res.storagePath}\n\n${batchPart}Queue RPC / pipeline:\n${summarizePipelineResult(res.pipelineResult)}`,
       )
-      void queryClient.invalidateQueries({
-        queryKey: ['my-commission-summary-weekly'],
-      })
-      void queryClient.invalidateQueries({
-        queryKey: ['my-commission-lines-weekly'],
-      })
-      void queryClient.invalidateQueries({
-        queryKey: ['admin-payroll-summary-weekly'],
-      })
-      void queryClient.invalidateQueries({
-        queryKey: ['admin-payroll-lines-weekly'],
-      })
+      invalidateSalesRebuildCaches()
     },
     onError: (err: unknown) => {
       setStatus('failed')

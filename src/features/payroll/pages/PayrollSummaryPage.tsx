@@ -458,7 +458,7 @@ export function PayrollSummaryPage() {
 
   /* --- render guards --- */
 
-  if (accessState === 'loading' || trend.isLoading) {
+  if (accessState === 'loading' || trend.isLoading || trend.isFetching) {
     return (
       <div data-testid="payroll-summary-page">
         <PageHeader title="My Sales" />

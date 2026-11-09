@@ -8,5 +8,6 @@ export function useAdminPayrollLinesWeekly(payWeekStart: string | undefined) {
     queryKey: ['admin-payroll-lines-weekly', payWeekStart] as const,
     queryFn: () => rpcGetAdminPayrollLinesWeekly(payWeekStart!),
     enabled: Boolean(payWeekStart),
+    staleTime: 0,
   })
 }

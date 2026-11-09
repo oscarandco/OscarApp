@@ -5,7 +5,8 @@ import { ConfigErrorScreen } from '@/app/ConfigErrorScreen'
 import { ErrorBoundary } from '@/app/ErrorBoundary'
 import { Providers } from '@/app/providers'
 import { AppRouter } from '@/app/router'
-import { getMissingSupabaseEnvNames } from '@/lib/env'
+import { LocalDevelopmentBanner } from '@/components/layout/LocalDevelopmentBanner'
+import { getMissingSupabaseEnvNames, isLocalDevelopment } from '@/lib/env'
 import './index.css'
 
 const container = document.getElementById('root')
@@ -15,20 +16,21 @@ if (!container) {
 
 const missingEnv = getMissingSupabaseEnvNames()
 
-if (missingEnv.length > 0) {
-  createRoot(container).render(
-    <StrictMode>
+if (isLocalDevelopment()) {
+  document.documentElement.dataset.appEnvironment = 'local'
+}
+
+createRoot(container).render(
+  <StrictMode>
+    <LocalDevelopmentBanner />
+    {missingEnv.length > 0 ? (
       <ConfigErrorScreen missing={missingEnv} />
-    </StrictMode>,
-  )
-} else {
-  createRoot(container).render(
-    <StrictMode>
+    ) : (
       <ErrorBoundary>
         <Providers>
           <AppRouter />
         </Providers>
       </ErrorBoundary>
-    </StrictMode>,
-  )
-}
+    )}
+  </StrictMode>,
+)

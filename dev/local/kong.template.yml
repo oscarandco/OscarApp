@@ -1,0 +1,86 @@
+_format_version: '2.1'
+_transform: true
+
+consumers:
+  - username: anon
+    keyauth_credentials:
+      - key: __LOCAL_ANON_KEY__
+  - username: service_role
+    keyauth_credentials:
+      - key: __LOCAL_SERVICE_ROLE_KEY__
+
+acls:
+  - consumer: anon
+    group: anon
+  - consumer: service_role
+    group: admin
+
+services:
+  - name: auth-verify
+    url: http://auth:9999/verify
+    routes:
+      - name: auth-verify
+        strip_path: true
+        paths: [/auth/v1/verify]
+    plugins:
+      - name: cors
+
+  - name: auth
+    url: http://auth:9999/
+    routes:
+      - name: auth
+        strip_path: true
+        paths: [/auth/v1/]
+    plugins:
+      - name: cors
+      - name: key-auth
+        config:
+          hide_credentials: false
+      - name: acl
+        config:
+          hide_groups_header: true
+          allow: [anon, admin]
+
+  - name: rest
+    url: http://rest:3000/
+    routes:
+      - name: rest
+        strip_path: true
+        paths: [/rest/v1/]
+    plugins:
+      - name: cors
+      - name: key-auth
+        config:
+          hide_credentials: false
+      - name: acl
+        config:
+          hide_groups_header: true
+          allow: [anon, admin]
+
+  - name: storage
+    url: http://storage:5000/
+    routes:
+      - name: storage
+        strip_path: true
+        paths: [/storage/v1/]
+    plugins:
+      - name: cors
+      - name: key-auth
+        config:
+          hide_credentials: false
+      - name: acl
+        config:
+          hide_groups_header: true
+          allow: [anon, admin]
+
+  - name: local-functions-disabled
+    url: http://127.0.0.1:1
+    routes:
+      - name: local-functions-disabled
+        paths: [/functions/v1/]
+    plugins:
+      - name: cors
+      - name: request-termination
+        config:
+          status_code: 501
+          message: Edge Functions are not enabled in this local environment.

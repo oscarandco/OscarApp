@@ -35,7 +35,7 @@ export function AppShell() {
       routed page content (e.g. the contractor invoice card) — no app
       chrome, no scrollbars, no clipped pages.
     */
-    <div className="flex min-h-dvh flex-col bg-slate-50 lg:h-dvh lg:min-h-0 lg:overflow-hidden print:block print:h-auto print:min-h-0 print:overflow-visible print:bg-white">
+    <div className="flex min-h-dvh flex-col bg-slate-50 lg:h-[var(--app-viewport-height,100dvh)] lg:min-h-0 lg:overflow-hidden print:block print:h-auto print:min-h-0 print:overflow-visible print:bg-white">
       <TopNav onOpenMobileNav={() => setMobileNavOpen(true)} />
       <div className="flex flex-1 flex-col lg:min-h-0 lg:flex-row print:block">
         <SideNav

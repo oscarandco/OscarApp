@@ -18,6 +18,7 @@ import { AdminQuoteSectionDetailPage } from '@/features/admin/pages/AdminQuoteSe
 import { AdminWeeklyCommissionDashboardPage } from '@/features/admin/pages/AdminWeeklyCommissionDashboardPage'
 import { CommissionGuidePage } from '@/features/commission-guide/pages/CommissionGuidePage'
 import { ProductConfigurationPage } from '@/features/admin/pages/ProductConfigurationPage'
+import { ServiceProductCostsPage } from '@/features/admin/pages/ServiceProductCostsPage'
 import { RemunerationConfigurationPage } from '@/features/admin/pages/RemunerationConfigurationPage'
 import { RolePermissionsPage } from '@/features/admin/pages/RolePermissionsPage'
 import { StaffConfigurationPage } from '@/features/admin/pages/StaffConfigurationPage'
@@ -183,6 +184,14 @@ export function AppRouter() {
             element={
               <RequirePageAccess pageId="products">
                 <ProductConfigurationPage />
+              </RequirePageAccess>
+            }
+          />
+          <Route
+            path="admin/service-product-costs"
+            element={
+              <RequirePageAccess pageId="service_product_costs">
+                <ServiceProductCostsPage />
               </RequirePageAccess>
             }
           />

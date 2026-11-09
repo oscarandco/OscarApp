@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 
 import { EmptyState } from '@/components/feedback/EmptyState'
@@ -7,9 +8,9 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { TableScrollArea } from '@/components/ui/TableScrollArea'
 import { TableColumnSortHeader } from '@/components/ui/TableColumnSortHeader'
 import { AdminPayrollLinesPreviewModal } from '@/features/admin/components/AdminPayrollLinesPreviewModal'
+import { PayrollProductCostsModal } from '@/features/admin/components/PayrollProductCostsModal'
 import { StaffLocationNavBadge } from '@/features/admin/components/StaffLocationNavBadge'
 import { useAdminPayrollLinesWeekly } from '@/features/admin/hooks/useAdminPayrollLinesWeekly'
-import { useAdminPayrollSummaryWeekly } from '@/features/admin/hooks/useAdminPayrollSummaryWeekly'
 import {
   type DashboardCardFilter,
   aggregateTableAByStaff,
@@ -23,6 +24,7 @@ import {
   uniquePayWeekStartOptions,
 } from '@/lib/payrollSummaryFilters'
 import { queryErrorDetail } from '@/lib/queryError'
+import { getPayrollCostReadiness, getPayrollCostSales, getPayrollCostWeeks } from '@/lib/serviceProductCostsApi'
 import type { ColumnSortState } from '@/lib/tableSort'
 import {
   sortWeeklyDashboardTableARows,
@@ -33,7 +35,7 @@ import {
  * Weekly payroll dashboard summary tables only: smaller type, tighter rows,
  * stylist names on one line (horizontal scroll via TableScrollArea when needed).
  */
-const dashTable = 'w-max min-w-full border-collapse text-xs'
+const dashTable = 'w-full border-collapse text-xs'
 const dashTh =
   'border-b border-slate-200 px-2 py-1.5 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-600 sm:px-2.5 sm:py-1.5 sm:normal-case sm:text-xs sm:tracking-normal sm:text-slate-700'
 const dashThRight = `${dashTh} text-right`
@@ -70,7 +72,7 @@ function isPaidStaffInternalRow(staffPaid: string): boolean {
 }
 
 export function AdminWeeklyCommissionDashboardPage() {
-  const summaryQuery = useAdminPayrollSummaryWeekly()
+  const summaryQuery = useQuery({ queryKey: ['payroll-cost-weeks'], queryFn: getPayrollCostWeeks, staleTime: 0 })
   const weekOptions = useMemo(
     () => uniquePayWeekStartOptions(summaryQuery.data ?? []),
     [summaryQuery.data],
@@ -85,6 +87,22 @@ export function AdminWeeklyCommissionDashboardPage() {
   const [tableASort, setTableASort] = useState<ColumnSortState>(null)
   const [tableBSort, setTableBSort] = useState<ColumnSortState>(null)
   const [showInternal, setShowInternal] = useState(false)
+  const [dismissedCostIssues, setDismissedCostIssues] = useState<string | null>(null)
+  const readiness = useQuery({
+    queryKey: ['payroll-cost-readiness', selectedWeek],
+    queryFn: () => getPayrollCostReadiness(selectedWeek!),
+    enabled: Boolean(selectedWeek),
+    staleTime: 0,
+  })
+  const salesSnapshot = useQuery({
+    queryKey: ['payroll-cost-sales', selectedWeek],
+    queryFn: () => getPayrollCostSales(selectedWeek!),
+    enabled: Boolean(selectedWeek),
+    staleTime: 0,
+  })
+  const costIssues = readiness.data ?? []
+  const costIssueSignature = `${selectedWeek}:${costIssues.map((issue) => issue.issue_key).sort().join('|')}`
+  const commissionReady = readiness.isSuccess && !readiness.isFetching && costIssues.length === 0
 
   useEffect(() => {
     if (selectedWeek != null) return
@@ -100,9 +118,9 @@ export function AdminWeeklyCommissionDashboardPage() {
     setTableBSort(null)
   }, [selectedWeek])
 
-  const linesQuery = useAdminPayrollLinesWeekly(selectedWeek ?? undefined)
+  const linesQuery = useAdminPayrollLinesWeekly(commissionReady ? selectedWeek ?? undefined : undefined)
 
-  const weekLines = linesQuery.data ?? []
+  const weekLines = commissionReady ? linesQuery.data ?? [] : []
 
   const cards = useMemo(() => aggregateWeekSummaryCards(weekLines), [weekLines])
 
@@ -187,7 +205,7 @@ export function AdminWeeklyCommissionDashboardPage() {
   if (summaryQuery.isLoading) {
     return (
       <div
-        className="mx-auto w-full max-w-6xl"
+        className="mx-auto w-full min-w-0"
         data-testid="admin-weekly-commission-page"
       >
         <LoadingState
@@ -202,7 +220,7 @@ export function AdminWeeklyCommissionDashboardPage() {
     const { message, err } = queryErrorDetail(summaryQuery.error)
     return (
       <div
-        className="mx-auto w-full max-w-6xl"
+        className="mx-auto w-full min-w-0"
         data-testid="admin-weekly-commission-page"
       >
         <ErrorState
@@ -219,7 +237,7 @@ export function AdminWeeklyCommissionDashboardPage() {
   if (weekOptions.length === 0) {
     return (
       <div
-        className="mx-auto w-full max-w-6xl"
+        className="mx-auto w-full min-w-0"
         data-testid="admin-weekly-commission-page"
       >
         <PageHeader
@@ -237,7 +255,7 @@ export function AdminWeeklyCommissionDashboardPage() {
 
   return (
     <div
-      className="mx-auto w-full max-w-6xl"
+      className="mx-auto w-full min-w-0"
       data-testid="admin-weekly-commission-page"
     >
       <PageHeader
@@ -273,7 +291,24 @@ export function AdminWeeklyCommissionDashboardPage() {
         </label>
       </div>
 
-      {linesQuery.isLoading ? (
+      {!commissionReady ? (
+        <>
+          <div className="mb-5 rounded-lg border border-amber-200 bg-amber-50 p-4" role="status" data-testid="payroll-awaiting-product-costs">
+            <h2 className="font-semibold text-amber-950">{readiness.isError ? 'Commission readiness could not be checked' : costIssues.length ? 'Commission awaiting product costs' : 'Checking commission readiness…'}</h2>
+            <p className="mt-1 text-sm text-amber-900">{readiness.isError ? readiness.error.message : costIssues.length ? 'Resolve the selected week’s product cost requirements before reviewing commission. Sales totals remain available.' : 'Checking all relevant sales across both salons before displaying commission.'}</p>
+            {costIssues.length ? <button type="button" className="mt-3 rounded-md bg-violet-700 px-3 py-2 text-sm font-medium text-white" onClick={() => setDismissedCostIssues(null)}>Review costs</button> : readiness.isError ? <button type="button" className="mt-3 text-sm font-medium text-violet-800 underline" onClick={() => void readiness.refetch()}>Retry readiness check</button> : null}
+          </div>
+          <div className="mb-6 grid gap-3 sm:grid-cols-3" data-testid="payroll-sales-while-awaiting-costs">
+            {[
+              ['Total sales, ex GST', salesSnapshot.data?.total_sales_ex_gst],
+              ['Orewa sales, ex GST', salesSnapshot.data?.orewa_sales_ex_gst],
+              ['Takapuna sales, ex GST', salesSnapshot.data?.takapuna_sales_ex_gst],
+            ].map(([label, amount]) => <div key={String(label)} className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm"><p className="text-xs font-medium uppercase text-slate-500">{label}</p><p className="mt-1 text-2xl font-semibold tabular-nums">{amount != null ? formatNzd(amount) : '—'}</p></div>)}
+          </div>
+          {salesSnapshot.isError ? <p role="alert" className="mb-4 text-sm text-red-700">Could not load sales totals: {salesSnapshot.error.message}</p> : null}
+          {costIssues.length > 0 && dismissedCostIssues !== costIssueSignature ? <PayrollProductCostsModal key={costIssueSignature} issues={costIssues} onClose={() => setDismissedCostIssues(costIssueSignature)} /> : null}
+        </>
+      ) : linesQuery.isLoading || linesQuery.isFetching ? (
         <LoadingState
           message="Loading lines for selected week…"
           testId="admin-weekly-commission-lines-loading"
@@ -362,8 +397,8 @@ export function AdminWeeklyCommissionDashboardPage() {
             </button>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start lg:gap-5">
-          <section>
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,40rem),1fr))] items-start gap-4 lg:gap-5">
+          <section className="min-w-0">
             <h2 className="mb-2 text-base font-semibold text-slate-900">
               By category (commission amount)
             </h2>
@@ -509,7 +544,7 @@ export function AdminWeeklyCommissionDashboardPage() {
             </TableScrollArea>
           </section>
 
-          <section>
+          <section className="min-w-0">
             <h2 className="mb-2 text-base font-semibold text-slate-900">
               By commission product / service (commission amount)
             </h2>

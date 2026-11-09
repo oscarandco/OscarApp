@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom'
 import { TableColumnSortHeader } from '@/components/ui/TableColumnSortHeader'
 
 import { PayrollLineStats } from '@/features/payroll/components/PayrollLineStats'
+import { CommissionBasisCells, CommissionBasisHeaderCells } from '@/features/payroll/components/CommissionBasisCells'
 import type { WeeklyCommissionLineRow, WeeklyCommissionSummaryRow } from '@/features/payroll/types'
 import { filterCommissionLinesForSummaryRow } from '@/lib/payrollSummaryFilters'
 import {
@@ -246,6 +247,7 @@ export function PayrollLinesPreviewModal({
                             wrapLabel={false}
                           />
                         </th>
+                        <CommissionBasisHeaderCells className={thRight} />
                         <th className={`${thRight} w-[1%] whitespace-nowrap`} scope="col">
                           <TableColumnSortHeader
                             label="Rate"
@@ -345,6 +347,7 @@ export function PayrollLinesPreviewModal({
                                 ? formatNzd(row.price_incl_gst)
                                 : '—'}
                             </td>
+                            <CommissionBasisCells row={row} className={tdBase} />
                             <td className={`${tdBase} whitespace-nowrap text-right tabular-nums`}>
                               {raw.actual_commission_rate != null
                                 ? formatCommissionRatePercent(raw.actual_commission_rate)

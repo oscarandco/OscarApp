@@ -19,7 +19,7 @@ export function AdminPayrollDetailPage() {
   const parsed = parsePayWeekRouteParam(rawParam)
   const payWeekForQuery = parsed.kind === 'ok' ? parsed.value : undefined
 
-  const { data, isLoading, isError, error, refetch } =
+  const { data, isLoading, isFetching, isError, error, refetch } =
     useAdminPayrollLinesWeekly(payWeekForQuery)
 
   const lines = data ?? []
@@ -75,7 +75,7 @@ export function AdminPayrollDetailPage() {
 
   const payWeekStart = parsed.value
 
-  if (isLoading) {
+  if (isLoading || isFetching) {
     return (
       <div data-testid="admin-detail-page" className="flex min-h-0 min-w-0 flex-1 flex-col">
         <PayrollWeekHeader

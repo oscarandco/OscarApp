@@ -224,12 +224,17 @@ function EligibleCard({ section }: { section: CommissionGuideEligibleSection }) 
             <span className="text-slate-600">Price excluding GST:</span>{' '}
             <span className="tabular-nums">{formatMoney2(ex.price_ex_gst)}</span>
           </p>
+          {ex.service_cost_status === 'ready' ? <>
+            <p><span className="text-slate-600">Product cost for {ex.quantity ?? 'the'} unit(s), ex GST:</span> <span className="tabular-nums">{formatMoney2(ex.product_cost_ex_gst)}</span></p>
+            <p><span className="text-slate-600">Commissionable amount ex GST:</span> <span className="tabular-nums">{formatMoney2(ex.commissionable_ex_gst)}</span></p>
+          </> : null}
           <p>
             <span className="text-slate-600">Commission @ {ratePct}:</span>{' '}
             <span className="tabular-nums font-semibold text-emerald-800">
               {formatMoney2(ex.commission)}
             </span>
           </p>
+          {ex.calculation_note ? <p className={`pt-1 text-xs ${ex.commission == null ? 'font-medium text-amber-900' : 'text-slate-500'}`}>{ex.calculation_note}</p> : null}
         </div>
       ) : (
         <p className="mt-2 text-sm text-slate-500">Example: No recent example found.</p>
@@ -475,7 +480,7 @@ export function CommissionGuidePage() {
 
   const targetStaffId = isElevated ? (pickedStaffId ?? ownStaffId) : ownStaffId
 
-  const { data, isLoading, isError, error, refetch } = useCommissionGuide(
+  const { data, isLoading, isFetching, isError, error, refetch } = useCommissionGuide(
     targetStaffId,
     asOfDate,
   )
@@ -519,7 +524,7 @@ export function CommissionGuidePage() {
           message="You don't have a staff mapping, and no staff member is selected."
           testId="commission-guide-no-target"
         />
-      ) : isLoading ? (
+      ) : isLoading || isFetching ? (
         <LoadingState
           message="Loading commission guide..."
           testId="commission-guide-loading"

@@ -4,6 +4,11 @@
  * only calls `createClient` when URL and anon key are both non-empty.
  */
 
+/** Enabled by the guarded dev:local launcher, never by a normal production build. */
+export function isLocalDevelopment(): boolean {
+  return import.meta.env.DEV && import.meta.env.MODE === 'docker' && import.meta.env.VITE_APP_ENV === 'local'
+}
+
 export function getMissingSupabaseEnvNames(): string[] {
   const missing: string[] = []
   if (!import.meta.env.VITE_SUPABASE_URL?.trim()) {

@@ -115,6 +115,7 @@ export type CommissionGuidePlan = {
   conditions_text: string | null
   staff_on_this_plan_text: string | null
   is_active: boolean
+  deduct_service_product_costs?: boolean
   rates: Partial<Record<CommissionRateCategory, number>>
 }
 
@@ -130,16 +131,22 @@ export type CommissionGuideCaller = {
 /**
  * Real sale-line example shown inside an eligible-category card.
  * Returned by the v5 RPC migration (20260828120900). The rate and
- * commission are computed using the selected staff's current plan rate
- * (not the original sale line's rate), so the math always reflects the
- * viewer's plan.
+ * commission use the selected staff's plan and product cost effective on
+ * the guide date, retaining the original source line's price and quantity.
+ * An unresolved cost or source-data issue leaves commission null.
  */
 export type CommissionGuideSectionExample = {
   product_service_name: string
   price_incl_gst: number
   price_ex_gst: number
   rate: number
-  commission: number
+  commission: number | null
+  quantity?: number | string | null
+  product_cost_ex_gst?: number | string | null
+  commissionable_ex_gst?: number | string | null
+  service_cost_status?: string | null
+  example_basis_date?: string | null
+  calculation_note?: string | null
   /** True when this example is a real sale line for the selected staff. */
   is_staff_specific: boolean
   /** Display name of the staff member the example was taken from. */

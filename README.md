@@ -1,5 +1,13 @@
 # React + TypeScript + Vite
 
+## OscarApp project references
+
+- [Service product costs and commission architecture](docs/service-product-costs-architecture.md) — agreed decisions, current local database setup, implementation stages and acceptance checks.
+- [Service product costs implementation and review](docs/service-product-costs-implementation.md) — delivered feature, local configuration steps, regression/browser evidence and production boundaries.
+- [Local Docker development](docs/local-development.md) — safe launch commands, test login, verification and recovery checkpoints.
+- [Hosting and deployment reference](DEPLOY.md)
+- [Frontend developer notes](docs/frontend-mvp-notes.md)
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:

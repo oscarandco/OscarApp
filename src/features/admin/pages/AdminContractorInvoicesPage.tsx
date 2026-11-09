@@ -177,6 +177,7 @@ function PreviewModal(props: {
     },
     onError: (err) => {
       setErrMsg(queryErrorDetail(err).err?.message ?? 'Create failed.')
+      void preview.refetch()
     },
   })
 
@@ -217,6 +218,8 @@ function PreviewModal(props: {
   const setupMissing = (state.row.setup_missing_fields ?? []) as string[]
   const blocked =
     !canCreate ||
+    !preview.isSuccess ||
+    preview.isFetching ||
     setupMissing.length > 0 ||
     buyerMissingFields.length > 0 ||
     totals.subtotal <= 0
@@ -306,7 +309,7 @@ function PreviewModal(props: {
             </div>
           ) : null}
 
-          {preview.isLoading || preview.isPending ? (
+          {preview.isLoading || preview.isPending || preview.isFetching ? (
             <LoadingState message="Loading preview…" />
           ) : preview.isError ? (
             <ErrorState
@@ -437,14 +440,7 @@ function PreviewModal(props: {
                 </div>
               ) : null}
 
-              {errMsg ? (
-                <div
-                  className="mt-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800"
-                  role="status"
-                >
-                  {errMsg}
-                </div>
-              ) : null}
+              {errMsg ? <ErrorState title="Could not create invoice" message={errMsg} /> : null}
             </>
           )}
         </div>
@@ -461,7 +457,7 @@ function PreviewModal(props: {
             <button
               type="button"
               disabled={blocked || createMut.isPending}
-              onClick={() => setConfirmOpen(true)}
+              onClick={() => { setErrMsg(null); setConfirmOpen(true) }}
               className="rounded-md bg-violet-600 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-violet-700 disabled:opacity-50"
             >
               {createMut.isPending ? 'Creating…' : 'Create invoice'}
@@ -471,7 +467,7 @@ function PreviewModal(props: {
       </div>
 
       <ConfirmDialog
-        open={confirmOpen}
+        open={confirmOpen && !blocked && !createMut.isPending}
         title={`Create invoice for ${displayName}?`}
         description={
           'This will save a locked snapshot of the current Weekly Payroll data. ' +
@@ -479,7 +475,7 @@ function PreviewModal(props: {
         }
         confirmLabel="Create"
         tone="primary"
-        onConfirm={() => createMut.mutate()}
+        onConfirm={() => { if (!blocked) createMut.mutate() }}
         onClose={() => setConfirmOpen(false)}
       />
     </div>
@@ -640,7 +636,7 @@ export function AdminContractorInvoicesPage() {
         </label>
       </div>
 
-      {weeksQuery.isLoading || batchQuery.isLoading ? (
+      {weeksQuery.isLoading || batchQuery.isLoading || batchQuery.isFetching ? (
         <LoadingState message="Loading contractor invoices…" />
       ) : weeksQuery.isError ? (
         <ErrorState
@@ -807,7 +803,7 @@ export function AdminContractorInvoicesPage() {
             setPreviewState(null)
             navigate(`/app/admin/contractor-invoices/${id}`)
           }}
-          canCreate={!viewOnly}
+          canCreate={!viewOnly && batchQuery.isSuccess && !batchQuery.isFetching}
           buyerMissingFields={buyerMissing}
           onOpenInvoice={setInvoiceDetailRef}
           suppressEscape={invoiceDetailRef !== null}

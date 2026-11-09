@@ -2,6 +2,8 @@
 
 Vite + React static client. **All data** comes from **Supabase Auth** and **Postgres RPC functions** (see `src/lib/supabaseRpc.ts`). There is no custom backend server in this repo.
 
+Automatic Vercel Git deployments are disabled for `main` and `codex/service-product-costs` in `vercel.json`. This allows the reviewed feature to be merged and pushed to `main` without deploying it. Other branches retain their existing deployment behaviour. Re-enabling `main` deployments and applying the new database migrations require separate review and authorisation for the production rollout.
+
 ## Required environment variables
 
 Set these in your hosting provider’s environment UI or in a `.env` file for local builds:
@@ -20,6 +22,8 @@ Optional:
 **Never** put the service role key in the frontend. Only the anon key is intended for the browser.
 
 ### Local development
+
+For the restored Docker development environment on this computer, follow [Local Docker development](docs/local-development.md) and use `npm run local:up` followed by `npm run dev:local`. The steps below describe the older environment-file setup, which can point at a hosted project. They are not the Docker workflow, and the restored copy must not have the migration folder replayed blindly.
 
 1. Copy `.env.example` to `.env` in the project root.
 2. Set `VITE_SUPABASE_URL` to your Supabase **Project URL** and `VITE_SUPABASE_ANON_KEY` to the **anon** public key (Dashboard → Settings → API).
