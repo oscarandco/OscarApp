@@ -15,9 +15,18 @@ try {
   docker(['cp',join(localDir,'checkpoints/2026-11-09T08-36-47-986Z/database.dump'),`oscarapp-db:${containerDump}`])
   clusterQuery(`create database ${database} template template0;`)
   docker(['exec','oscarapp-db','pg_restore','-U','supabase_admin','--dbname',database,'--exit-on-error',containerDump])
+  const metadataQuery=`select jsonb_build_object(
+    'staff',(select md5(string_agg((to_jsonb(s)-array['remuneration_plan_id','remuneration_plan_fallback_id'])::text,'' order by id)) from public.staff_members s),
+    'history',(select md5(string_agg((to_jsonb(a)-'remuneration_plan_id')::text,'' order by id)) from public.staff_role_assignments a),
+    'invoices',(select md5(string_agg(to_jsonb(i)::text,'' order by id)) from public.contractor_invoices i),
+    'invoice_lines',(select md5(string_agg(to_jsonb(i)::text,'' order by id)) from public.contractor_invoice_lines i),
+    'timestamp_triggers',(select jsonb_object_agg(tgname,tgenabled::text) from pg_trigger where tgrelid in ('public.staff_members'::regclass,'public.staff_role_assignments'::regclass) and tgname in ('trg_staff_members_updated_at','trg_staff_role_assignments_updated_at')));`
+  const metadataBefore=JSON.parse(query(metadataQuery))
   const migrations=['20261109090656_service_product_costs.sql','20261109100957_service_cost_archive_dates.sql']
   for(const migration of migrations) query(await readFile(join(root,'supabase/migrations',migration),'utf8'))
+  assert.deepEqual(JSON.parse(query(metadataQuery)),metadataBefore,'Migration changed existing staff/history metadata, invoices or timestamp trigger states')
   console.log('PASS: complete additive migrations apply to a fresh restore of the pre-feature checkpoint.')
+  console.log('PASS: existing staff/history timestamps, invoice snapshots and trigger states remain unchanged.')
   const evidence=[]
   for(const file of ['service-cost-plan-tests.sql','service-cost-tests.sql','service-cost-permission-tests.sql','service-cost-archive-tests.sql']) {
     query(await readFile(join(root,'scripts/local',file),'utf8'))
@@ -31,7 +40,7 @@ try {
   const canonical=(rows)=>rows.map((row)=>JSON.stringify(Object.fromEntries(Object.entries(row).sort()))).sort().join('\n')
   assert.equal(lines.length,baseline.lines.length)
   assert.ok(canonical(lines)===canonical(baseline.lines),'Fresh migration changed original commission results')
-  const report={verifiedAt:new Date().toISOString(),migrations,freshRestore:true,harnesses:evidence,unchangedHistoricalLines:lines.length}
+  const report={verifiedAt:new Date().toISOString(),migrations,freshRestore:true,harnesses:evidence,unchangedHistoricalLines:lines.length,unchangedStaffHistoryAndInvoices:true,unchangedTimestampTriggers:true}
   await mkdir(join(localDir,'feature-checks'),{recursive:true})
   await writeFile(join(localDir,'feature-checks/fresh-restore.json'),JSON.stringify(report,null,2)+'\n')
   clusterQuery(`drop database ${database};`)

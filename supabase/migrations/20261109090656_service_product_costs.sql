@@ -32,10 +32,30 @@ END;
 $validate$;
 
 CREATE UNIQUE INDEX remuneration_plans_name_normalised_uidx ON public.remuneration_plans (lower(btrim(plan_name)));
-UPDATE public.staff_members s SET remuneration_plan_id=p.id, remuneration_plan_fallback_id=p.id
-FROM public.remuneration_plans p WHERE lower(btrim(p.plan_name))=lower(btrim(s.remuneration_plan));
-UPDATE public.staff_role_assignments a SET remuneration_plan_id=p.id
-FROM public.remuneration_plans p WHERE lower(btrim(p.plan_name))=lower(btrim(a.remuneration_plan));
+-- Assign permanent identities without recording a business edit to each existing
+-- staff/history row. Disable only the timestamp trigger, retaining FK/integrity
+-- checks, and restore its exact original state within this migration transaction.
+DO $backfill$
+DECLARE target record; previous_state "char"; restore_action text;
+BEGIN
+  FOR target IN SELECT * FROM (VALUES
+    ('staff_members','trg_staff_members_updated_at'),
+    ('staff_role_assignments','trg_staff_role_assignments_updated_at')
+  ) AS targets(table_name,trigger_name) LOOP
+    SELECT t.tgenabled INTO STRICT previous_state FROM pg_trigger t
+    WHERE t.tgrelid=to_regclass('public.'||target.table_name) AND t.tgname=target.trigger_name AND NOT t.tgisinternal;
+    EXECUTE format('ALTER TABLE public.%I DISABLE TRIGGER %I',target.table_name,target.trigger_name);
+    IF target.table_name='staff_members' THEN
+      UPDATE public.staff_members s SET remuneration_plan_id=p.id, remuneration_plan_fallback_id=p.id
+      FROM public.remuneration_plans p WHERE lower(btrim(p.plan_name))=lower(btrim(s.remuneration_plan));
+    ELSE
+      UPDATE public.staff_role_assignments a SET remuneration_plan_id=p.id
+      FROM public.remuneration_plans p WHERE lower(btrim(p.plan_name))=lower(btrim(a.remuneration_plan));
+    END IF;
+    restore_action:=CASE previous_state WHEN 'D' THEN 'DISABLE' WHEN 'A' THEN 'ENABLE ALWAYS' WHEN 'R' THEN 'ENABLE REPLICA' ELSE 'ENABLE' END;
+    EXECUTE format('ALTER TABLE public.%I %s TRIGGER %I',target.table_name,restore_action,target.trigger_name);
+  END LOOP;
+END; $backfill$;
 CREATE INDEX staff_members_plan_id_idx ON public.staff_members(remuneration_plan_id);
 CREATE INDEX staff_role_assignments_plan_id_idx ON public.staff_role_assignments(remuneration_plan_id);
 

@@ -4,7 +4,7 @@ Updated 9 November 2026, Pacific/Auckland. The feature is implemented in Docker.
 
 ## Delivered structure
 
-- An additive [base feature migration](../supabase/migrations/20261109090656_service_product_costs.sql) and [archive-date follow-up migration](../supabase/migrations/20261109100957_service_cost_archive_dates.sql), developed against the restored local database. The base migration remains unchanged; existing source migrations are not replayed.
+- An additive [base feature migration](../supabase/migrations/20261109090656_service_product_costs.sql) and [archive-date follow-up migration](../supabase/migrations/20261109100957_service_cost_archive_dates.sql), developed against the restored local database. Before production rollout, the base backfill was corrected to preserve existing staff/history timestamps by temporarily suspending only each timestamp trigger and restoring its exact prior state inside the transaction. Existing source migrations are not replayed.
 - Permanent plan IDs in current staff and role/pay history, plus a frozen original-plan fallback for genuine historical gaps. Explicitly unconfigured dated assignments stay unconfigured.
 - A dated theoretical benchmark schedule independent of each person's actual remuneration plan.
 - Separate service-cost identities, exact-name aliases, location-scoped Kitomba source-ID mappings and dated decimal ex-GST unit costs. The manual reference names and imported source identities supply catalogue coverage; neither supplies selling prices or fabricated real costs.
