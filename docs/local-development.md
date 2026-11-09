@@ -105,4 +105,4 @@ Imported sales end on 31 October 2026. The service-cost harness builds October/N
 
 Storage metadata is copied and the local Storage API runs, but historical file bytes have not been copied. Old invoice PDFs and old CSV objects may therefore be unavailable locally. Hosted Edge Functions, production SMTP/SMS, Realtime and Studio are not mirrored. Sales import processing remains disabled until it has an explicitly local implementation/configuration; existing imported sales remain available for reporting.
 
-The service-cost implementation remains local. No production database change, push or deployment is included.
+The feature was first implemented and verified locally. Production rollout was separately authorised on 10 November 2026; see [the production rollout record](service-product-costs-implementation.md#production-rollout-10-november-2026). The commands in this runbook still operate only on the guarded local environment.

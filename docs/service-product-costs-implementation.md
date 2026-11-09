@@ -81,10 +81,24 @@ Browser evidence is saved under ignored `local-db.local/`: `service-cost-alert.p
 
 The local Supabase migration-history table remains absent. The provenance check verifies the relevant final schema against the baseline repository; it does not prove every one of the old migration files ran or fabricate applied-history rows. Preserve the original source exports and checkpoint. The fresh-restore test proves the new additive migrations apply to that restored starting schema. A production rollout still requires reviewed prerequisites, a fresh backup, final operational review and separate explicit authorisation.
 
+## Production rollout: 10 November 2026
+
+The user separately authorised production deployment after the reviewed branch was merged into `main`. The live target is [OscarApp](https://oscar-app-wine.vercel.app), backed by Supabase project `qrqmramuvdqlvrtpvajo`. Automatic Vercel deployment from `main` is re-enabled for this release; the review branch remains disabled.
+
+A fresh roles/schema/data backup was saved under the ignored `local-db.local/backups/20261109T105457Z-pre-production-rollout/` directory. Its complete 73-table data export was restored in a new local scratch database. All 14 critical source definitions matched, both migrations applied, and original calculations, staff/history timestamps, invoice snapshots and trigger states remained unchanged. The strengthened regression runner also passed all four SQL harnesses and all 12,915 historical lines. The scratch databases were removed; source backups were retained.
+
+Only `20261109090656_service_product_costs` and `20261109100957_service_cost_archive_dates` were applied to production. A post-migration comparison confirmed every original calculation, staff/history field and invoice snapshot matched the source baseline. The current admin role successfully read 249 catalogue entries, both benchmark periods and the 362 payroll lines for 26 October, with no outstanding October cost issues. Anonymous access to the new catalogue RPC was denied. The production build passed.
+
+Production now has the approved new **Commission** and **Contractor 45%** plans with product-cost deduction enabled, with all six original rates and assistant settings copied. The original plans are archived with their **to 31 October 2026** labels. Theoretical commission uses the original benchmark through 31 October, then the new Commission benchmark from 1 November 2026. The setup transaction asserted that historical calculations and staff assignments were unchanged; invoice snapshots and all financial totals were also verified afterward.
+
+Real product costs remain unconfigured. Staff were not automatically moved to new plans: apply each agreed dated change through Staff Configuration. Docker's user-entered changes were not copied into production. This rollout does not replace Kitomba or alter the existing hosted import functions.
+
+Deployment evidence and private backup data remain in ignored `local-db.local/` files, including `production-migration-verification.json`, `production-plan-setup-verification.json`, `production-authenticated-checks.json` and `fresh-production-backup-verification.json`.
+
 ## Deliberate limits and remaining business inputs
 
 - Real per-service costs and the final affected staff/contractor list must come from the business. Neither the stock CSV's purchase costs nor the $30 illustration is a default.
 - Rare partial credits, credits crossing the rule change or wrongly attributed Internal credits may need a business correction process. Automatic original-sale linkage and a new adjustment facility remain outside scope.
 - Selling prices, stock consumption, appointment scheduling/POS and a replacement for Kitomba are outside this feature.
 - Local Storage has copied metadata but not historical object bytes. Hosted import Edge Functions, production SMTP/SMS, Studio and Realtime are not mirrored. The local import route remains deliberately disabled until explicitly configured locally.
-- No push, deployment or production database mutation is included. The local configuration review is not approval to roll out.
+- The original local configuration review did not authorise rollout. The separate production deployment authorisation and completed database rollout are recorded above.

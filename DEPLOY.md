@@ -2,7 +2,7 @@
 
 Vite + React static client. **All data** comes from **Supabase Auth** and **Postgres RPC functions** (see `src/lib/supabaseRpc.ts`). There is no custom backend server in this repo.
 
-Automatic Vercel Git deployments are disabled for `main` and `codex/service-product-costs` in `vercel.json`. This allows the reviewed feature to be merged and pushed to `main` without deploying it. Other branches retain their existing deployment behaviour. Re-enabling `main` deployments and applying the new database migrations require separate review and authorisation for the production rollout.
+Automatic Vercel Git deployments are enabled for `main`; the `codex/service-product-costs` review branch remains disabled in `vercel.json`. Production rollout was authorised on 10 November 2026 (Pacific/Auckland). The two feature migrations and November plan/benchmark configuration were applied and verified before re-enabling the frontend deployment. See [implementation and production rollout](docs/service-product-costs-implementation.md#production-rollout-10-november-2026).
 
 ## Required environment variables
 
