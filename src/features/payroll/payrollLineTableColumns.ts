@@ -24,6 +24,11 @@ export type LineColumnId =
   | 'commission_category_final'
   | 'quantity'
   | 'price_ex_gst'
+  | 'actual_product_cost_ex_gst'
+  | 'actual_commissionable_ex_gst'
+  | 'theoretical_product_cost_ex_gst'
+  | 'theoretical_commissionable_ex_gst'
+  | 'service_cost_status'
   | 'price_incl_gst'
   | 'derived_staff_paid_id'
   | 'derived_staff_paid_display_name'
@@ -60,6 +65,11 @@ const ALL_LINE_IDS: readonly LineColumnId[] = [
   'commission_category_final',
   'quantity',
   'price_ex_gst',
+  'actual_product_cost_ex_gst',
+  'actual_commissionable_ex_gst',
+  'theoretical_product_cost_ex_gst',
+  'theoretical_commissionable_ex_gst',
+  'service_cost_status',
   'price_incl_gst',
   'derived_staff_paid_id',
   'derived_staff_paid_display_name',
@@ -100,6 +110,11 @@ export const LINE_COLUMN_LABEL: Record<LineColumnId, string> = {
   commission_category_final: 'Commission category',
   quantity: 'Quantity',
   price_ex_gst: 'Price ex GST',
+  actual_product_cost_ex_gst: 'Product cost ex GST',
+  actual_commissionable_ex_gst: 'Commissionable ex GST',
+  theoretical_product_cost_ex_gst: 'Theoretical product cost ex GST',
+  theoretical_commissionable_ex_gst: 'Theoretical commissionable ex GST',
+  service_cost_status: 'Product cost status',
   price_incl_gst: 'Price incl GST',
   derived_staff_paid_id: 'Staff paid ID',
   derived_staff_paid_display_name: 'Staff paid (display)',
@@ -133,6 +148,8 @@ const DEFAULT_VISIBLE_LINE: readonly LineColumnId[] = [
   'work_performed_by',
   'stylist_paid',
   'price_ex_gst',
+  'actual_product_cost_ex_gst',
+  'actual_commissionable_ex_gst',
   'price_incl_gst',
   'quantity',
   'actual_commission_rate',

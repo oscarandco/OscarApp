@@ -26,10 +26,9 @@ export function useRemunerationConfiguration() {
 }
 
 export function staffCountForPlan(
-  plan: { plan_name: string },
+  plan: { id: string },
   staffCounts: PlanStaffCountRow[],
 ): number {
-  const key = plan.plan_name.trim().toLowerCase()
-  const row = staffCounts.find((c) => c.plan_key === key)
+  const row = staffCounts.find((c) => c.plan_id === plan.id)
   return row?.staff_count ?? 0
 }

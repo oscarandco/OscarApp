@@ -202,6 +202,11 @@ export interface WeeklyCommissionLineRow {
   /** Prefer API field from `v_stylist_commission_lines_weekly_final`. */
   actual_commission_amt_ex_gst?: number | string | null
   actual_commission_amount?: number | string | null
+  actual_product_cost_ex_gst?: number | string | null
+  actual_commissionable_ex_gst?: number | string | null
+  theoretical_product_cost_ex_gst?: number | string | null
+  theoretical_commissionable_ex_gst?: number | string | null
+  service_cost_status?: string | null
   assistant_commission_amt_ex_gst?: number | string | null
   assistant_commission_amount?: number | string | null
   payroll_status?: string | null

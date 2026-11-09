@@ -83,7 +83,7 @@ export function InvoiceDetailModal(props: InvoiceDetailModalProps) {
         <div className="max-h-[calc(100vh-8rem)] overflow-auto px-5 py-4">
           <InvoiceDetailBody
             invoice={invoice}
-            isLoading={query.isLoading}
+            isLoading={query.isLoading || query.isFetching}
             isError={query.isError}
             error={query.error}
             refetch={() => query.refetch()}

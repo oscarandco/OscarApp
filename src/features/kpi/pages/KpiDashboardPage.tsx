@@ -158,6 +158,7 @@ export function KpiDashboardPage() {
   const {
     data: comparisonPayload,
     isPending: comparisonsPending,
+    isFetching: comparisonsFetching,
   } = useKpiStylistComparisons({
     periodStart: filters.periodStart,
     scope: effectiveScope,
@@ -166,9 +167,9 @@ export function KpiDashboardPage() {
     enabled: comparisonsRpcEnabled,
     includeComparisonLeaders: isIndividualStaffKpiView,
   })
-  const comparisonRows = comparisonPayload?.rows
+  const comparisonRows = comparisonsFetching ? undefined : comparisonPayload?.rows
   const topStylistDisplayNameByKpi =
-    comparisonPayload?.topStylistDisplayNameByKpi ?? {}
+    comparisonsFetching ? {} : comparisonPayload?.topStylistDisplayNameByKpi ?? {}
   const comparisonUnavailable =
     comparisonsRpcEnabled && !comparisonsPending && comparisonPayload?.unavailable
 
@@ -323,7 +324,7 @@ export function KpiDashboardPage() {
     )
   }
 
-  if (isLoading) {
+  if (isLoading || isFetching) {
     return (
       <>
         <PageHeader title="KPIs" description={description} />

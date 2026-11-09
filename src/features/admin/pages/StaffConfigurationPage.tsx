@@ -41,6 +41,7 @@ type StaffFormDraft = {
   primary_role: string
   secondary_roles: string
   remuneration_plan: string
+  remuneration_plan_id: string
   employment_type: EmploymentKind
   /** Location id (`public.locations.id`); empty string = none. */
   primary_location_id: string
@@ -69,7 +70,7 @@ type StaffFormDraft = {
 const ROLE_PAY_KEYS = [
   'primary_role',
   'secondary_roles',
-  'remuneration_plan',
+  'remuneration_plan_id',
   'employment_type',
   'primary_location_id',
   'fte',
@@ -80,7 +81,7 @@ type RolePayKey = (typeof ROLE_PAY_KEYS)[number]
 const ROLE_PAY_LABELS: Record<RolePayKey, string> = {
   primary_role: 'Primary role',
   secondary_roles: 'Secondary roles',
-  remuneration_plan: 'Remuneration plan',
+  remuneration_plan_id: 'Remuneration plan',
   employment_type: 'Employment type',
   primary_location_id: 'Primary location',
   fte: 'FTE',
@@ -198,6 +199,7 @@ function draftFromRow(row: StaffMemberRow): StaffFormDraft {
     primary_role: row.primary_role ?? '',
     secondary_roles: row.secondary_roles ?? '',
     remuneration_plan: row.remuneration_plan ?? '',
+    remuneration_plan_id: row.remuneration_plan_id ?? '',
     employment_type: normalizeEmploymentKind(row.employment_type),
     primary_location_id: row.primary_location_id ?? '',
     fte: row.fte == null ? '' : String(row.fte),
@@ -236,6 +238,7 @@ export function StaffConfigurationPage() {
 
   const staff = data?.staff ?? []
   const planNames = data?.planNames ?? []
+  const planOptions = data?.planOptions ?? []
   const locations = data?.locations ?? []
 
   const salesImportMetaByStaffId = useMemo(() => {
@@ -355,7 +358,7 @@ export function StaffConfigurationPage() {
       'display_name',
       'primary_role',
       'secondary_roles',
-      'remuneration_plan',
+      'remuneration_plan_id',
       'employment_type',
       'primary_location_id',
       'fte',
@@ -423,6 +426,7 @@ export function StaffConfigurationPage() {
         primary_role: draft.primary_role || null,
         secondary_roles: draft.secondary_roles || null,
         remuneration_plan: draft.remuneration_plan || null,
+        remuneration_plan_id: draft.remuneration_plan_id || null,
         employment_type: draft.employment_type,
         primary_location_id:
           draft.primary_location_id.trim() === '' ? null : draft.primary_location_id.trim(),
@@ -490,6 +494,7 @@ export function StaffConfigurationPage() {
           primary_role: selected.primary_role,
           secondary_roles: selected.secondary_roles,
           remuneration_plan: selected.remuneration_plan,
+          remuneration_plan_id: selected.remuneration_plan_id ?? null,
           employment_type: selected.employment_type,
           primary_location_id: selected.primary_location_id ?? null,
           fte: oldFteNum,
@@ -517,6 +522,7 @@ export function StaffConfigurationPage() {
         secondaryRoles: draft.secondary_roles || null,
         employmentType: draft.employment_type,
         remunerationPlan: draft.remuneration_plan || null,
+        remunerationPlanId: draft.remuneration_plan_id || null,
         fte: newFte,
         primaryLocationId:
           draft.primary_location_id.trim() === '' ? null : draft.primary_location_id.trim(),
@@ -534,6 +540,8 @@ export function StaffConfigurationPage() {
           queryKey: ['staff-role-assignments', draft.id],
         })
       }
+      // Staff history feeds every payroll, KPI and contractor preview query.
+      void queryClient.invalidateQueries()
       setApplyModalOpen(false)
     },
   })
@@ -563,6 +571,8 @@ export function StaffConfigurationPage() {
           oldValue: locName(selected.primary_location_id ?? null),
           newValue: locName(draft.primary_location_id),
         })
+      } else if (key === 'remuneration_plan_id') {
+        out.push({ label, oldValue: selected.remuneration_plan, newValue: draft.remuneration_plan })
       } else if (key === 'fte') {
         out.push({
           label,
@@ -620,12 +630,9 @@ export function StaffConfigurationPage() {
     deleteMut.mutate(t.id)
   }
 
-  const remunerationOptions = useMemo(() => {
-    const set = new Set(planNames)
-    const current = draft?.remuneration_plan?.trim()
-    if (current && !set.has(current)) set.add(current)
-    return [...set].sort((a, b) => a.localeCompare(b))
-  }, [planNames, draft?.remuneration_plan])
+  const remunerationOptions = planOptions.filter(
+    (plan) => plan.is_active || plan.id === draft?.remuneration_plan_id,
+  )
 
   const primaryLocationSelectOptions = useMemo(() => {
     const byId = new Map(locations.map((l) => [l.id, l]))
@@ -952,16 +959,18 @@ export function StaffConfigurationPage() {
                     </label>
                     <select
                       id="remuneration_plan"
-                      value={draft.remuneration_plan}
-                      onChange={(e) =>
-                        setDraft((d) => (d ? { ...d, remuneration_plan: e.target.value } : d))
-                      }
+                      value={draft.remuneration_plan_id}
+                      onChange={(e) => {
+                        const id = e.target.value
+                        const name = planOptions.find((plan) => plan.id === id)?.plan_name ?? ''
+                        setDraft((d) => d ? { ...d, remuneration_plan_id: id, remuneration_plan: name } : d)
+                      }}
                       className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
                     >
                       <option value="">— None —</option>
-                      {remunerationOptions.map((name) => (
-                        <option key={name} value={name}>
-                          {name}
+                      {remunerationOptions.map((plan) => (
+                        <option key={plan.id} value={plan.id} disabled={!plan.is_active}>
+                          {plan.plan_name}{plan.is_active ? '' : ' (archived — retained)'}
                         </option>
                       ))}
                     </select>
@@ -1526,6 +1535,7 @@ function StaffRoleAssignmentHistorySection({
       void queryClient.invalidateQueries({
         queryKey: ['staff-role-assignments', staffMemberId],
       })
+      void queryClient.invalidateQueries()
     },
   })
 

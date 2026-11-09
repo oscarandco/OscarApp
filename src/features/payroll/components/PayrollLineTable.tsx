@@ -68,6 +68,7 @@ function isNumericColumnKey(k: string): boolean {
     k.includes('price_ex_gst') ||
     k.includes('price_incl_gst') ||
     k.includes('quantity') ||
+    k.endsWith('_cost_ex_gst') ||
     k === 'actual_commission_rate'
   )
 }
@@ -144,6 +145,7 @@ function Cell({
     rowKey.includes('price_incl_gst') ||
     rowKey.includes('sales') ||
     rowKey.includes('amt_ex_gst')
+    || rowKey.endsWith('_cost_ex_gst')
   ) {
     return <span className="tabular-nums">{formatNzd(value)}</span>
   }

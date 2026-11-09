@@ -48,7 +48,8 @@ export const REMUNERATION_CATEGORY_CARD_TITLE: Record<
 
 /**
  * Helper copy aligned with `v_sales_transactions_powerbi_parity` / payroll views:
- * rates are multiplied by ex GST line value when `commission_category_final` matches.
+ * Rates apply to the applicable ex-GST commissionable amount. Eligible Service
+ * lines may first deduct the plan's configured product cost.
  */
 export const REMUNERATION_CATEGORY_DESCRIPTION: Record<
   RemunerationCommissionCategory,
@@ -59,13 +60,13 @@ export const REMUNERATION_CATEGORY_DESCRIPTION: Record<
   professional_product:
     'Applied when a line is classified as professional product (including lines marked with * on the product name).',
   service:
-    'Applied when a line is classified as a service from product type / master data.',
+    'Applied to service sales. When this plan deducts product costs, the rate uses the remaining commissionable amount excluding GST.',
   toner_with_other_service:
     'Applied when the product header matches toner-with-other-service rules; those lines take this commission category and this percentage of ex GST.',
   extensions_product:
     'Applied when the product header matches bonded/extensions product rules; those lines use this rate × ex GST.',
   extensions_service:
-    'Applied when the product header matches extensions service (e.g. tapes) rules; those lines use this rate × ex GST.',
+    'Applied when the product header matches extensions service (e.g. tapes) rules. Eligible Service lines use the amount after any product-cost deduction.',
 }
 
 export const REMUNERATION_CAN_USE_ASSISTANTS_DESCRIPTION =
@@ -75,6 +76,7 @@ export type RemunerationPlanRow = {
   id: string
   plan_name: string
   can_use_assistants: boolean | null
+  deduct_service_product_costs: boolean
   conditions_text: string | null
   staff_on_this_plan_text: string | null
   is_active: boolean
@@ -100,4 +102,12 @@ export type StaffOnPlanRow = {
   display_name: string | null
   full_name: string
   is_active: boolean
+}
+
+export type TheoreticalBenchmarkRow = {
+  id: string
+  plan_id: string
+  plan_name: string
+  effective_start_date: string
+  effective_end_date: string | null
 }

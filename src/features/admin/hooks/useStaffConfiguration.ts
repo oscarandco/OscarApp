@@ -2,8 +2,9 @@ import { useQuery } from '@tanstack/react-query'
 
 import type { StaffMemberRow } from '@/features/admin/types/staffConfiguration'
 import {
-  fetchRemunerationPlanNames,
+  fetchRemunerationPlanOptions,
   fetchStaffMembers,
+  type RemunerationPlanOption,
 } from '@/lib/staffMembersApi'
 import {
   rpcListActiveLocationsForImport,
@@ -15,6 +16,7 @@ import {
 export type StaffConfigurationBundle = {
   staff: StaffMemberRow[]
   planNames: string[]
+  planOptions: RemunerationPlanOption[]
   locations: ImportLocationRow[]
   salesImportMetadata: StaffSalesImportMetadataRow[]
 }
@@ -23,13 +25,17 @@ export function useStaffConfiguration() {
   return useQuery({
     queryKey: ['staff-configuration'],
     queryFn: async (): Promise<StaffConfigurationBundle> => {
-      const [staff, planNames, locations, salesImportMetadata] = await Promise.all([
+      const [staff, planOptions, locations, salesImportMetadata] = await Promise.all([
         fetchStaffMembers(),
-        fetchRemunerationPlanNames(),
+        fetchRemunerationPlanOptions(),
         rpcListActiveLocationsForImport(),
         rpcListStaffSalesImportMetadata(),
       ])
-      return { staff, planNames, locations, salesImportMetadata }
+      const byId = new Map(planOptions.map((plan) => [plan.id, plan.plan_name]))
+      return {
+        staff: staff.map((row) => ({ ...row, remuneration_plan: row.remuneration_plan_id ? byId.get(row.remuneration_plan_id) ?? row.remuneration_plan : row.remuneration_plan })),
+        planNames: planOptions.map((plan) => plan.plan_name), planOptions, locations, salesImportMetadata,
+      }
     },
   })
 }

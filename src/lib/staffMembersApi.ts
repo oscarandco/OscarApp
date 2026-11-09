@@ -30,14 +30,16 @@ export async function fetchStaffMembers(): Promise<StaffMemberRow[]> {
   return asRows(data as StaffMemberRow[])
 }
 
-/** Plan names from `remuneration_plans` for dropdowns (matches `staff_members.remuneration_plan` text). */
-export async function fetchRemunerationPlanNames(): Promise<string[]> {
+export type RemunerationPlanOption = { id: string; plan_name: string; is_active: boolean }
+
+/** Include archived identities for current-value/history display; new assignments filter them out. */
+export async function fetchRemunerationPlanOptions(): Promise<RemunerationPlanOption[]> {
   const { data, error } = await requireSupabaseClient()
     .from('remuneration_plans')
-    .select('plan_name')
+    .select('id,plan_name,is_active')
     .order('plan_name')
   if (error) throw toError('remuneration_plans', error)
-  return asRows(data as { plan_name: string }[]).map((r) => r.plan_name)
+  return asRows(data as RemunerationPlanOption[])
 }
 
 export async function insertStaffMember(args: {
@@ -63,6 +65,7 @@ export type StaffMemberUpdatePayload = {
   primary_role: string | null
   secondary_roles: string | null
   remuneration_plan: string | null
+  remuneration_plan_id: string | null
   employment_type: string | null
   primary_location_id: string | null
   fte: number | null
@@ -96,6 +99,7 @@ export async function updateStaffMember(
       primary_role: emptyToNull(payload.primary_role),
       secondary_roles: emptyToNull(payload.secondary_roles),
       remuneration_plan: emptyToNull(payload.remuneration_plan),
+      remuneration_plan_id: payload.remuneration_plan_id,
       employment_type: emptyToNull(payload.employment_type),
       primary_location_id: payload.primary_location_id,
       fte: payload.fte,
@@ -139,6 +143,7 @@ export type ApplyStaffRoleAssignmentArgs = {
   secondaryRoles: string | null
   employmentType: string | null
   remunerationPlan: string | null
+  remunerationPlanId: string | null
   fte: number | null
   primaryLocationId: string | null
   reason: string | null
@@ -169,6 +174,7 @@ export async function applyStaffRoleAssignment(
       p_secondary_roles: emptyToNull(args.secondaryRoles),
       p_employment_type: emptyToNull(args.employmentType),
       p_remuneration_plan: emptyToNull(args.remunerationPlan),
+      p_remuneration_plan_id: args.remunerationPlanId,
       p_fte: args.fte,
       p_primary_location_id:
         args.primaryLocationId && args.primaryLocationId.trim() !== ''

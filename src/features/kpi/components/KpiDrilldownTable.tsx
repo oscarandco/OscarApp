@@ -334,7 +334,7 @@ export function KpiDrilldownTable(props: Props) {
   const isAssistantUtilisation = kpiCode === ASSISTANT_UTILISATION_KPI
   const isRevenue = kpiCode === REVENUE_KPI
 
-  const { data, isLoading, isError, error, refetch } = useKpiDrilldown({
+  const { data, isLoading, isFetching, isError, error, refetch } = useKpiDrilldown({
     kpiCode,
     periodStart,
     scope,
@@ -371,7 +371,7 @@ export function KpiDrilldownTable(props: Props) {
 
       <TableBody
         kpiCode={kpiCode}
-        isLoading={isLoading}
+        isLoading={isLoading || isFetching}
         isError={isError}
         error={error}
         refetch={refetch}

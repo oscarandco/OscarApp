@@ -48,6 +48,7 @@ function NavBody({ onNavigate }: { onNavigate?: () => void }) {
 
   const canStaff = useCanViewPage('staff')
   const canProducts = useCanViewPage('products')
+  const canServiceProductCosts = useCanViewPage('service_product_costs')
   const canQuotes = useCanViewPage('quotes')
   const canRemuneration = useCanViewPage('remuneration')
   const canBusinessSettings = useCanViewPage('business_settings')
@@ -69,6 +70,7 @@ function NavBody({ onNavigate }: { onNavigate?: () => void }) {
   const anyConfig =
     canStaff ||
     canProducts ||
+    canServiceProductCosts ||
     canQuotes ||
     canRemuneration ||
     canBusinessSettings ||
@@ -201,6 +203,15 @@ function NavBody({ onNavigate }: { onNavigate?: () => void }) {
               onClick={handleClick}
             >
               Products
+            </NavLink>
+          ) : null}
+          {canServiceProductCosts ? (
+            <NavLink
+              to="/app/admin/service-product-costs"
+              className={linkClass}
+              onClick={handleClick}
+            >
+              Service product costs
             </NavLink>
           ) : null}
           {canQuotes ? (

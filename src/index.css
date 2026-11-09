@@ -36,6 +36,10 @@ body {
   min-height: 100dvh;
 }
 
+html[data-app-environment='local'] {
+  --app-viewport-height: calc(100dvh - 2rem);
+}
+
 /*
  * iOS Safari auto-zoom prevention.
  *

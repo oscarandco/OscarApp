@@ -7,6 +7,7 @@ import type {
   RemunerationPlanRow,
   RemunerationPlanWithRates,
   StaffOnPlanRow,
+  TheoreticalBenchmarkRow,
 } from '@/features/admin/types/remuneration'
 import {
   REMUNERATION_COMMISSION_CATEGORIES,
@@ -59,102 +60,88 @@ export async function fetchRemunerationPlansWithRates(): Promise<
   }))
 }
 
-export type PlanStaffCountRow = { plan_key: string; staff_count: number }
+export type PlanStaffCountRow = { plan_id: string; staff_count: number }
 
 export async function fetchRemunerationStaffCounts(): Promise<PlanStaffCountRow[]> {
   const { data, error } = await requireSupabaseClient().rpc(
-    'admin_remuneration_staff_counts',
+    'admin_remuneration_staff_counts_by_id',
   )
-  if (error) throw toError('admin_remuneration_staff_counts', error)
-  return asRows(data as { plan_key: string; staff_count: number }[]).map((r) => ({
-    plan_key: r.plan_key,
+  if (error) throw toError('admin_remuneration_staff_counts_by_id', error)
+  return asRows(data as { plan_id: string; staff_count: number }[]).map((r) => ({
+    plan_id: r.plan_id,
     staff_count: Number(r.staff_count),
   }))
 }
 
 export async function fetchStaffForRemunerationPlan(
-  planName: string,
+  planId: string,
 ): Promise<StaffOnPlanRow[]> {
   const { data, error } = await requireSupabaseClient().rpc(
-    'admin_staff_for_remuneration_plan',
-    { p_plan_name: planName },
+    'admin_staff_for_remuneration_plan_id',
+    { p_plan_id: planId },
   )
-  if (error) throw toError('admin_staff_for_remuneration_plan', error)
+  if (error) throw toError('admin_staff_for_remuneration_plan_id', error)
   return asRows(data as StaffOnPlanRow[])
 }
 
-export async function insertRemunerationPlan(args: {
-  planName: string
-}): Promise<RemunerationPlanWithRates> {
-  const supabase = requireSupabaseClient()
-  const { data: plan, error: ie } = await supabase
-    .from('remuneration_plans')
-    .insert({
-      plan_name: args.planName.trim(),
-      can_use_assistants: false,
-      is_active: true,
-      conditions_text: null,
-      staff_on_this_plan_text: null,
-    })
-    .select('*')
-    .single()
-  if (ie) throw toError('remuneration_plans insert', ie)
-  const p = plan as RemunerationPlanRow
-  const rateInserts = REMUNERATION_COMMISSION_CATEGORIES.map((commission_category) => ({
-    remuneration_plan_id: p.id,
-    commission_category,
-    rate: 0,
-  }))
-  const { error: re } = await supabase.from('remuneration_plan_rates').insert(rateInserts)
-  if (re) throw toError('remuneration_plan_rates insert', re)
-  const { data: rateRows, error: rsel } = await supabase
-    .from('remuneration_plan_rates')
-    .select('*')
-    .eq('remuneration_plan_id', p.id)
-  if (rsel) throw toError('remuneration_plan_rates select', rsel)
-  return { ...p, rates: asRows(rateRows as RemunerationPlanRateRow[]) }
-}
-
-export async function updateRemunerationPlanHeader(args: {
-  id: string
+/** Header and all rates are saved in one database transaction. */
+export async function saveRemunerationPlan(args: {
+  id: string | null
   plan_name: string
-  can_use_assistants: boolean | null
+  can_use_assistants: boolean
   conditions_text: string | null
-}): Promise<void> {
-  const { error } = await requireSupabaseClient()
-    .from('remuneration_plans')
-    .update({
-      plan_name: args.plan_name.trim(),
-      can_use_assistants: args.can_use_assistants,
-      conditions_text: args.conditions_text,
-    })
-    .eq('id', args.id)
-  if (error) throw toError('remuneration_plans update', error)
+  deduct_service_product_costs: boolean
+  rates: Record<RemunerationCommissionCategory, number>
+}): Promise<string> {
+  const { data, error } = await requireSupabaseClient().rpc('admin_save_remuneration_plan', {
+    p_plan_id: args.id,
+    p_plan_name: args.plan_name.trim(),
+    p_can_use_assistants: args.can_use_assistants,
+    p_conditions_text: args.conditions_text,
+    p_deduct_service_product_costs: args.deduct_service_product_costs,
+    p_rates: args.rates,
+  })
+  if (error) throw toError('admin_save_remuneration_plan', error)
+  return data as string
 }
 
-/** Persist category rates (0–1 fractions). Upserts all categories for the plan. */
-export async function upsertRemunerationPlanRates(args: {
-  remuneration_plan_id: string
-  rates: Partial<Record<RemunerationCommissionCategory, number>>
-}): Promise<void> {
-  const supabase = requireSupabaseClient()
-  const rows = REMUNERATION_COMMISSION_CATEGORIES.map((commission_category) => {
-    const v = args.rates[commission_category]
-    const rate =
-      v == null || Number.isNaN(v) ? 0 : Math.min(1, Math.max(0, v))
-    return {
-      remuneration_plan_id: args.remuneration_plan_id,
-      commission_category,
-      rate,
-    }
+export async function insertRemunerationPlan(args: { planName: string }): Promise<string> {
+  return saveRemunerationPlan({
+    id: null, plan_name: args.planName, can_use_assistants: false,
+    conditions_text: null, deduct_service_product_costs: false,
+    rates: Object.fromEntries(REMUNERATION_COMMISSION_CATEGORIES.map((cat) => [cat, 0])) as Record<RemunerationCommissionCategory, number>,
   })
-  const { error } = await supabase.from('remuneration_plan_rates').upsert(rows, {
-    onConflict: 'remuneration_plan_id,commission_category',
-  })
-  if (error) throw toError('remuneration_plan_rates upsert', error)
 }
 
-/** Deletes plan and cascaded rates only when no staff reference this plan name. */
+export async function duplicateRemunerationPlan(planId: string, planName: string): Promise<string> {
+  const { data, error } = await requireSupabaseClient().rpc('admin_duplicate_remuneration_plan', {
+    p_plan_id: planId, p_plan_name: planName.trim(),
+  })
+  if (error) throw toError('admin_duplicate_remuneration_plan', error)
+  return data as string
+}
+
+export async function setRemunerationPlanActive(planId: string, active: boolean): Promise<void> {
+  const { error } = await requireSupabaseClient().rpc('admin_set_remuneration_plan_active', {
+    p_plan_id: planId, p_is_active: active,
+  })
+  if (error) throw toError('admin_set_remuneration_plan_active', error)
+}
+
+export async function fetchTheoreticalBenchmarks(): Promise<TheoreticalBenchmarkRow[]> {
+  const { data, error } = await requireSupabaseClient().rpc('admin_list_theoretical_benchmarks')
+  if (error) throw toError('admin_list_theoretical_benchmarks', error)
+  return asRows(data as TheoreticalBenchmarkRow[])
+}
+
+export async function setTheoreticalBenchmark(planId: string, effectiveStartDate: string): Promise<void> {
+  const { error } = await requireSupabaseClient().rpc('admin_set_theoretical_benchmark', {
+    p_plan_id: planId, p_effective_start_date: effectiveStartDate,
+  })
+  if (error) throw toError('admin_set_theoretical_benchmark', error)
+}
+
+/** Database rejects deletion when current staff, history or a benchmark references the plan ID. */
 export async function deleteRemunerationPlanIfUnused(planId: string): Promise<void> {
   const { error } = await requireSupabaseClient().rpc(
     'admin_delete_remuneration_plan_if_unused',

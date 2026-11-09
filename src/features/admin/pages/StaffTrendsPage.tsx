@@ -443,7 +443,7 @@ export function StaffTrendsPage() {
 
   /* ---------------- render guards ---------------- */
 
-  const isLoading = trends.isLoading || staffCfg.isLoading
+  const isLoading = trends.isLoading || trends.isFetching || staffCfg.isLoading
 
   if (isLoading) {
     return (

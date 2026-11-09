@@ -34,6 +34,7 @@ const PAGE_FEATURE_LABELS: Record<PageId, string> = {
   imports: 'Import sales data',
   staff: 'Staff',
   products: 'Products',
+  service_product_costs: 'Service product costs',
   quotes: 'Quotes',
   remuneration: 'Remuneration',
   business_settings: 'Business settings',
@@ -84,6 +85,7 @@ const PERMISSION_MATRIX_SECTIONS: { id: string; label: string; pageIds: PageId[]
     pageIds: [
       'staff',
       'products',
+      'service_product_costs',
       'quotes',
       'remuneration',
       'business_settings',

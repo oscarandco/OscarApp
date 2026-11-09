@@ -34,7 +34,7 @@ import {
 } from '@/lib/weeklySummaryReporting'
 
 export function AdminPayrollSummaryPage() {
-  const { data, isLoading, isError, error, refetch } =
+  const { data, isLoading, isFetching, isError, error, refetch } =
     useAdminPayrollSummaryWeekly()
   const { data: dataSources } = useSalesDailySheetsDataSources()
 
@@ -315,7 +315,7 @@ export function AdminPayrollSummaryPage() {
     />
   )
 
-  if (isLoading) {
+  if (isLoading || isFetching) {
     return (
       <div data-testid="admin-summary-page">
         <LoadingState

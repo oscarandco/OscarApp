@@ -1,6 +1,8 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
+  /** Injected by npm run dev:local; not a deployment setting. */
+  readonly VITE_APP_ENV?: string
   readonly VITE_SUPABASE_URL?: string
   readonly VITE_SUPABASE_ANON_KEY?: string
   /** Set to `true` for slightly more verbose client error logging (still console-only). */
