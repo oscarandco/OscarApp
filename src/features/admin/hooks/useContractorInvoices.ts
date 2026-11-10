@@ -40,7 +40,7 @@ export function useContractorInvoicePreview(args: {
 }) {
   return useQuery({
     queryKey: [
-      'contractor-invoice-preview',
+      'contractor-invoice-preview-v2',
       args.payWeekStart ?? null,
       args.staffMemberId ?? null,
     ] as const,

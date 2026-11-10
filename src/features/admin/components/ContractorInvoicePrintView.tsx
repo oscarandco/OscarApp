@@ -1,3 +1,4 @@
+import { readInvoiceCalculationSnapshot, invoiceRateSummary } from '../types/invoiceCalculation'
 import logoUrl from '@/assets/logo.png'
 import {
   type ContractorInvoiceHeader,
@@ -5,7 +6,6 @@ import {
   invoiceHasMultipleLocations,
 } from '@/features/admin/types/contractorInvoice'
 import {
-  formatCommissionRateNearestHalfPercent,
   formatInvoiceLineDate,
   formatNzd,
   formatShortDate,
@@ -36,7 +36,7 @@ type Props = {
 
 /**
  * Button reset used to make the source invoice number clickable while
- * keeping it visually identical to surrounding plain text — no colour
+ * keeping it visually identical to surrounding plain text - no colour
  * shift, no underline, no font-weight change, no border, no padding.
  * `font: inherit` and `letter-spacing: inherit` ensure the button picks
  * up the exact typography of the containing cell.
@@ -138,7 +138,7 @@ function contractorBlock(header: ContractorInvoiceHeader): string[] {
  *   INVOICE DATE {invoice_date}                GST STATUS   {gst status}
  *
  *   ┌ Description ────────────────────────── Invoiced (ex GST) │ Commission │ Amount ┐
- *   │ Tue, 12 May – INV96149 – Debi Rowan        $250.00          35%        $87.50 │
+ *   │ Tue, 12 May - INV96149 - Debi Rowan        $250.00          35%        $87.50 │
  *   │  … one row per Kitomba client invoice …                                       │
  *   └──────────────────────────────────────────────────────────────────────────────┘
  *                                                Subtotal …
@@ -164,6 +164,9 @@ export function ContractorInvoicePrintView({
   const isVoided = header.status === 'voided'
   const buyer = buyerBlock(header)
   const contractor = contractorBlock(header)
+  const calculations = lines.map(l => readInvoiceCalculationSnapshot(l.source_payload))
+  const showCalculationColumns = calculations.length > 0 && calculations.every(Boolean)
+  const ratesText = invoiceRateSummary(calculations.flatMap(c => c?.applied_rates ?? []))
   const gstPctLabel = header.contractor_gst_registered ? '15%' : '0%'
 
   return (
@@ -178,7 +181,7 @@ export function ContractorInvoicePrintView({
             the table doesn't crowd the paper edge. If the browser's
             native "Headers and footers" option is enabled in the print
             dialog the engine will still reserve room for URL / page #
-            inside these margins, which can squeeze the content — turn
+            inside these margins, which can squeeze the content - turn
             that off in the print dialog for the cleanest output.
           */
           @page { size: A4; margin: 8mm 10mm; }
@@ -212,7 +215,7 @@ export function ContractorInvoicePrintView({
             {header.voided_at ? (
               <p className="text-[11px] text-rose-800">
                 Voided on {formatShortDate(header.voided_at)}
-                {header.void_reason ? ` — ${header.void_reason}` : ''}
+                {header.void_reason ? ` - ${header.void_reason}` : ''}
                 {replacedByInvoiceNumber
                   ? ` · Replaced by ${replacedByInvoiceNumber}`
                   : ''}
@@ -222,10 +225,10 @@ export function ContractorInvoicePrintView({
         ) : null}
 
         {/*
-          Header band — intentionally minimal: the same Oscar & Co
+          Header band - intentionally minimal: the same Oscar & Co
           wordmark used by the app TopNav / SideNav (`@/assets/logo.png`
           at `h-6 w-auto`) on the left, single-line `Buyer Created Tax
-          Invoice` on the right. No divider beneath — the layout reads
+          Invoice` on the right. No divider beneath - the layout reads
           cleanly into the Supplier / Bill To section directly below.
         */}
         <header className="flex items-center justify-between gap-6">
@@ -247,7 +250,7 @@ export function ContractorInvoicePrintView({
           legal name) using a 2-col grid `[label_col | values_col]`. The
           label column width (`LABEL_COL`) is shared with the Invoice
           Details grid below so the value columns line up vertically
-          across both sections — Supplier values align with Invoice No.
+          across both sections - Supplier values align with Invoice No.
           values on the left, Bill To values align with Pay Week values
           on the right. `pt-0.5` on the label nudges its smaller-cap text
           down so the baseline reads naturally with the larger first
@@ -287,7 +290,7 @@ export function ContractorInvoicePrintView({
         </section>
 
         {/*
-          Invoice details — mirrors the Supplier / Bill To structure
+          Invoice details - mirrors the Supplier / Bill To structure
           exactly: outer 2-col grid (left half | right half) with the
           same `gap-8` gutter, and each half is a `[6.5rem | 1fr]` dl
           grid with `gap-x-6`. Sharing label-column width and gap with
@@ -323,7 +326,7 @@ export function ContractorInvoicePrintView({
               Pay Week
             </dt>
             <dd className="text-slate-900">
-              {formatShortDate(header.pay_week_start)} –{' '}
+              {formatShortDate(header.pay_week_start)} -{' '}
               {formatShortDate(header.pay_week_end)}
             </dd>
             <dt className="ink-muted pt-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
@@ -358,19 +361,17 @@ export function ContractorInvoicePrintView({
                   </th>
                 ) : null}
                 <th className="whitespace-nowrap py-1.5 pr-3 text-right">
-                  Invoiced to Guest (Ex. GST)
+                  Eligible sales
                 </th>
-                <th className="whitespace-nowrap py-1.5 pr-3 text-center">
-                  Commission
-                </th>
-                <th className="whitespace-nowrap py-1.5 text-right">Amount</th>
+                {showCalculationColumns ? <><th className="py-1.5 pr-3 text-right">Product cost</th><th className="py-1.5 pr-3 text-right">Commissionable</th></> : null}
+                <th className="py-1.5 text-right">Contractor fee</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {lines.map((l) => {
                 const datePart = formatInvoiceLineDate(l.sale_date)
                 const invoicePart = l.source_invoice_number
-                const clientPart = (l.customer_name ?? '').trim() || '—'
+                const clientPart = (l.customer_name ?? '').trim() || '-'
                 const invoiceEl = onOpenInvoice ? (
                   <button
                     type="button"
@@ -392,21 +393,17 @@ export function ContractorInvoicePrintView({
                 return (
                   <tr key={l.id}>
                     <td className="py-1 pr-3 align-top">
-                      {datePart} – {invoiceEl} – {clientPart}
+                      {datePart} - {invoiceEl} - {clientPart}
                     </td>
                     {showLocationColumn ? (
                       <td className="whitespace-nowrap py-1 pr-3 align-top text-slate-600">
-                        {l.location_name ?? '—'}
+                        {l.location_name ?? '-'}
                       </td>
                     ) : null}
                     <td className="whitespace-nowrap py-1 pr-3 text-right align-top tabular-nums">
                       {formatNzd(l.client_invoice_amount_ex_gst)}
                     </td>
-                    <td className="whitespace-nowrap py-1 pr-3 text-center align-top tabular-nums">
-                      {formatCommissionRateNearestHalfPercent(
-                        l.commission_percentage,
-                      )}
-                    </td>
+                    {showCalculationColumns ? <><td className="whitespace-nowrap py-1 pr-3 text-right align-top tabular-nums">{formatNzd(readInvoiceCalculationSnapshot(l.source_payload)?.product_cost_ex_gst)}</td><td className="whitespace-nowrap py-1 pr-3 text-right align-top tabular-nums">{formatNzd(readInvoiceCalculationSnapshot(l.source_payload)?.commissionable_ex_gst)}</td></> : null}
                     <td className="whitespace-nowrap py-1 text-right align-top tabular-nums">
                       {formatNzd(l.contractor_amount_ex_gst)}
                     </td>
@@ -415,11 +412,13 @@ export function ContractorInvoicePrintView({
               })}
             </tbody>
           </table>
+          <p className="mt-2 text-[10px] leading-snug text-slate-500">All amounts exclude GST. {showCalculationColumns ? (ratesText ? ratesText + '. ' : '') + 'Product costs are deducted from eligible service sales before commission is calculated.' : 'This older saved invoice did not capture a product-cost breakdown.'}</p>
         </section>
 
-        {/* Totals — anchored lower-right */}
+        {/* Totals - anchored lower-right */}
         <section className="mt-6 flex justify-end">
           <dl className="grid w-full max-w-[18rem] grid-cols-[auto_1fr] gap-x-6 gap-y-1 text-[12px]">
+            {Number(header.rounding_adjustment_ex_gst ?? 0) !== 0 ? <><dt className="text-slate-500">Rounding adjustment</dt><dd className="text-right tabular-nums">{formatNzd(header.rounding_adjustment_ex_gst)}</dd></> : null}
             <dt className="ink-muted text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
               Subtotal
             </dt>
@@ -442,7 +441,7 @@ export function ContractorInvoicePrintView({
         </section>
 
         {/*
-          Non-GST acknowledgement — rendered as a centred footer note
+          Non-GST acknowledgement - rendered as a centred footer note
           rather than a chunky warning panel. Widened to ~52rem (close to
           the article's inner content width) so the long IRD-style copy
           wraps to ~3 lines instead of 4 at normal invoice/print width.
@@ -456,7 +455,7 @@ export function ContractorInvoicePrintView({
         ) : null}
 
         {/*
-          Subtle one-line footer — generation note left, calculation note
+          Subtle one-line footer - generation note left, calculation note
           right, anchored by `flex justify-between`. Right-side copy is
           slightly trimmed from the previous wording so both halves fit on
           a single row at A4/normal print width without forcing a wrap.

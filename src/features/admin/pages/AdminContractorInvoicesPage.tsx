@@ -33,11 +33,11 @@ import {
 } from '@/features/admin/types/contractorInvoice'
 import { rpcCreateContractorInvoice } from '@/lib/contractorInvoicesApi'
 import {
-  formatCommissionRateNearestHalfPercent,
   formatNzd,
   formatShortDate,
 } from '@/lib/formatters'
 import { queryErrorDetail } from '@/lib/queryError'
+import { invoiceRateSummary } from '../types/invoiceCalculation'
 
 function asNumber(v: unknown): number {
   if (v == null || v === '') return 0
@@ -61,7 +61,7 @@ type SourceInvoiceRef = {
  * Visual style for the clickable source-invoice number in the *preview*
  * table. Mirrors the KPI drilldown's invoice-number button so both
  * surfaces feel consistent. The saved-invoice print view uses a
- * different (invisible) button style — see {@link ContractorInvoicePrintView}.
+ * different (invisible) button style - see {@link ContractorInvoicePrintView}.
  */
 const SOURCE_INVOICE_BTN_CLASS =
   'cursor-pointer font-medium text-violet-700 hover:text-violet-900 focus:outline-none focus-visible:underline'
@@ -192,14 +192,15 @@ function PreviewModal(props: {
 
   const totals = useMemo(() => {
     const lines: ContractorInvoicePreviewLineRow[] = preview.data ?? []
-    const sub = lines.reduce(
-      (acc, l) => acc + asNumber(l.contractor_amount_ex_gst),
-      0,
-    )
-    const gst = state.row.contractor_gst_registered ? sub * 0.15 : 0
+    const rowCents = lines.reduce((sum, l) => sum + Math.round(asNumber(l.contractor_amount_ex_gst) * 100), 0)
+    const subCents = lines[0]?.payroll_subtotal_ex_gst != null ? Math.round(asNumber(lines[0].payroll_subtotal_ex_gst) * 100) : rowCents
+    const sub = subCents / 100
+    const gst = state.row.contractor_gst_registered ? Math.round(subCents * 15 / 100) / 100 : 0
+    const roundingAdjustment = (subCents - rowCents) / 100
     return {
       lineCount: lines.length,
       subtotal: sub,
+      roundingAdjustment,
       gst,
       total: sub + gst,
     }
@@ -244,10 +245,10 @@ function PreviewModal(props: {
         <header className="flex items-start justify-between gap-3 border-b border-slate-200 px-5 py-3">
           <div>
             <h2 className="text-base font-semibold text-slate-900">
-              Preview invoice — {displayName}
+              Preview invoice - {displayName}
             </h2>
             <p className="mt-0.5 text-xs text-slate-600">
-              Pay week {formatShortDate(payWeekStart)} – {formatShortDate(state.row.pay_week_end)}
+              Pay week {formatShortDate(payWeekStart)} - {formatShortDate(state.row.pay_week_end)}
             </p>
           </div>
           <button
@@ -269,7 +270,7 @@ function PreviewModal(props: {
             <div className="mb-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
               <p className="font-semibold">Contractor setup incomplete:</p>
               <p className="mt-1">
-                Missing —{' '}
+                Missing -{' '}
                 {setupMissing
                   .map((k) => CONTRACTOR_FIELD_LABELS[k] ?? k)
                   .join(', ')}
@@ -290,7 +291,7 @@ function PreviewModal(props: {
             <div className="mb-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
               <p className="font-semibold">Business settings incomplete:</p>
               <p className="mt-1">
-                Missing —{' '}
+                Missing -{' '}
                 {buyerMissingFields
                   .map((k) => BUSINESS_SETTINGS_FIELD_LABELS[
                     k as keyof typeof BUSINESS_SETTINGS_FIELD_LABELS
@@ -326,13 +327,13 @@ function PreviewModal(props: {
             <>
               {/*
                 Plain `w-full` table (no TableScrollArea) so the modal can
-                scroll vertically only — the parent body already owns
+                scroll vertically only - the parent body already owns
                 `overflow-y-auto`. `table-auto` lets the Client cell wrap
                 with `break-words` while money/rate cells stay nowrap, so
                 the row width never exceeds the modal width.
               */}
-              <div className="overflow-hidden rounded-md border border-slate-200">
-                <table className="w-full table-auto border-collapse text-[13px]">
+              <div className="overflow-x-auto rounded-md border border-slate-200">
+                <table className="w-full min-w-[780px] table-auto border-collapse text-[13px]">
                   <thead className="bg-slate-50">
                     <tr>
                       <th className="whitespace-nowrap border-b border-slate-200 px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-600">
@@ -350,13 +351,14 @@ function PreviewModal(props: {
                         </th>
                       ) : null}
                       <th className="whitespace-nowrap border-b border-slate-200 px-2 py-1.5 text-right text-[10px] font-semibold uppercase tracking-wide text-slate-600">
-                        Sale (ex GST)
+                        Eligible sales ex GST
                       </th>
                       <th className="whitespace-nowrap border-b border-slate-200 px-2 py-1.5 text-right text-[10px] font-semibold uppercase tracking-wide text-slate-600">
-                        Rate
+                        Product cost
                       </th>
+                      <th className="whitespace-nowrap border-b border-slate-200 px-2 py-1.5 text-right text-[10px] font-semibold uppercase tracking-wide text-slate-600">Commissionable</th>
                       <th className="whitespace-nowrap border-b border-slate-200 px-2 py-1.5 text-right text-[10px] font-semibold uppercase tracking-wide text-slate-600">
-                        Contractor (ex GST)
+                        Contractor fee ex GST
                       </th>
                     </tr>
                   </thead>
@@ -383,19 +385,20 @@ function PreviewModal(props: {
                           </button>
                         </td>
                         <td className="break-words border-b border-slate-100 px-2 py-1.5 align-top text-slate-800">
-                          {l.customer_name ?? '—'}
+                          {l.customer_name ?? '-'}
                         </td>
                         {showLocationColumn ? (
                           <td className="whitespace-nowrap border-b border-slate-100 px-2 py-1.5 align-top text-slate-600">
-                            {l.location_name ?? '—'}
+                            {l.location_name ?? '-'}
                           </td>
                         ) : null}
                         <td className="whitespace-nowrap border-b border-slate-100 px-2 py-1.5 text-right align-top tabular-nums text-slate-800">
                           {formatNzd(l.client_invoice_amount_ex_gst)}
                         </td>
                         <td className="whitespace-nowrap border-b border-slate-100 px-2 py-1.5 text-right align-top tabular-nums text-slate-800">
-                          {formatCommissionRateNearestHalfPercent(l.commission_percentage)}
+                          {l.product_cost_ex_gst == null ? 'Not recorded' : formatNzd(l.product_cost_ex_gst)}
                         </td>
+                        <td className="whitespace-nowrap border-b border-slate-100 px-2 py-1.5 text-right align-top tabular-nums text-slate-800">{l.commissionable_ex_gst == null ? 'Not recorded' : formatNzd(l.commissionable_ex_gst)}</td>
                         <td className="whitespace-nowrap border-b border-slate-100 px-2 py-1.5 text-right align-top tabular-nums text-slate-800">
                           {formatNzd(l.contractor_amount_ex_gst)}
                         </td>
@@ -405,8 +408,10 @@ function PreviewModal(props: {
                 </table>
               </div>
 
-              <div className="mt-4 flex justify-end">
+              <p className="mt-2 text-xs text-slate-600">{invoiceRateSummary((preview.data ?? []).flatMap(l => l.applied_rates ?? []))}. Product costs are deducted from eligible service sales before commission. Open a customer invoice to see its line rates. All amounts exclude GST.</p>
+              <div className="mt-3 flex justify-end">
                 <dl className="grid w-full max-w-xs grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+                  {totals.roundingAdjustment !== 0 ? <><dt className="text-slate-600">Rounding adjustment</dt><dd className="text-right tabular-nums">{formatNzd(totals.roundingAdjustment)}</dd></> : null}
                   <dt className="text-slate-600">Subtotal (ex GST)</dt>
                   <dd className="text-right tabular-nums">{formatNzd(totals.subtotal)}</dd>
                   <dt className="text-slate-600">
@@ -568,7 +573,7 @@ export function AdminContractorInvoicesPage() {
         title="Contractor invoices"
         description={
           'Buyer-created tax invoices for contractor staff. Source of truth is Weekly Payroll.\n' +
-          'Each saved invoice is a locked snapshot — to change one, void it.'
+          'Each saved invoice is a locked snapshot - to change one, void it.'
         }
       />
 
@@ -578,7 +583,7 @@ export function AdminContractorInvoicesPage() {
           role="status"
         >
           <strong className="font-semibold">Business settings incomplete:</strong>{' '}
-          Missing —{' '}
+          Missing -{' '}
           {buyerMissing
             .map((k) => BUSINESS_SETTINGS_FIELD_LABELS[
               k as keyof typeof BUSINESS_SETTINGS_FIELD_LABELS
@@ -611,7 +616,7 @@ export function AdminContractorInvoicesPage() {
           >
             {(weeksQuery.data ?? []).map((w) => (
               <option key={w.pay_week_start} value={w.pay_week_start}>
-                {formatShortDate(w.pay_week_start)} – {formatShortDate(w.pay_week_end)}
+                {formatShortDate(w.pay_week_start)} - {formatShortDate(w.pay_week_end)}
               </option>
             ))}
           </select>
@@ -721,7 +726,7 @@ export function AdminContractorInvoicesPage() {
                           ? 'Registered'
                           : r.contractor_gst_registered === false
                             ? 'Not registered'
-                            : '—'}
+                            : '-'}
                       </td>
                       <td className={tdRightClass()}>
                         {formatNzd(r.payable_subtotal_ex_gst)}
@@ -736,7 +741,7 @@ export function AdminContractorInvoicesPage() {
                         <StatusBadge row={r} />
                       </td>
                       <td className={tdClass()}>
-                        {r.active_invoice_number ?? '—'}
+                        {r.active_invoice_number ?? '-'}
                       </td>
                       <td className={tdClass()}>
                         <div className="flex flex-wrap gap-2">
@@ -765,7 +770,7 @@ export function AdminContractorInvoicesPage() {
                                   title={
                                     canCreate
                                       ? 'Create invoice'
-                                      : 'Cannot create — see setup warnings'
+                                      : 'Cannot create - see setup warnings'
                                   }
                                 >
                                   Create
@@ -821,6 +826,7 @@ export function AdminContractorInvoicesPage() {
         invoice={invoiceDetailRef?.invoice ?? null}
         locationId={invoiceDetailRef?.locationId ?? null}
         saleDate={invoiceDetailRef?.saleDate ?? null}
+        payrollStaffId={previewState?.row.staff_member_id}
       />
     </div>
   )
@@ -846,7 +852,7 @@ function VoidedInvoicesSection(props: {
           Voided invoices for this pay week
         </h2>
         <p className="text-xs text-slate-500">
-          Audit history — voided invoices are read-only.
+          Audit history - voided invoices are read-only.
         </p>
       </header>
 
@@ -908,7 +914,7 @@ function VoidedInvoicesSection(props: {
                           ? 'Registered'
                           : r.contractor_gst_registered === false
                             ? 'Not registered'
-                            : '—'}
+                            : '-'}
                       </td>
                       <td className={tdRightClass()}>
                         {formatNzd(r.subtotal_ex_gst)}
@@ -929,7 +935,7 @@ function VoidedInvoicesSection(props: {
                       </td>
                       <td className={tdClass()}>{r.invoice_number}</td>
                       <td className={tdClass()}>
-                        {r.voided_at ? formatShortDate(r.voided_at) : '—'}
+                        {r.voided_at ? formatShortDate(r.voided_at) : '-'}
                         {r.replaced_by_invoice_number ? (
                           <span className="ml-2 text-xs text-slate-500">
                             → {r.replaced_by_invoice_number}

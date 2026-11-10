@@ -8,6 +8,8 @@ import { useKpiInvoiceDetail } from '@/features/kpi/hooks/useKpiInvoiceDetail'
 import { titleCaseGuestName } from '@/features/kpi/kpiLabels'
 import { formatNzd, formatShortDate } from '@/lib/formatters'
 import { queryErrorDetail } from '@/lib/queryError'
+import { ContractorSourceInvoiceDetail } from '@/features/admin/components/ContractorSourceInvoiceDetail'
+import { readInvoiceCalculationSnapshot } from '@/features/admin/types/invoiceCalculation'
 
 export type InvoiceDetailModalProps = {
   open: boolean
@@ -15,6 +17,9 @@ export type InvoiceDetailModalProps = {
   invoice: string | null
   locationId: string | null
   saleDate: string | null
+  payrollStaffId?: string
+  savedSourcePayload?: unknown
+  savedSnapshot?: boolean
 }
 
 /**
@@ -26,24 +31,27 @@ export type InvoiceDetailModalProps = {
  */
 export function InvoiceDetailModal(props: InvoiceDetailModalProps) {
   const { open, onClose, invoice, locationId, saleDate } = props
+  const savedCalculation = readInvoiceCalculationSnapshot(props.savedSourcePayload)
+  const showCalculation = Boolean(props.payrollStaffId && (!props.savedSnapshot || savedCalculation))
 
   const query = useKpiInvoiceDetail({
     invoice: invoice ?? undefined,
     locationId,
     saleDate,
-    enabled: open,
+    enabled: open && !showCalculation,
   })
 
   useEffect(() => {
-    if (!open) return
+    if (!open || showCalculation) return
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [open, onClose])
+  }, [open, onClose, showCalculation])
 
   if (!open) return null
+  if (showCalculation && invoice && props.payrollStaffId) return <ContractorSourceInvoiceDetail invoice={invoice} locationId={locationId} saleDate={saleDate} staffMemberId={props.payrollStaffId} snapshot={props.savedSnapshot ? savedCalculation?.detail : undefined} onClose={onClose} />
 
   return (
     <div
@@ -67,7 +75,7 @@ export function InvoiceDetailModal(props: InvoiceDetailModalProps) {
               className="mt-0.5 truncate text-lg font-semibold text-slate-900"
               data-testid="invoice-detail-title"
             >
-              {invoice ? invoice : '—'}
+              {invoice ? invoice : '-'}
             </h2>
           </div>
           <button
@@ -81,6 +89,7 @@ export function InvoiceDetailModal(props: InvoiceDetailModalProps) {
         </header>
 
         <div className="max-h-[calc(100vh-8rem)] overflow-auto px-5 py-4">
+          {props.savedSnapshot ? <p className="mb-3 rounded-md bg-amber-50 p-2 text-xs text-amber-900">This older invoice did not capture a commission breakdown. These are current source sale details; the saved contractor fee remains on the invoice.</p> : null}
           <InvoiceDetailBody
             invoice={invoice}
             isLoading={query.isLoading || query.isFetching}
@@ -186,11 +195,11 @@ function InvoiceDetailBody(props: {
     <div className="flex flex-col gap-4">
       <dl className="grid grid-cols-1 gap-x-4 gap-y-2 text-sm sm:grid-cols-2">
         <SummaryRow label="Date" value={formatShortDate(summary.saleDate)} />
-        <SummaryRow label="Guest" value={summary.guestName ?? '—'} />
-        <SummaryRow label="Owner" value={summary.owner ?? '—'} />
+        <SummaryRow label="Guest" value={summary.guestName ?? '-'} />
+        <SummaryRow label="Owner" value={summary.owner ?? '-'} />
         <SummaryRow
           label="Work performed by"
-          value={summary.workPerformer ?? '—'}
+          value={summary.workPerformer ?? '-'}
         />
       </dl>
 
@@ -224,14 +233,14 @@ function InvoiceDetailBody(props: {
             </thead>
             <tbody>
               {rows.map((r, idx) => {
-                const product = trimOrNull(r.product_service_name) ?? '—'
+                const product = trimOrNull(r.product_service_name) ?? '-'
                 const owner =
-                  trimOrNull(r.commission_owner_candidate_name) ?? '—'
+                  trimOrNull(r.commission_owner_candidate_name) ?? '-'
                 const worker =
                   trimOrNull(r.staff_work_display_name) ??
                   trimOrNull(r.staff_work_full_name) ??
                   trimOrNull(r.staff_work_name) ??
-                  '—'
+                  '-'
                 return (
                   <tr
                     key={idx}

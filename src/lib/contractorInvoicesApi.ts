@@ -105,7 +105,7 @@ export async function rpcGetContractorInvoicePreview(args: {
   staffMemberId: string
 }): Promise<ContractorInvoicePreviewLineRow[]> {
   const { data, error } = await requireSupabaseClient().rpc(
-    'get_contractor_invoice_preview',
+    'get_contractor_invoice_preview_v2',
     {
       p_pay_week_start: args.payWeekStart,
       p_staff_member_id: args.staffMemberId,
@@ -131,7 +131,7 @@ export async function rpcCreateContractorInvoice(args: {
   internalNote: string | null
 }): Promise<CreateContractorInvoiceResult> {
   const { data, error } = await requireSupabaseClient().rpc(
-    'create_contractor_invoice',
+    'create_contractor_invoice_v2',
     {
       p_pay_week_start: args.payWeekStart,
       p_staff_member_id: args.staffMemberId,

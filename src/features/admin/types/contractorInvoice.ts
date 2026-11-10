@@ -57,6 +57,10 @@ export type ContractorInvoicePreviewLineRow = {
   client_invoice_amount_ex_gst: number | string
   contractor_amount_ex_gst: number | string
   commission_percentage: number | string | null
+  product_cost_ex_gst?: number | string
+  commissionable_ex_gst?: number | string
+  payroll_subtotal_ex_gst?: number | string
+  applied_rates?: import('./invoiceCalculation').InvoiceAppliedRate[]
 }
 
 export type ContractorInvoiceHeader = {
@@ -70,6 +74,8 @@ export type ContractorInvoiceHeader = {
   invoice_date: string
   contractor_staff_member_id: string
   subtotal_ex_gst: number | string
+  rounding_adjustment_ex_gst?: number | string
+  calculation_version?: number
   gst_rate: number | string
   gst_amount: number | string
   total_inc_gst: number | string

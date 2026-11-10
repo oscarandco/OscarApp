@@ -107,10 +107,10 @@ export function AdminContractorInvoiceDetailPage() {
       : 'Buyer Created Tax Invoice'
     const weekStart = data?.header.pay_week_start
       ? formatShortDate(data.header.pay_week_start)
-      : '—'
+      : '-'
     const weekEnd = data?.header.pay_week_end
       ? formatShortDate(data.header.pay_week_end)
-      : '—'
+      : '-'
     const body =
       `Hi ${firstName},\n\n` +
       `Please find attached your buyer-created tax invoice for the pay week ${weekStart} to ${weekEnd}.\n\n` +
@@ -185,7 +185,7 @@ export function AdminContractorInvoiceDetailPage() {
       data-testid="admin-contractor-invoice-detail-page"
     >
       {/*
-        Page-level title / subtitle removed per spec — the invoice card now
+        Page-level title / subtitle removed per spec - the invoice card now
         starts directly below the app header chrome and serves as its own
         document heading. Feedback toast + internal-note panel stay above
         the invoice row but are hidden in print.
@@ -298,10 +298,13 @@ export function AdminContractorInvoiceDetailPage() {
         invoice={invoiceDetailRef?.invoice ?? null}
         locationId={invoiceDetailRef?.locationId ?? null}
         saleDate={invoiceDetailRef?.saleDate ?? null}
+        payrollStaffId={data?.header.contractor_staff_member_id}
+        savedSnapshot
+        savedSourcePayload={data?.lines.find(l => l.source_invoice_number === invoiceDetailRef?.invoice)?.source_payload}
       />
 
       {/*
-        Email helper — opens a simple modal with the prefilled To /
+        Email helper - opens a simple modal with the prefilled To /
         Subject / Body that the user can either copy or hand off to the
         OS email client via mailto:. mailto cannot attach files, so the
         modal also reminds the user to attach the saved PDF manually.
@@ -381,7 +384,7 @@ export function AdminContractorInvoiceDetailPage() {
 
             <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-snug text-amber-900">
               Reminder: After saving the invoice as PDF, attach it to the
-              email before sending — mailto cannot include attachments.
+              email before sending - mailto cannot include attachments.
             </div>
 
             <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
