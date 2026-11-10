@@ -84,6 +84,7 @@ export function ServiceProductCostsPage() {
     if (filter !== 'all' && !service.is_active) return false
     if (filter === 'missing') return service.unit_cost_ex_gst == null
     if (filter === 'zero') return service.unit_cost_ex_gst != null && Number(service.unit_cost_ex_gst) === 0
+    if (filter === 'positive') return service.unit_cost_ex_gst != null && Number(service.unit_cost_ex_gst) > 0
     if (filter === 'configured') return service.unit_cost_ex_gst != null
     return true
   }), [list.data, search, filter])
@@ -137,7 +138,7 @@ export function ServiceProductCostsPage() {
           if ((!['archived', 'all'].includes(nextFilter) && sort?.key === 'archived_at') ||
             (nextFilter === 'archived' && ['draft_unit_cost', 'draft_effective_from'].includes(sort?.key ?? ''))) setSort(null)
         }}>
-          <option value="active">Active services</option><option value="missing">Missing cost</option><option value="zero">Explicit $0</option><option value="configured">Configured</option><option value="archived">Archived</option><option value="all">All services</option>
+          <option value="active">Active services</option><option value="positive">Costs above $0</option><option value="missing">Missing cost</option><option value="zero">Explicit $0</option><option value="configured">Configured</option><option value="archived">Archived</option><option value="all">All services</option>
         </select></label>
         <label className="flex flex-col gap-1 text-sm">Costs as at<input type="date" className={inputClass} value={asOf} onChange={(e) => setAsOf(e.target.value)} /></label>
         <button type="button" className="rounded-md border border-slate-300 px-3 py-2 text-sm" onClick={() => void refresh()}>Refresh services</button>
@@ -157,10 +158,10 @@ export function ServiceProductCostsPage() {
               <td className="px-2 py-1 font-medium">{service.service_name}{!service.is_active ? <span className="ml-2 text-[11px] font-normal text-slate-500">Archived</span> : null}</td>
               <td className="px-2 py-1 text-slate-600" title={service.classification_labels?.length ? undefined : 'Not yet classified in imported sales'}>{service.classification_labels?.length ? service.classification_labels.join(', ') : 'Not classified'}</td>
               <td className="px-2 py-1 tabular-nums">{service.unit_cost_ex_gst == null ? <span className="text-amber-800">Unconfigured</span> : formatNzd(service.unit_cost_ex_gst)}</td>
-              <td className="px-2 py-1">{service.effective_from ? formatShortDate(service.effective_from) : '—'}</td>
+              <td className="px-2 py-1">{service.effective_from ? formatShortDate(service.effective_from) : '-'}</td>
               <td className="px-2 py-1">{service.seen_in_sales ? 'Yes' : 'No'}</td>
-              <td className="px-2 py-1">{service.last_sale_date ? formatShortDate(service.last_sale_date) : '—'}</td>
-              {showArchivedDate ? <td className="px-2 py-1" title={service.archived_at ? undefined : service.is_active ? undefined : 'This service was archived before archive dates were recorded.'}>{service.is_active ? '—' : service.archived_at ? formatShortDate(service.archived_at) : 'Not recorded'}</td> : null}
+              <td className="px-2 py-1">{service.last_sale_date ? formatShortDate(service.last_sale_date) : '-'}</td>
+              {showArchivedDate ? <td className="px-2 py-1" title={service.archived_at ? undefined : service.is_active ? undefined : 'This service was archived before archive dates were recorded.'}>{service.is_active ? '-' : service.archived_at ? formatShortDate(service.archived_at) : 'Not recorded'}</td> : null}
               {showCostInputs ? <><td className="px-2 py-1"><input aria-label={`New product cost for ${service.service_name}`} className={`${tableInputClass} w-24`} type="number" min="0" step="0.01" placeholder="e.g. 0.00" value={drafts[service.service_id]?.amount ?? ''} onChange={(e) => updateDraft(service.service_id, 'amount', e.target.value)} disabled={!service.is_active || pending} /></td><td className="px-2 py-1"><input aria-label={`Effective date for ${service.service_name}`} className={`${tableInputClass} w-32`} type="date" value={drafts[service.service_id]?.effectiveFrom ?? asOf} onChange={(e) => updateDraft(service.service_id, 'effectiveFrom', e.target.value)} disabled={!service.is_active || pending} /></td></> : null}
               <td className="px-2 py-1"><div className="inline-flex items-center gap-3"><button type="button" className="py-1 text-violet-700 hover:underline" onClick={() => setHistoryService(service)}>History</button>{canEdit ? <button type="button" className="py-1 text-slate-600 hover:underline" disabled={pending} onClick={() => archive.mutate({ id: service.service_id, active: !service.is_active })}>{service.is_active ? 'Archive' : 'Reactivate'}</button> : null}</div></td>
             </tr>)}</tbody>
