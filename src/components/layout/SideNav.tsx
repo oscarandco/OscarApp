@@ -39,6 +39,8 @@ function NavBody({ onNavigate }: { onNavigate?: () => void }) {
   const canPreviousQuotes = useCanViewPage('previous_quotes')
   const canKpiDashboard = useCanViewPage('kpi_dashboard')
   const canCommissionGuide = useCanViewPage('commission_guide')
+  const canSurveys = useCanViewPage('surveys')
+  const canAdminSurveys = useCanViewPage('admin_surveys')
 
   const canWeeklyPayroll = useCanViewPage('weekly_payroll')
   const canContractorInvoices = useCanViewPage('contractor_invoices')
@@ -60,13 +62,13 @@ function NavBody({ onNavigate }: { onNavigate?: () => void }) {
     canGuestQuote ||
     canPreviousQuotes ||
     canKpiDashboard ||
-    canCommissionGuide
+    canCommissionGuide || canSurveys
   const anyAdmin =
     canWeeklyPayroll ||
     canContractorInvoices ||
     canCommissionBreakdown ||
     canStaffTrends ||
-    canImports
+    canImports || canAdminSurveys
   const anyConfig =
     canStaff ||
     canProducts ||
@@ -84,6 +86,7 @@ function NavBody({ onNavigate }: { onNavigate?: () => void }) {
       {anyMain ? (
         <>
           <NavSectionHeading>Main</NavSectionHeading>
+          {canSurveys ? <NavLink to="/app/surveys" className={linkClass} onClick={handleClick}>Surveys</NavLink> : null}
           {canMyPayroll ? (
             <NavLink
               to="/app/my-sales"
@@ -136,6 +139,7 @@ function NavBody({ onNavigate }: { onNavigate?: () => void }) {
       {anyAdmin ? (
         <>
           <NavSectionHeading>Admin</NavSectionHeading>
+          {canAdminSurveys ? <NavLink to="/app/admin/surveys" className={linkClass} onClick={handleClick}>Surveys</NavLink> : null}
           {canWeeklyPayroll ? (
             <NavLink
               to="/app/admin/weekly-payroll"

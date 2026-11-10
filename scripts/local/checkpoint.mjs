@@ -45,9 +45,18 @@ try {
 
   // A random, newly created database in the local cluster proves the dump can be
   // restored with the existing Supabase roles/extensions. No active DB is reset.
+  // pg_cron can only be installed in its configured database (postgres). Keep it
+  // in the full recovery dump but omit its installation/data from this scratch
+  // restore, which must never run the working database's scheduled jobs.
+  const inventory = docker(['exec', 'oscarapp-db', 'pg_restore', '--list', containerPath]).split('\n')
+  const cronEntry = /\b(?:EXTENSION -? ?pg_cron|SCHEMA cron|(?:TABLE DATA|SEQUENCE SET|DEFAULT ACL|ACL|FUNCTION|TABLE|SEQUENCE|COMMENT) cron)\b/
+  const excluded = inventory.filter(line => !line.startsWith(';') && cronEntry.test(line))
+  const listFile = join(checkpointDir, 'scratch-restore.list')
+  await writeFile(listFile, inventory.filter(line => !cronEntry.test(line)).join('\n') + '\n', { mode: 0o600 })
+  docker(['cp', listFile, `oscarapp-db:/tmp/${scratch}.list`])
   queryDatabase('postgres', `create database ${scratch} template template0;`)
   docker(['exec', 'oscarapp-db', 'pg_restore', '-U', 'supabase_admin',
-    '--dbname', scratch, '--exit-on-error', containerPath])
+    '--dbname', scratch, '--exit-on-error', '--use-list', `/tmp/${scratch}.list`, containerPath])
   const restored = JSON.parse(queryDatabase(scratch, fingerprintQuery))
   assert.deepEqual(restored, fingerprint, 'Restored checkpoint does not match the source local DB')
 
@@ -56,6 +65,8 @@ try {
     createdAt: new Date().toISOString(), sha256: digest, fingerprint,
     restoreVerified: true,
     restoreScope: 'New empty database in the same local PostgreSQL 17 cluster, with existing Supabase roles/extensions',
+    scratchRestoreExcludes: excluded,
+    schedulerIncludedInRecoveryDump: true,
     storageFileBytesIncluded: false,
   }, null, 2)}\n`, { mode: 0o600 })
 

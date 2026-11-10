@@ -6,6 +6,8 @@ Automatic Vercel Git deployments are enabled for `main`; the `codex/service-prod
 
 ## Required environment variables
 
+The configurable staff-survey database rollout was applied and verified on 10 November 2026. Production is seeded only with the original Quarterly team pulse, scheduled from 1 January 2027. Local test surveys and responses are excluded. See [staff surveys and production verification](docs/quarterly-staff-surveys.md#production-release).
+
 Set these in your hosting provider’s environment UI or in a `.env` file for local builds:
 
 | Variable | Purpose |

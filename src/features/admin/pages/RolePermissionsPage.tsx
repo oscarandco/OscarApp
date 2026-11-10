@@ -27,6 +27,8 @@ const PAGE_FEATURE_LABELS: Record<PageId, string> = {
   previous_quotes: 'Previous quotes',
   kpi_dashboard: 'KPIs',
   commission_guide: 'Commission guide',
+  surveys: 'Surveys (own responses)',
+  admin_surveys: 'Surveys (named admin results)',
   weekly_payroll: 'Weekly payroll',
   contractor_invoices: 'Contractor invoices',
   commission_breakdown: 'Sales summary',
@@ -66,6 +68,7 @@ const PERMISSION_MATRIX_SECTIONS: { id: string; label: string; pageIds: PageId[]
       'previous_quotes',
       'kpi_dashboard',
       'commission_guide',
+      'surveys',
     ],
   },
   {
@@ -76,6 +79,7 @@ const PERMISSION_MATRIX_SECTIONS: { id: string; label: string; pageIds: PageId[]
       'contractor_invoices',
       'commission_breakdown',
       'staff_trends',
+      'admin_surveys',
       'imports',
     ],
   },
@@ -101,6 +105,9 @@ type FeedbackState =
   | null
 
 function optionsForCell(pageId: PageId, roleKey: RoleKey): PageAccessLevel[] {
+  // Named survey results are restricted to admins regardless of other grants.
+  if (pageId === 'surveys') return ['full']
+  if (pageId === 'admin_surveys') return roleKey === 'admin' ? ['full'] : ['none']
   if (pageId === 'role_permissions' && roleKey === 'admin') {
     return ['full']
   }

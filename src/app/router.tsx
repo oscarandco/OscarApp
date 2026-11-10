@@ -1,6 +1,8 @@
 import { Navigate, Route, Routes, useParams } from 'react-router-dom'
 
 import { AuthenticatedLayout } from '@/app/AuthenticatedLayout'
+import { AdminSurveysPage } from '@/features/surveys/AdminSurveysPage'
+import { SurveysPage } from '@/features/surveys/SurveysPage'
 import { RequireAdminAccess } from '@/components/auth/RequireAdminAccess'
 import { RequireAuth } from '@/components/auth/RequireAuth'
 import { RequirePageAccess } from '@/components/auth/RequirePageAccess'
@@ -68,6 +70,9 @@ export function AppRouter() {
           <Route index element={<Navigate to="/app/guest-quote" replace />} />
 
           {/* Shared pages — every authenticated role may view. */}
+          <Route path="surveys" element={<RequirePageAccess pageId="surveys"><SurveysPage /></RequirePageAccess>} />
+          <Route path="surveys/:roundId" element={<RequirePageAccess pageId="surveys"><SurveysPage /></RequirePageAccess>} />
+          <Route path="admin/surveys" element={<RequirePageAccess pageId="admin_surveys"><AdminSurveysPage /></RequirePageAccess>} />
           <Route path="my-sales" element={<PayrollSummaryPage />} />
           <Route
             path="my-sales/:payWeekStart"

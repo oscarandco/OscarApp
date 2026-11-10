@@ -3,6 +3,7 @@ import { Outlet } from 'react-router-dom'
 
 import { SideNav } from '@/components/layout/SideNav'
 import { TopNav } from '@/components/layout/TopNav'
+import { SurveyLoginPrompt } from '@/features/surveys/SurveyLoginPrompt'
 
 /**
  * Responsive app shell.
@@ -37,6 +38,7 @@ export function AppShell() {
     */
     <div className="flex min-h-dvh flex-col bg-slate-50 lg:h-[var(--app-viewport-height,100dvh)] lg:min-h-0 lg:overflow-hidden print:block print:h-auto print:min-h-0 print:overflow-visible print:bg-white">
       <TopNav onOpenMobileNav={() => setMobileNavOpen(true)} />
+      <SurveyLoginPrompt />
       <div className="flex flex-1 flex-col lg:min-h-0 lg:flex-row print:block">
         <SideNav
           mobileOpen={mobileNavOpen}

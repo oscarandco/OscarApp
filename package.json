@@ -14,6 +14,8 @@
     "local:checkpoint": "node scripts/local/checkpoint.mjs",
     "local:audit": "node scripts/local/audit.mjs",
     "local:feature-check": "node scripts/local/feature-check.mjs",
+    "local:survey-check": "node scripts/local/survey-check.mjs",
+    "local:survey-migration-check": "node scripts/local/survey-migration-check.mjs",
     "local:schema-parity": "node scripts/local/schema-parity.mjs",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
@@ -23,10 +25,13 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.103.0",
     "@tanstack/react-query": "^5.99.0",
+    "jspdf": "4.2.1",
+    "jspdf-autotable": "5.0.9",
     "papaparse": "^5.5.3",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
-    "react-router-dom": "^7.14.0"
+    "react-router-dom": "^7.14.0",
+    "write-excel-file": "4.1.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",

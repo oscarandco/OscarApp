@@ -61,6 +61,8 @@ export type PageId =
   | 'previous_quotes'
   | 'kpi_dashboard'
   | 'commission_guide'
+  | 'surveys'
+  | 'admin_surveys'
   | 'weekly_payroll'
   | 'contractor_invoices'
   | 'commission_breakdown'
@@ -84,6 +86,8 @@ export const PAGE_MATRIX_ROW_ORDER: PageId[] = [
   'previous_quotes',
   'kpi_dashboard',
   'commission_guide',
+  'surveys',
+  'admin_surveys',
   'weekly_payroll',
   'contractor_invoices',
   'commission_breakdown',
@@ -110,6 +114,8 @@ const F = 'full' as const
  * Reception defaults (non-UAT): quotes-focused; UAT mirrors base role where noted.
  */
 export const PAGE_ACCESS_MATRIX: Record<PageId, Record<RoleKey, PageAccessLevel>> = {
+  surveys: { assistant: F, stylist: F, reception: F, manager: F, assistant_uat: F, stylist_uat: F, reception_uat: F, manager_uat: F, admin: F },
+  admin_surveys: { assistant: O, stylist: O, reception: O, manager: O, assistant_uat: O, stylist_uat: O, reception_uat: O, manager_uat: O, admin: F },
   my_payroll: {
     assistant: F,
     stylist: F,

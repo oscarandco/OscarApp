@@ -71,6 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signOut = useCallback(async () => {
     await requireSupabaseClient().auth.signOut()
     queryClient.removeQueries({ queryKey: ['access-profile'] })
+    queryClient.removeQueries({ queryKey: ['surveys'] })
   }, [queryClient])
 
   const value = useMemo<AuthContextValue>(

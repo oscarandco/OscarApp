@@ -5,6 +5,7 @@
 - [Service product costs and commission architecture](docs/service-product-costs-architecture.md) — agreed decisions, current local database setup, implementation stages and acceptance checks.
 - [Service product costs implementation and review](docs/service-product-costs-implementation.md) — delivered feature, local configuration steps, regression/browser evidence and production boundaries.
 - [Local Docker development](docs/local-development.md) — safe launch commands, test login, verification and recovery checkpoints.
+- [Staff survey builder](docs/quarterly-staff-surveys.md) — configurable surveys, answer types, run schedules, employee responses, privacy and verification.
 - [Hosting and deployment reference](DEPLOY.md)
 - [Frontend developer notes](docs/frontend-mvp-notes.md)
 
